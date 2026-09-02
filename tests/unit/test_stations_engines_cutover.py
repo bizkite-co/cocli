@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from cocli.core.email_index_manager import EmailIndexManager
 from cocli.core.stations_runtime import (
@@ -26,15 +26,15 @@ class _FakeQueue:
     queue_name = "to-call"
 
     def __init__(self) -> None:
-        self._items: List[_FakeTask] = []
-        self.acked: List[_FakeTask] = []
-        self.nacked: List[_FakeTask] = []
+        self._items: list[_FakeTask] = []
+        self.acked: list[_FakeTask] = []
+        self.nacked: list[_FakeTask] = []
 
     def push(self, task: _FakeTask) -> Any:
         self._items.append(task)
         return task.task_id
 
-    def poll(self, batch_size: int = 1) -> List[_FakeTask]:
+    def poll(self, batch_size: int = 1) -> list[_FakeTask]:
         out = self._items[:batch_size]
         self._items = self._items[batch_size:]
         return out
@@ -50,7 +50,7 @@ class _FakeQueue:
 def test_queue_transform_once_uses_stations_engine() -> None:
     q = _FakeQueue()
     q.push(_FakeTask("t1", 2))
-    outputs: List[Any] = []
+    outputs: list[Any] = []
 
     def double(task: _FakeTask) -> dict[str, Any]:
         return {"task_id": task.task_id, "n": task.n * 2}

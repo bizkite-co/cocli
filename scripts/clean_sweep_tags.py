@@ -21,8 +21,7 @@ async def clean_sweep(campaign_name: str) -> None:
         return
 
     # To avoid redundant processing for compacted shards, we group by path
-    from typing import Dict, List
-    paths_to_domains: Dict[str, List[str]] = {}
+    paths_to_domains: dict[str, list[str]] = {}
     for domain, shard in manifest.shards.items():
         paths_to_domains.setdefault(shard.path, []).append(domain)
 

@@ -13,7 +13,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Iterable, Iterator, Optional
 
 import yaml
 from stations.backends import LocalPathBackend
@@ -116,7 +116,7 @@ def field_updates_fold() -> Any:
 
 def fold_field_updates(
     records: Iterable[DatagramRecord],
-) -> List[DatagramRecord]:
+) -> list[DatagramRecord]:
     """Return winning field-update facts (one per target+field)."""
     fold = field_updates_fold()
     return list(fold(list(records)))
@@ -124,9 +124,9 @@ def fold_field_updates(
 
 def group_winners_by_target(
     winners: Iterable[DatagramRecord],
-) -> Dict[str, Dict[str, str]]:
+) -> dict[str, dict[str, str]]:
     """Map entity target → {field: value} from folded winners."""
-    out: Dict[str, Dict[str, str]] = {}
+    out: dict[str, dict[str, str]] = {}
     for rec in winners:
         bucket = out.setdefault(rec.target, {})
         bucket[rec.field] = rec.value
@@ -134,9 +134,9 @@ def group_winners_by_target(
 
 
 def apply_field_updates_to_mapping(
-    base: Dict[str, Any],
+    base: dict[str, Any],
     records: Iterable[DatagramRecord],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Pure hybrid-style merge: base entity mapping + ordered field facts.
 
     LWW per field by timestamp among ``records``; later timestamps win.
@@ -161,7 +161,7 @@ def compact_entity_field_journal(
     apply_to_entities: bool = True,
     data_root: Optional[Path] = None,
     compactor_id: Optional[str] = None,
-) -> Tuple[bool, int, int]:
+) -> tuple[bool, int, int]:
     """Fold the entity field journal and write whole entity snapshots.
 
     1. Enumerate Shape A log via :class:`EntityFieldLogEdge` (stations LogEdge).
@@ -217,7 +217,7 @@ def compact_entity_field_journal(
 
 
 def _apply_fields_to_entity_index(
-    data_root: Path, target: str, fields: Dict[str, str]
+    data_root: Path, target: str, fields: dict[str, str]
 ) -> bool:
     """Merge folded fields into ``{data_root}/{target}/_index.md`` if present.
 
@@ -239,7 +239,7 @@ def _apply_fields_to_entity_index(
         logger.error("cannot read %s: %s", index_path, exc)
         return False
 
-    frontmatter: Dict[str, Any] = {}
+    frontmatter: dict[str, Any] = {}
     body = ""
     if content.startswith("---") and "---" in content[3:]:
         parts = content.split("---", 2)

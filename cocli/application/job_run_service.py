@@ -15,7 +15,7 @@ from __future__ import annotations
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from ..core.paths import paths
 from ..core.queue.reconcile import identities_with_paths
@@ -38,11 +38,11 @@ def _identities_path(campaign_name: str, run_id: str) -> Path:
     return _run_dir(campaign_name, run_id) / "identities.usv"
 
 
-def _load_index(campaign_name: str) -> List[ScrapeJobRun]:
+def _load_index(campaign_name: str) -> list[ScrapeJobRun]:
     index_path = _index_path(campaign_name)
     if not index_path.exists():
         return []
-    runs: List[ScrapeJobRun] = []
+    runs: list[ScrapeJobRun] = []
     with open(index_path, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
@@ -50,7 +50,7 @@ def _load_index(campaign_name: str) -> List[ScrapeJobRun]:
     return runs
 
 
-def _save_index(campaign_name: str, runs: List[ScrapeJobRun]) -> None:
+def _save_index(campaign_name: str, runs: list[ScrapeJobRun]) -> None:
     ScrapeJobRun.save_usv_with_datapackage(
         runs, _index_path(campaign_name), resource_name="job-runs"
     )
@@ -93,7 +93,7 @@ def create_job_run(campaign_name: str, *, hostname: Optional[str] = None) -> Scr
     return run
 
 
-def mark_discovery_gen_completed(run: ScrapeJobRun, identities: List[str]) -> ScrapeJobRun:
+def mark_discovery_gen_completed(run: ScrapeJobRun, identities: list[str]) -> ScrapeJobRun:
     """Snapshots this run's identity set and marks it ready to be copied
     into gm-list/pending/. `identities` is entirely caller-provided - this
     function doesn't inspect discovery-gen itself, so the caller decides
@@ -117,7 +117,7 @@ def mark_discovery_gen_completed(run: ScrapeJobRun, identities: List[str]) -> Sc
     return updated
 
 
-def load_identities(run: ScrapeJobRun) -> List[str]:
+def load_identities(run: ScrapeJobRun) -> list[str]:
     ids_path = _identities_path(run.campaign_name, run.id)
     if not ids_path.exists():
         return []
@@ -200,7 +200,7 @@ def check_and_mark_gm_list_completed(run: ScrapeJobRun) -> bool:
     return True
 
 
-def list_open_job_runs(campaign_name: str) -> List[ScrapeJobRun]:
+def list_open_job_runs(campaign_name: str) -> list[ScrapeJobRun]:
     """Runs the resilience poller (WorkerService's heartbeat loop) should
     still act on: either stuck waiting for their auto-copy
     (discovery_gen_completed_at set, started_at not - e.g. the process

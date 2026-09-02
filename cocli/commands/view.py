@@ -1,7 +1,7 @@
 import yaml
 import logging
 import typer
-from typing import Any, Dict
+from typing import Any
 from pathlib import Path
 import subprocess
 import re
@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer()
 
-def _load_frontmatter(index_path: Path) -> Dict[str, Any]:
-    frontmatter_data: Dict[str, Any] = {}
+def _load_frontmatter(index_path: Path) -> dict[str, Any]:
+    frontmatter_data: dict[str, Any] = {}
     if index_path.exists():
         content = index_path.read_text()
         if content.startswith("---") and "---" in content[3:]:

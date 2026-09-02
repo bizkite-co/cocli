@@ -2,7 +2,6 @@
 import os
 import sys
 import logging
-from typing import Dict
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -24,7 +23,7 @@ def consolidate(campaign_name: str) -> None:
     recovery_dir = campaign_dir / "recovery"
     output_file = recovery_dir / "consolidated_pid_name_map.usv"
     
-    pid_name_map: Dict[str, str] = {}
+    pid_name_map: dict[str, str] = {}
     
     # Files to check specifically for PID/Name mappings
     source_files = list(recovery_dir.glob("pid_name_map_*.usv"))

@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import List
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -15,7 +14,7 @@ from cocli.core.paths import paths
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("queue_cleanup")
 
-def identify_stale_files(campaign: str, queue_name: str, stale_hours: int = 4) -> List[str]:
+def identify_stale_files(campaign: str, queue_name: str, stale_hours: int = 4) -> list[str]:
     """
     Identifies stale pending tasks and leases in the given queue.
     """
@@ -67,7 +66,7 @@ def identify_stale_files(campaign: str, queue_name: str, stale_hours: int = 4) -
 
     return stale_list
 
-def generate_cleanup_report(campaign: str, files: List[str]) -> Path:
+def generate_cleanup_report(campaign: str, files: list[str]) -> Path:
     report_name = f"cleanup_{campaign}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     report_path = Path("temp") / report_name
     report_path.parent.mkdir(parents=True, exist_ok=True)

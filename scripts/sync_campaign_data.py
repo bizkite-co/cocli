@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typer
 import logging
 from rich.console import Console
@@ -8,7 +9,7 @@ from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.queue.factory import get_queue_manager
 from cocli.utils.usv_utils import USVDictWriter
 from pathlib import Path
-from typing import Optional, Dict, Set
+from typing import Optional
 from datetime import datetime
 
 app = typer.Typer()
@@ -33,9 +34,9 @@ def setup_file_logging(script_name: str) -> Path:
     )
     return log_file
 
-def get_discovery_map(campaign_name: str) -> Dict[str, Set[str]]:
+def get_discovery_map(campaign_name: str) -> dict[str, set[str]]:
     """Scans all gm-list results to map place_id -> set of search phrases."""
-    discovery_map: Dict[str, Set[str]] = {}
+    discovery_map: dict[str, set[str]] = {}
     campaign_dir = get_campaigns_dir() / campaign_name
     results_dir = campaign_dir / "queues" / "gm-list" / "completed" / "results"
     

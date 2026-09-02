@@ -1,4 +1,5 @@
 """Convert transcript to VTT format for YouTube closed captions."""
+from __future__ import annotations
 
 import re
 from pathlib import Path

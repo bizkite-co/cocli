@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Optional, cast
 
 from google.genai import Client
 
@@ -20,9 +21,9 @@ _CHAPTER_LINE_RE = re.compile(
 _TRANSCRIPT_PROVIDER_PREFERENCE = ("whisper", "gemini", "openai")
 
 
-def load_transcripts_from_dir(video_dir: Path) -> Dict[str, str]:
+def load_transcripts_from_dir(video_dir: Path) -> dict[str, str]:
     """Load ``transcript_*.md`` files from a normalized (or packaged) video dir."""
-    found: Dict[str, str] = {}
+    found: dict[str, str] = {}
     for path in sorted(video_dir.glob("transcript_*.md")):
         key = path.stem.removeprefix("transcript_")
         try:
@@ -33,10 +34,10 @@ def load_transcripts_from_dir(video_dir: Path) -> Dict[str, str]:
 
 
 def pick_primary_transcript(
-    transcripts: Dict[str, str],
+    transcripts: dict[str, str],
     *,
     provider: Optional[str] = None,
-) -> Optional[Tuple[str, str]]:
+) -> Optional[tuple[str, str]]:
     """
     Choose one non-granular transcript for chapter generation.
 
@@ -66,7 +67,7 @@ def write_chapters_for_dir(
     campaign: str,
     *,
     provider: Optional[str] = None,
-    transcripts: Optional[Dict[str, str]] = None,
+    transcripts: Optional[dict[str, str]] = None,
 ) -> Path:
     """
     Regenerate ``chapters.md`` from existing transcripts (no STT / no encode).
@@ -101,7 +102,7 @@ def sanitize_chapters_text(raw: str) -> str:
     Accepted line shape: ``MM:SS Title`` or ``H:MM:SS Title`` (leading zeros OK).
     Markdown bullets / bold wrappers around the timestamp are stripped.
     """
-    lines_out: List[str] = []
+    lines_out: list[str] = []
     for line in raw.splitlines():
         cleaned = line.strip()
         if not cleaned:
@@ -162,7 +163,7 @@ Transcript:
 """
 
     # Properly cast content to match SDK's expected input type (Union of Content types)
-    contents: List[Any] = [prompt]
+    contents: list[Any] = [prompt]
     model_name = "gemini-2.0-flash-001"
     try:
         response = client.models.generate_content(

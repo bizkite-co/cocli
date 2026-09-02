@@ -10,12 +10,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.sharding import get_domain_shard
 
-from typing import Tuple
 
 app = typer.Typer()
 console = Console()
 
-def get_legacy_info(domain: str, slug: str) -> Tuple[str, str]:
+def get_legacy_info(domain: str, slug: str) -> tuple[str, str]:
     raw_id = f"{slug}_{domain}"
     legacy_id = hashlib.md5(raw_id.encode()).hexdigest()
     legacy_shard = legacy_id[0]

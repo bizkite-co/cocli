@@ -1,3 +1,4 @@
+from __future__ import annotations
 from cocli.core.bootstrap import setup_environment
 
 setup_environment()

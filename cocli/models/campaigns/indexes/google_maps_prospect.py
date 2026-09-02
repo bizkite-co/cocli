@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Optional, ClassVar
 from datetime import datetime, UTC
 from pathlib import Path

@@ -2,7 +2,6 @@
 import os
 import sys
 import logging
-from typing import List, Dict
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -14,7 +13,7 @@ from cocli.core.text_utils import slugify
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def enqueue_batch(batch: List[str], pid_to_name: Dict[str, str], campaign: str) -> None:
+def enqueue_batch(batch: list[str], pid_to_name: dict[str, str], campaign: str) -> None:
     logger.info(f"Processing batch of {len(batch)}...")
 
     queue_manager = get_queue_manager("gm-details", queue_type="details", campaign_name=campaign)

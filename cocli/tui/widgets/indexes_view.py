@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 from typing import Any, Optional, TYPE_CHECKING, cast
 import logging
 import json

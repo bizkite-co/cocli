@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, Literal, Optional, TYPE_CHECKING, overload
 from .local_file_queue import LocalFileQueue
 from .sqs_queue import SQSQueue

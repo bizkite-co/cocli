@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from typing import List
 
 import typer
 from rich.console import Console
@@ -18,7 +17,7 @@ console = Console()
 @app.command()
 def migrate(
     campaign: str = typer.Argument(..., help="Campaign to migrate."),
-    domains: List[str] = typer.Argument(..., help="Specific domains to migrate."),
+    domains: list[str] = typer.Argument(..., help="Specific domains to migrate."),
     dry_run: bool = typer.Option(True, "--no-dry-run", is_flag=False, help="Actually move data.")
 ) -> None:
     """

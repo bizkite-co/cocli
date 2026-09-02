@@ -5,7 +5,7 @@ import typer
 from pathlib import Path
 from rich.console import Console
 from rich.progress import track
-from typing import List, Dict, Any # Added missing imports
+from typing import Any # Added missing imports
 
 # Setup
 app = typer.Typer()
@@ -18,9 +18,9 @@ def meters_to_latlon(x: float, y: float) -> tuple[float, float]:
     lat = 180 / math.pi * (2 * math.atan(math.exp(lat * math.pi / 180)) - math.pi / 2)
     return lat, lon
 
-def parse_markdown_beds(md_path: Path) -> List[Dict[str, Any]]:
+def parse_markdown_beds(md_path: Path) -> list[dict[str, Any]]:
     """Extracts {name, beds} from the markdown list."""
-    hospitals: List[Dict[str, Any]] = []
+    hospitals: list[dict[str, Any]] = []
     with open(md_path, 'r') as f:
         for line in f:
             # Match: * Hospital Name (Location): 1,234 beds

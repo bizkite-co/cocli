@@ -1,7 +1,8 @@
+from __future__ import annotations
 import typer
 import csv
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Optional
 import logging
 
 from ..core.config import get_companies_dir, get_people_dir
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 def import_customers(
     customers_csv_path: Path = typer.Argument(..., help="Path to the customers.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
     addresses_csv_path: Path = typer.Argument(..., help="Path to the customer_addresses.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
-    tags: List[str] = typer.Option(..., "--tag", help="Tags to add to the companies and people."),
+    tags: list[str] = typer.Option(..., "--tag", help="Tags to add to the companies and people."),
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name for indexing found emails."),
 ) -> None:
     """
@@ -37,7 +38,7 @@ def import_customers(
         set_campaign(eff_campaign)
 
     # Load addresses into a dictionary for easy lookup
-    addresses: Dict[str, Dict[str, str | None]] = {}
+    addresses: dict[str, dict[str, str | None]] = {}
     with open(addresses_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         for row in reader:

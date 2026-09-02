@@ -8,6 +8,7 @@ Design principles:
 - Real verification: hash-equality + observed worker behavior (tile movement), not proxy checks
 - Deployment indicator: file marker in /app/data/ shows mode (patch vs image)
 """
+from __future__ import annotations
 
 import hashlib
 import json

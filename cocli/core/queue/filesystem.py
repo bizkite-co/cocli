@@ -1,7 +1,8 @@
+from __future__ import annotations
 import os
 import json
 import logging
-from typing import List, Type, TypeVar, Any, Optional, Union, Dict
+from typing import TypeVar, Any, Optional, Union
 from pathlib import Path
 from datetime import datetime, timedelta, UTC
 
@@ -441,13 +442,13 @@ class FilesystemQueue:
             logger.debug(f"Pushed task {task_id} to {self.queue_name} pending")
         return task_id
 
-    def poll_frontier(self, task_type: Type[T], batch_size: int = 1) -> List[T]:
+    def poll_frontier(self, task_type: type[T], batch_size: int = 1) -> list[T]:
         """Generic poll for queues with S3 discovery fallback."""
         logger.info(f"Polling {self.queue_name} for tasks...")
         if not self.pending_dir.exists():
             self.pending_dir.mkdir(parents=True, exist_ok=True)
 
-        tasks: List[T] = []
+        tasks: list[T] = []
         count = 0
 
         # 1. Get local candidates
@@ -568,7 +569,7 @@ class FilesystemQueue:
 
                 # 1. Group objects by Task ID and extract timestamps
                 # Key structure: .../pending/<shard>/<task_id>/[task.json|lease.json]
-                tasks_in_shard: Dict[str, Dict[str, Any]] = {}
+                tasks_in_shard: dict[str, dict[str, Any]] = {}
 
                 for obj in response["Contents"]:
                     key = obj["Key"]
@@ -897,11 +898,11 @@ class FilesystemGmListQueue(FilesystemQueue):
 
         return task_id
 
-    def poll(self, batch_size: int = 1) -> List[ScrapeTask]:
+    def poll(self, batch_size: int = 1) -> list[ScrapeTask]:
         """Poll gm-list's own pending/ - purely mechanical. No dedup or
         discovery logic here; that's the copy step's job, done once before
         items land in pending/, not the queue's runtime (see class docstring)."""
-        tasks: List[ScrapeTask] = []
+        tasks: list[ScrapeTask] = []
 
         if not self.pending_dir.exists():
             return []
@@ -1150,7 +1151,7 @@ class FilesystemGmDetailsQueue(FilesystemQueue):
                 logger.error(f"Failed immediate S3 push for gm-details: {e}")
         return task_id
 
-    def poll(self, batch_size: int = 1) -> List[GmItemTask]:
+    def poll(self, batch_size: int = 1) -> list[GmItemTask]:
         return self.poll_frontier(GmItemTask, batch_size)
 
     def ack(self, task: Union[GmItemTask, str]) -> None:  # type: ignore[override]
@@ -1190,7 +1191,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
             max_nack_attempts=max_nack_attempts,
         )
 
-    def _get_task_model(self, task_id: str, data: Dict[str, Any]) -> Any:
+    def _get_task_model(self, task_id: str, data: dict[str, Any]) -> Any:
         from ...models.campaigns.queues.enrichment import EnrichmentTask
 
         return EnrichmentTask(**data)
@@ -1231,7 +1232,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
                 logger.error(f"Failed immediate S3 push for enrichment {task_id}: {e}")
         return pushed_id
 
-    def poll(self, batch_size: int = 1) -> List[QueueMessage]:
+    def poll(self, batch_size: int = 1) -> list[QueueMessage]:
         return self.poll_frontier(QueueMessage, batch_size)
 
     def ack(self, task: Union[QueueMessage, str]) -> None:  # type: ignore[override]

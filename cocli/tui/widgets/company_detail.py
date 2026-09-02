@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import subprocess
 import re
 import textwrap
-from typing import Dict, Optional, Any, Union, cast, TYPE_CHECKING
+from typing import Optional, Any, Union, cast, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
 
@@ -294,7 +295,7 @@ class CompanyDetail(Container):
 
     def __init__(
         self,
-        company_data: Dict[str, Any],
+        company_data: dict[str, Any],
         name: Optional[str] = None,
         id: Optional[str] = None,
         classes: Optional[str] = None,
@@ -580,7 +581,7 @@ class CompanyDetail(Container):
 
         self.run_worker(self._flag_illegitimate_worker(company, slug))
 
-    async def _flag_illegitimate_worker(self, company: Dict[str, Any], slug: str) -> None:
+    async def _flag_illegitimate_worker(self, company: dict[str, Any], slug: str) -> None:
         name = company.get("name") or slug
 
         from .confirm_screen import ConfirmScreen
@@ -1019,7 +1020,7 @@ class CompanyDetail(Container):
             return
 
         content = file_path.read_text()
-        frontmatter_data: Dict[str, Any] = {}
+        frontmatter_data: dict[str, Any] = {}
         markdown_content = content
 
         if content.startswith("---") and "---" in content[3:]:

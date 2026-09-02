@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, Optional
 from textual.widgets import Static, Label
 from textual.containers import VerticalScroll, Container, Horizontal

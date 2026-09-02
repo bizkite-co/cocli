@@ -1,13 +1,13 @@
 import logging
 import duckdb
-from typing import Dict, Any
+from typing import Any
 from .reporting import get_boto3_session
 from .config import load_campaign_config
 from cocli.core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 
-def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
+def get_cluster_capacity_stats(campaign_name: str) -> dict[str, Any]:
     """
     Uses DuckDB to estimate machine distribution by sampling S3 files.
     Full scans are too slow for live reporting (>5 mins for 1.5k+ files).
@@ -37,7 +37,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
     if frozen.token:
         con.execute(f"SET s3_session_token='{frozen.token}';")
 
-    stats: Dict[str, Any] = {
+    stats: dict[str, Any] = {
         "by_machine_detailed": {},
         "by_machine_enriched": {},
         "by_machine_scraped": {},
@@ -138,7 +138,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
 
     return stats
 
-def get_live_progress_stats(campaign_name: str) -> Dict[str, Any]:
+def get_live_progress_stats(campaign_name: str) -> dict[str, Any]:
     """
     Combines DuckDB analytics with queue counts for a real-time progress view.
     """

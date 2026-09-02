@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 from typing import Any, Optional, TYPE_CHECKING
 from playwright.async_api import Page

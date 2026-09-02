@@ -2,7 +2,6 @@ import json
 import logging
 import typer
 from pathlib import Path
-from typing import List
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_cocli_base_dir
@@ -50,7 +49,7 @@ def main(
     
     # Identify all candidate files (JSON or USV)
     # We avoid recursing into 'shards' if they already exist
-    all_files: List[Path] = []
+    all_files: list[Path] = []
     for d in candidate_dirs:
         if d.exists():
             for f in d.rglob("*"):

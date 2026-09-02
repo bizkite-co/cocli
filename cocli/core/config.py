@@ -1,9 +1,10 @@
+from __future__ import annotations
 import os
 from pathlib import Path
 import platform
 import tomli
 import tomli_w
-from typing import Optional, Any, Dict
+from typing import Optional, Any
 import logging
 from pydantic import BaseModel, Field, ConfigDict, ValidationError
 
@@ -298,8 +299,8 @@ class Config(BaseModel):
     model_config = ConfigDict(extra="allow")
     data_home: Path = Field(default_factory=get_cocli_base_dir)
     tui: Tui = Tui()
-    campaign: Optional[Dict[str, Any]] = None
-    context: Optional[Dict[str, Any]] = None
+    campaign: Optional[dict[str, Any]] = None
+    context: Optional[dict[str, Any]] = None
     queue_type: Optional[str] = None
 
 
@@ -362,7 +363,7 @@ def load_scraper_settings() -> ScraperSettings:
         return ScraperSettings()
 
 
-def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
+def load_campaign_config(campaign_name: str) -> dict[str, Any]:
     """
     Loads the campaign-specific configuration, inheriting from parent namespace config files.
     Walks from the campaigns root down to the specific campaign directory.
@@ -393,7 +394,7 @@ def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
         current = current.parent
 
     # 2. Merge them in order (top-down)
-    merged_config: Dict[str, Any] = {}
+    merged_config: dict[str, Any] = {}
     for config_file in config_hierarchy:
         try:
             with config_file.open("rb") as f:
@@ -418,7 +419,7 @@ def load_config(config_path: Path) -> Config:
     return Config(**data)
 
 
-def load_global_config() -> Dict[str, Any]:
+def load_global_config() -> dict[str, Any]:
     """
     Returns the raw dictionary of the global cocli_config.toml.
     """
@@ -429,7 +430,7 @@ def load_global_config() -> Dict[str, Any]:
         return tomli.load(f)
 
 
-def save_config(config_data: Dict[str, Any]) -> None:
+def save_config(config_data: dict[str, Any]) -> None:
     config_file = get_config_path()
     config_file.parent.mkdir(parents=True, exist_ok=True)
 

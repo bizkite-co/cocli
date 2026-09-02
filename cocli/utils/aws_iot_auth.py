@@ -1,12 +1,13 @@
+from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-def get_iot_sts_credentials(iot_config_path: Optional[Path] = None) -> Optional[Dict[str, str]]:
+def get_iot_sts_credentials(iot_config_path: Optional[Path] = None) -> Optional[dict[str, str]]:
     """
     Exchanges an IoT certificate for temporary AWS STS credentials using the helper script.
     """

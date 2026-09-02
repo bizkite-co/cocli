@@ -1,9 +1,10 @@
+from __future__ import annotations
 import asyncio
 import json
 import logging
 from pathlib import Path
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 from playwright.async_api import Browser
 
 import typer
@@ -24,7 +25,7 @@ console = Console()
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-async def process_entry(scraper: WebsiteScraper, browser: Browser, entry: Dict[str, Any], dry_run: bool, campaign: Campaign) -> str:
+async def process_entry(scraper: WebsiteScraper, browser: Browser, entry: dict[str, Any], dry_run: bool, campaign: Campaign) -> str:
     file_path_str = entry.get("file_path")
     if not file_path_str:
         return "skipped_no_file_path"
@@ -136,14 +137,14 @@ async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_nam
         raise typer.Exit(1)
 
     with open(input_file, 'r', encoding='utf-8') as f:
-        entries: List[Dict[str, Any]] = json.load(f)
+        entries: list[dict[str, Any]] = json.load(f)
 
     # Filter out entries that match the limit
     entries_to_process = entries[:limit] if limit > 0 else entries
 
     console.print(f"Processing {len(entries_to_process)} anomalous items with concurrency={concurrency} for campaign '{campaign_name}'...")
 
-    stats: Dict[str, int] = {
+    stats: dict[str, int] = {
         "fixed": 0,
         "fixed_recovered": 0,
         "failed_still_broken": 0,
@@ -163,7 +164,7 @@ async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_nam
     # Track which entries were fixed so we can remove them from the list
     fixed_indices: set[int] = set()
 
-    async def bounded_process(scraper: WebsiteScraper, browser: Browser, entry: Dict[str, Any], i: int) -> str:
+    async def bounded_process(scraper: WebsiteScraper, browser: Browser, entry: dict[str, Any], i: int) -> str:
         async with semaphore:
             res = await process_entry(scraper, browser, entry, dry_run, campaign)
             if res == "fixed" or res == "fixed_recovered":

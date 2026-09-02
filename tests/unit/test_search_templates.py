@@ -2,7 +2,7 @@
 """Companies-tab TEMPLATES must query Frictionless indexes via DuckDB."""
 
 from pathlib import Path
-from typing import Any, Iterator, List, Set
+from typing import Any, Iterator
 
 import pytest
 
@@ -183,7 +183,7 @@ def templates_env(
     return CAMPAIGN
 
 
-def _slugs(results: List[SearchResult]) -> Set[str]:
+def _slugs(results: list[SearchResult]) -> set[str]:
     return {slug for r in results if (slug := r.slug)}
 
 

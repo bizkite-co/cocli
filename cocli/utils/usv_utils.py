@@ -1,5 +1,6 @@
+from __future__ import annotations
 import csv
-from typing import List, Iterable, Iterator, Any, Dict, Optional
+from typing import Iterable, Iterator, Any, Optional
 
 from cocli.core.constants import UNIT_SEP
 
@@ -24,7 +25,7 @@ class USVReader:
         self.records = [r for r in normalized.split("\n") if r.strip()]
         self._iterator = iter(self.records)
 
-    def __iter__(self) -> Iterator[List[str]]:
+    def __iter__(self) -> Iterator[list[str]]:
         for line in self._iterator:
             # NOTE: str.strip() treats \x1f (Unit Separator) as whitespace
             # (Unicode bidi category "B"), so a bare .strip() silently
@@ -34,7 +35,7 @@ class USVReader:
             if clean_line:
                 yield clean_line.split(UNIT_SEP)
 
-    def __next__(self) -> List[str]:
+    def __next__(self) -> list[str]:
         return next(iter(self))
 
 
@@ -43,13 +44,13 @@ class USVDictReader:
     A DictReader for USV.
     """
 
-    def __init__(self, f: Iterable[str], fieldnames: Optional[List[str]] = None):
+    def __init__(self, f: Iterable[str], fieldnames: Optional[list[str]] = None):
         self.reader = USVReader(f)
         self.fieldnames = fieldnames
         self._first_row_read = False
         self._gen = self._get_gen()
 
-    def _get_gen(self) -> Iterator[Dict[str, str]]:
+    def _get_gen(self) -> Iterator[dict[str, str]]:
         for row in self.reader:
             if not self._first_row_read:
                 if self.fieldnames is None:
@@ -61,10 +62,10 @@ class USVDictReader:
             if self.fieldnames is not None:
                 yield dict(zip(self.fieldnames, row))
 
-    def __iter__(self) -> Iterator[Dict[str, str]]:
+    def __iter__(self) -> Iterator[dict[str, str]]:
         return self
 
-    def __next__(self) -> Dict[str, str]:
+    def __next__(self) -> dict[str, str]:
         return next(self._gen)
 
 
@@ -86,7 +87,7 @@ class USVDictWriter:
     A DictWriter for USV.
     """
 
-    def __init__(self, f: Any, fieldnames: List[str]):
+    def __init__(self, f: Any, fieldnames: list[str]):
         self.f = f
         self.fieldnames = fieldnames
         self.writer = USVWriter(f)
@@ -94,7 +95,7 @@ class USVDictWriter:
     def writeheader(self) -> None:
         self.writer.writerow(self.fieldnames)
 
-    def writerow(self, rowdict: Dict[str, Any]) -> None:
+    def writerow(self, rowdict: dict[str, Any]) -> None:
         row = [rowdict.get(key, "") for key in self.fieldnames]
         self.writer.writerow(row)
 

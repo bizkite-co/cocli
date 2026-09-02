@@ -1,8 +1,9 @@
 """YouTube uploader using 1Password for client credentials and keyring for OAuth tokens."""
+from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Callable as CallableType
+from typing import Optional, Any, Callable as CallableType
 from googleapiclient.discovery import build  # type: ignore
 from googleapiclient.http import MediaFileUpload  # type: ignore
 from google.oauth2.credentials import Credentials as GoogleCredentials
@@ -131,12 +132,12 @@ class YouTubeUploader:
         video_path: str | Path,
         title: str,
         description: str = "",
-        tags: Optional[List[str]] = None,
+        tags: Optional[list[str]] = None,
         category_id: str = "22",
         privacy: str = "unlisted",
         playlist_id: Optional[str] = None,
         progress_callback: Optional[CallableType[[int], None]] = None,
-    ) -> Optional[Dict[str, str]]:
+    ) -> Optional[dict[str, str]]:
         """Upload video to YouTube."""
         video_path = Path(video_path)
         if not video_path.exists():
@@ -182,7 +183,7 @@ class YouTubeUploader:
             ),
         )
 
-        response_insert: Optional[Dict[str, Any]] = None
+        response_insert: Optional[dict[str, Any]] = None
         while response_insert is None:
             try:
                 status, response_insert = insert_request.next_chunk()
@@ -295,7 +296,7 @@ class YouTubeUploader:
         video_path: str | Path,
         title: str,
         campaign: Optional[str] = None,
-    ) -> Optional[Dict[str, str]]:
+    ) -> Optional[dict[str, str]]:
         """Upload with campaign-specific metadata."""
         campaign_name = campaign or self.campaign
         description = f"Uploaded via {campaign_name} automation"

@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import re
 import time
 import typer
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any
 from pathlib import Path
 
 from rich.console import Console
@@ -237,7 +238,7 @@ def audit_rollout(
 
         console.print(f"\n[bold cyan]Auditing Batch: {batch_file.name}[/bold cyan]")
 
-        tasks: List[MissionTask] = []
+        tasks: list[MissionTask] = []
         with open(batch_file, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -701,7 +702,7 @@ def audit_tui(
     console.print(f"To dump TUI tree, use: [bold]cocli tui --dump-tree {output}[/bold]")
 
 
-def _discover_tui_classes() -> List[type]:
+def _discover_tui_classes() -> list[type]:
     """Every class defined directly in cocli.tui.app or cocli.tui.widgets.*
     (not merely imported into those modules - `cls.__module__ == mod.__name__`
     excludes e.g. TemplateList showing up under company_search.py too just
@@ -711,7 +712,7 @@ def _discover_tui_classes() -> List[type]:
     import pkgutil
     from ..tui import app as tui_app_module, widgets
 
-    classes: List[type] = []
+    classes: list[type] = []
     for mod in [tui_app_module] + [
         importlib.import_module(f"{widgets.__name__}.{info.name}")
         for info in pkgutil.iter_modules(widgets.__path__)
@@ -1039,7 +1040,7 @@ def audit_cluster(
     _audit_cluster_ssh(campaign_name, verbose)
 
 
-def _fetch_heartbeat_nodes(campaign_name: str) -> Dict[str, Dict[str, Any]]:
+def _fetch_heartbeat_nodes(campaign_name: str) -> dict[str, dict[str, Any]]:
     """Reads every node's self-reported heartbeat from S3 (status/{host}.json).
     Raises on S3/credential failure - callers decide how to present that.
     Shared by _audit_cluster_from_heartbeats and _sum_live_queue_pending so
@@ -1053,7 +1054,7 @@ def _fetch_heartbeat_nodes(campaign_name: str) -> Dict[str, Dict[str, Any]]:
     bucket_name = get_data_bucket_name(config, campaign_name)
     s3 = get_s3_client(session=get_boto3_session(config))
     status_prefix = paths.s3.status_root
-    nodes: Dict[str, Dict[str, Any]] = {}
+    nodes: dict[str, dict[str, Any]] = {}
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
         for obj in page.get("Contents", []):
@@ -1077,7 +1078,7 @@ def _fetch_heartbeat_nodes(campaign_name: str) -> Dict[str, Dict[str, Any]]:
     return nodes
 
 
-def _sum_live_queue_pending(campaign_name: str) -> Optional[Dict[str, int]]:
+def _sum_live_queue_pending(campaign_name: str) -> Optional[dict[str, int]]:
     """Live pending counts for a campaign, summed across every node whose
     heartbeat reports for it - see WorkerService._compute_queue_pending()
     for how each node computes its own contribution (it's reading its own
@@ -1096,7 +1097,7 @@ def _sum_live_queue_pending(campaign_name: str) -> Optional[Dict[str, int]]:
         logger.debug(f"Could not fetch heartbeats for live queue_pending: {e}")
         return None
 
-    totals: Dict[str, int] = {}
+    totals: dict[str, int] = {}
     saw_field = False
     for hb in nodes.values():
         if hb.get("campaign") != campaign_name:
@@ -1112,7 +1113,7 @@ def _sum_live_queue_pending(campaign_name: str) -> Optional[Dict[str, int]]:
     return totals if saw_field else None
 
 
-def _fetch_live_gm_list_tile_coverage(campaign_name: str) -> Optional[Dict[str, int]]:
+def _fetch_live_gm_list_tile_coverage(campaign_name: str) -> Optional[dict[str, int]]:
     """Live, deduplicated (lat,lon) tile-level gm-list coverage for a
     campaign - see WorkerService._compute_gm_list_tile_coverage() for how
     each node computes it (receipt-based, not .usv-presence-based - see
@@ -1898,7 +1899,7 @@ class _ReferenceBrowser:
         from ..utils.playwright_utils import _STEALTH_INIT_SCRIPT
 
         self._playwright = sync_playwright().start()
-        launch_kwargs: Dict[str, Any] = {
+        launch_kwargs: dict[str, Any] = {
             "headless": False,
             "args": [
                 "--app=about:blank",

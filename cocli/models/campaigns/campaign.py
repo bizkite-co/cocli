@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
-from typing import List, Optional, Any
+from typing import Optional, Any
 import toml
 from pathlib import Path
 from functools import lru_cache
@@ -25,11 +26,11 @@ class GoogleMaps(BaseModel):
 
 class Prospecting(BaseModel):
     model_config = {"extra": "ignore"}
-    locations: Optional[List[str]] = Field(default_factory=list, alias="target-locations")
-    keywords: List[str] = Field(default_factory=list)
+    locations: Optional[list[str]] = Field(default_factory=list, alias="target-locations")
+    keywords: list[str] = Field(default_factory=list)
     target_locations_csv: Optional[str] = Field(None, alias="target-locations-csv")
-    tools: List[str] = Field(default_factory=list)
-    queries: List[str] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)
+    queries: list[str] = Field(default_factory=list)
     zoom_out_button_selector: str = Field("div#zoomOutButton", alias="zoom-out-button-selector")
     panning_distance_miles: int = Field(8, alias="panning-distance-miles")
     initial_zoom_out_level: int = Field(3, alias="initial-zoom-out-level")
@@ -57,7 +58,7 @@ class Campaign(BaseModel):
     tag: str
     domain: str
     company_slug: str = Field(..., alias='company-slug')
-    workflows: List[str]
+    workflows: list[str]
     import_settings: CampaignImport = Field(..., alias='import')
     google_maps: GoogleMaps
     prospecting: Prospecting

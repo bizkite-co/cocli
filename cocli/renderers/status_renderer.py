@@ -1,11 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+from typing import Any, Optional
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from datetime import datetime, UTC
 
-def render_environment_panel(status_data: Dict[str, Any]) -> Panel:
+def render_environment_panel(status_data: dict[str, Any]) -> Panel:
     """Renders the standard environment status panel."""
     env_text = Text.assemble(
         ("Campaign: ", "bold cyan"), (f"{status_data.get('campaign', 'None')}\n", "green"),
@@ -19,7 +20,7 @@ def render_environment_panel(status_data: Dict[str, Any]) -> Panel:
     
     return Panel(env_text, title="Environment Status", border_style="blue")
 
-def render_queue_table(stats: Dict[str, Any]) -> Table:
+def render_queue_table(stats: dict[str, Any]) -> Table:
     """Renders the queue depth and age table, combining S3 and Local stats."""
     s3_data = stats.get("s3_queues", {})
     local_data = stats.get("local_queues", {})
@@ -42,7 +43,7 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
         "to-call": "To Call"
     }
 
-    def add_rows(data: Dict[str, Any], type_label: str) -> None:
+    def add_rows(data: dict[str, Any], type_label: str) -> None:
         for name, metrics in data.items():
             label = labels.get(name, name)
             last_ts = metrics.get("last_completed_at")
@@ -81,7 +82,7 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
         
     return table
 
-def render_gossip_status_table(heartbeats: Dict[str, Dict[str, Any]]) -> Table:
+def render_gossip_status_table(heartbeats: dict[str, dict[str, Any]]) -> Table:
     """Renders the real-time gossip heartbeat table."""
     table = Table(title="Real-time Cluster Status (Gossip)", expand=True)
     table.add_column("Node ID", style="cyan")
@@ -114,7 +115,7 @@ def render_gossip_status_table(heartbeats: Dict[str, Dict[str, Any]]) -> Table:
         )
     return table
 
-def render_cluster_health_table(health_data: List[Dict[str, Any]]) -> Table:
+def render_cluster_health_table(health_data: list[dict[str, Any]]) -> Table:
     """Renders the real-time SSH cluster health table."""
     table = Table(title="Cluster Health (SSH Real-time)", expand=True)
     table.add_column("Node", style="cyan")
@@ -143,7 +144,7 @@ def render_cluster_health_table(health_data: List[Dict[str, Any]]) -> Table:
         )
     return table
 
-def render_worker_heartbeat_table(stats: Dict[str, Any]) -> Optional[Table]:
+def render_worker_heartbeat_table(stats: dict[str, Any]) -> Optional[Table]:
     """Renders the worker heartbeats table from S3 stats."""
     heartbeats = stats.get("worker_heartbeats", [])
     if not heartbeats:

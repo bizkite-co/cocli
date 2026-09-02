@@ -1,6 +1,7 @@
+from __future__ import annotations
 import json
 import logging
-from typing import Dict, List, Optional
+from typing import Optional
 
 from ..models.do_not_call import DoNotCallEntry
 from ..models.phone import PhoneNumber
@@ -27,7 +28,7 @@ class DoNotCallManager:
     def __init__(self) -> None:
         self.dir = paths.do_not_call / "people"
         self.dir.mkdir(parents=True, exist_ok=True)
-        self._phones: Dict[str, DoNotCallEntry] = {}
+        self._phones: dict[str, DoNotCallEntry] = {}
         self._load_all()
 
     def _load_all(self) -> None:
@@ -70,5 +71,5 @@ class DoNotCallManager:
             file_path.unlink()
         return True
 
-    def list_entries(self) -> List[DoNotCallEntry]:
+    def list_entries(self) -> list[DoNotCallEntry]:
         return list(self._phones.values())

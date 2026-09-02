@@ -1,7 +1,7 @@
 from textual.app import ComposeResult
 from textual.widgets import Label, DataTable
 from textual.containers import VerticalScroll, Horizontal
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import asyncio
 from datetime import datetime, UTC
 
@@ -54,8 +54,8 @@ class ClusterView(VerticalScroll):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.can_focus = True
-        self.registry_data: Dict[str, Any] = {}
-        self.heartbeat_data: Dict[str, Any] = {}
+        self.registry_data: dict[str, Any] = {}
+        self.heartbeat_data: dict[str, Any] = {}
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="cluster_header", classes="pane-header"):
@@ -133,7 +133,7 @@ class ClusterView(VerticalScroll):
                 return
             
             # Run S3 call in thread to avoid blocking UI
-            def _get_s3() -> Dict[str, Any]:
+            def _get_s3() -> dict[str, Any]:
                 session = get_boto3_session(config)
                 s3 = session.client("s3")
                 prefix = "cluster/registry/"
@@ -170,7 +170,7 @@ class ClusterView(VerticalScroll):
             if not bucket:
                 return
             
-            def _get_s3_status() -> Dict[str, Any]:
+            def _get_s3_status() -> dict[str, Any]:
                 session = get_boto3_session(config)
                 s3 = session.client("s3")
                 prefix = "status/"

@@ -6,6 +6,7 @@ Design notes:
 - OnePasswordManager is the default implementation
 - OAuth tokens stored in system keyring (not 1Password)
 """
+from __future__ import annotations
 
 import time
 import logging

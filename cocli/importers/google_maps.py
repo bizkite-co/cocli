@@ -1,6 +1,7 @@
+from __future__ import annotations
 import csv
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 import logging
 
 from ..models.companies.company import Company
@@ -46,7 +47,7 @@ def google_maps(filepath: Path, debug: bool = False) -> None:
                 if row.get("Second_category"):
                     categories.append(row["Second_category"].strip())
 
-                company_data: Dict[str, Any] = {
+                company_data: dict[str, Any] = {
                     "name": row.get("Name"),
                     "domain": row.get("Domain"),
                     "type": "Lead",  # Set the type for this import

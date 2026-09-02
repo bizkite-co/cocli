@@ -1,5 +1,6 @@
+from __future__ import annotations
 from datetime import UTC, datetime
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Optional
 
 from pydantic import Field
 
@@ -65,6 +66,6 @@ class ScrapeJobRun(BaseUsvModel):
 
     # gm_details/enrichment lineage tracking is explicitly deferred (see
     # the ticket this implements) - this just records intent for now.
-    queues_involved: List[str] = Field(
+    queues_involved: list[str] = Field(
         default_factory=lambda: ["gm-list", "gm-details", "enrichment"]
     )

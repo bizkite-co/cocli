@@ -4,9 +4,10 @@ Campaign audit tools: Hierarchical exploration of campaign data and scrape resul
 Supports drill-down navigation:
   Locations → Tiles → Companies → Details
 """
+from __future__ import annotations
 
 import typer
-from typing import Optional, List, Dict, Any, Annotated
+from typing import Optional, Any, Annotated
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -20,7 +21,7 @@ console = Console()
 app = typer.Typer(no_args_is_help=True)
 
 
-def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
+def _load_target_locations(campaign_name: str) -> list[dict[str, Any]]:
     """Load target locations from USV file."""
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
     inputs_path = dg_queue.inputs / "target_locations.usv"
@@ -49,7 +50,7 @@ def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
 
 
 
-def _load_tiles(campaign_name: str) -> List[Dict[str, Any]]:
+def _load_tiles(campaign_name: str) -> list[dict[str, Any]]:
     """Load tiles from USV file."""
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
     tiles_path = dg_queue.path / "tiles" / "tiles.usv"
@@ -75,8 +76,8 @@ def _load_tiles(campaign_name: str) -> List[Dict[str, Any]]:
 
 
 def _tiles_for_location(
-    location: Dict[str, Any], tiles: List[Dict[str, Any]], radius_degrees: float = 0.2
-) -> List[Dict[str, Any]]:
+    location: dict[str, Any], tiles: list[dict[str, Any]], radius_degrees: float = 0.2
+) -> list[dict[str, Any]]:
     """Filter tiles near a location (within radius_degrees)."""
     loc_lat, loc_lon = location["lat"], location["lon"]
     nearby = []
@@ -90,7 +91,7 @@ def _tiles_for_location(
     return sorted(nearby, key=lambda t: (t["lat"], t["lon"]))
 
 
-def _load_companies_for_tile(campaign_name: str, tile_id: str) -> List[Dict[str, Any]]:
+def _load_companies_for_tile(campaign_name: str, tile_id: str) -> list[dict[str, Any]]:
     """Load companies found in a tile from the Google Maps prospects index."""
     index_path = (
         paths.campaign(campaign_name).index("google_maps_prospects").path / "active"

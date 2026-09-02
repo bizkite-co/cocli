@@ -1,6 +1,7 @@
+from __future__ import annotations
 import typer
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, Any
 import asyncio
 import logging
 
@@ -62,7 +63,7 @@ def run_enrichment(
         logger.info(f"Available scripts: {', '.join(available_scripts)}")
         raise typer.Exit(code=1)
 
-    companies_to_enrich: List[str] = []
+    companies_to_enrich: list[str] = []
     if company_name:
         companies_to_enrich.append(company_name)
     elif all_companies:
@@ -140,7 +141,7 @@ def scrape_contacts(
     
     scraper = GenericContactScraper()
     
-    async def run_scraper() -> List[Any]:
+    async def run_scraper() -> list[Any]:
         if company.domain is None:
             return [] # Or handle this case as appropriate, e.g., log a warning and skip
         contact_pages = await scraper.find_contact_pages(company.domain)

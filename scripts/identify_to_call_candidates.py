@@ -1,6 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
-from typing import List
 from cocli.models.companies.company import Company
 from cocli.core.config import set_campaign
 
@@ -14,7 +13,7 @@ def identify_candidates() -> None:
     prime_categories = ["insurance broker", "wealth manager", "financial planner"]
     must_have_keyword = "retirement"
 
-    candidates: List[Company] = []
+    candidates: list[Company] = []
 
     print("Scanning companies for prime candidates...")
 

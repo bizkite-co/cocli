@@ -10,7 +10,6 @@ Pattern: frontier.usv (MissionTask, many tasks per tile)
 """
 
 import logging
-from typing import Dict, List
 from collections import defaultdict
 
 from ..models.campaigns.mission import MissionTask
@@ -21,7 +20,7 @@ from ..core.paths import paths
 logger = logging.getLogger(__name__)
 
 
-def stage_frontier_to_tiles(campaign_name: str, force: bool = False) -> Dict[str, int]:
+def stage_frontier_to_tiles(campaign_name: str, force: bool = False) -> dict[str, int]:
     """
     Stage frontier.usv → tile-queue work units.
 
@@ -43,7 +42,7 @@ def stage_frontier_to_tiles(campaign_name: str, force: bool = False) -> Dict[str
     logger.info(f"Reading frontier: {frontier_file}")
 
     # 3. Group tasks by tile_id
-    tiles: Dict[str, List[MissionTask]] = defaultdict(list)
+    tiles: dict[str, list[MissionTask]] = defaultdict(list)
     total_tasks = 0
 
     with open(frontier_file, "r", encoding="utf-8") as f:

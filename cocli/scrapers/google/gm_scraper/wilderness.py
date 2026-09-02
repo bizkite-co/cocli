@@ -1,5 +1,6 @@
+from __future__ import annotations
 import logging
-from typing import Dict, Optional
+from typing import Optional
 from ....core.scrape_index import ScrapeIndex
 
 logger = logging.getLogger(__name__)
@@ -10,7 +11,7 @@ class WildernessManager:
         self.overlap_threshold = overlap_threshold
         self.ttl_days = ttl_days
 
-    def should_scrape(self, bounds: Dict[str, float], query: str) -> bool:
+    def should_scrape(self, bounds: dict[str, float], query: str) -> bool:
         """
         Determines if an area should be scraped for a specific query.
         Returns False if:
@@ -29,7 +30,7 @@ class WildernessManager:
             
         return True
 
-    def mark_scraped(self, bounds: Dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float, tile_id: Optional[str] = None, processed_by: Optional[str] = None) -> None:
+    def mark_scraped(self, bounds: dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float, tile_id: Optional[str] = None, processed_by: Optional[str] = None) -> None:
         """Updates the index with the results."""
         # Always mark as scraped for the specific query, even if 0 items found.
         # We no longer mark "Wilderness" (global empty).

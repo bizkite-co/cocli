@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typer
 import json
 from rich.console import Console

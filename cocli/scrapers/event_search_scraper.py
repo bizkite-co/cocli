@@ -2,7 +2,7 @@ import logging
 import asyncio
 import random
 from datetime import datetime
-from typing import List, Literal
+from typing import Literal
 from playwright.async_api import async_playwright, Page
 from bs4 import BeautifulSoup
 
@@ -24,7 +24,7 @@ class EventSearchScraper:
         query: str, 
         engine: Literal["google", "bing"] = "google",
         campaign_name: str = "fullertonian"
-    ) -> List[Event]:
+    ) -> list[Event]:
         """
         Performs a web search using the specified engine.
         """
@@ -156,7 +156,7 @@ class EventSearchScraper:
             except Exception:
                 logger.error("Manual login timeout.")
 
-    async def _heuristic_extract(self, html: str, query: str, engine: str) -> List[Event]:
+    async def _heuristic_extract(self, html: str, query: str, engine: str) -> list[Event]:
         soup = BeautifulSoup(html, "html.parser")
         events = []
         

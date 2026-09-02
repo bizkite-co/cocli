@@ -1,5 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
-from typing import Optional, Union, Any, List
+from __future__ import annotations
+from typing import Optional, Union, Any
 from pydantic import Field, field_validator
 from datetime import datetime, UTC
 from ...email_address import EmailAddress
@@ -17,7 +18,7 @@ class EmailEntry(BaseUsvModel):
     first_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
     verification_status: str = "unknown"
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
     @field_validator("email", mode="before")
     @classmethod

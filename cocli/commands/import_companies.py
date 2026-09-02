@@ -1,8 +1,9 @@
+from __future__ import annotations
 import csv
 from pathlib import Path
 import typer
 import yaml
-from typing import List, Optional, Dict, Any
+from typing import Optional, Any
 import logging
 
 from cocli.core.text_utils import slugify
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 def core_import_logic(
-    prospects: List[Dict[str, Any]],
-    tags: List[str],
+    prospects: list[dict[str, Any]],
+    tags: list[str],
     companies_dir: Path,
     match_threshold: int = 80,
 ) -> None:
@@ -148,7 +149,7 @@ def core_import_logic(
 @app.command(name="google-maps-cache-to-company-files")
 def google_maps_cache_to_company_files(
     prospects_csv_path: Optional[Path] = typer.Argument(None, help="Path to the prospects CSV file. If not provided, infers from current campaign context.", exists=False, file_okay=True, dir_okay=False, readable=True),
-    tags: Optional[List[str]] = typer.Option(None, "--tag", help="Tags to add to the companies. If not provided, infers from current campaign context."),
+    tags: Optional[list[str]] = typer.Option(None, "--tag", help="Tags to add to the companies. If not provided, infers from current campaign context."),
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specify a campaign name to infer the CSV path and tags from. Overrides current campaign context if set."),
     companies_dir_cli: Optional[Path] = typer.Option(
         None, '--companies-dir', # Use a different name for the CLI option
@@ -166,7 +167,7 @@ def google_maps_cache_to_company_files(
     if effective_campaign_name is None:
         effective_campaign_name = get_campaign()
 
-    prospects_data: List[Dict[str, Any]] = []
+    prospects_data: list[dict[str, Any]] = []
 
     if prospects_csv_path is None:
         if effective_campaign_name is None:
@@ -188,7 +189,7 @@ def google_maps_cache_to_company_files(
             reader = csv.DictReader(f)
             prospects_data = list(reader)
 
-    final_tags: List[str]
+    final_tags: list[str]
     if tags:
         final_tags = tags
     elif effective_campaign_name:

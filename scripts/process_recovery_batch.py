@@ -1,10 +1,11 @@
+from __future__ import annotations
 import asyncio
 import argparse
 import sys
 import os
 import random
 import time
-from typing import List, Optional, Any
+from typing import Optional, Any
 from playwright.async_api import async_playwright
 
 # Add project root to path
@@ -68,7 +69,7 @@ async def fetch_metadata_via_playwright(page: Any, place_id: str) -> Optional[Go
         
     return None
 
-async def process_batch(place_ids: List[str], campaign_name: str, bucket: str, recovery_dir: str, dry_run: bool = False) -> None:
+async def process_batch(place_ids: list[str], campaign_name: str, bucket: str, recovery_dir: str, dry_run: bool = False) -> None:
     batch_start = time.time()
     print(f"Processing batch of {len(place_ids)} Place IDs with rate-limiting...")
     

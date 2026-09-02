@@ -10,7 +10,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Type
+from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -65,7 +65,7 @@ class CompactResult(BaseModel):
     campaign_name: str
     index_name: str
     success: bool
-    recovered_runs: List[str] = Field(default_factory=list)
+    recovered_runs: list[str] = Field(default_factory=list)
     isolated_files: int = 0
     message: str = ""
     log_file: Optional[Path] = None
@@ -109,7 +109,7 @@ class ProspectTraceResult(BaseModel):
 
     campaign_name: str
     index_name: str
-    rows: List[ProspectTraceRow] = Field(default_factory=list)
+    rows: list[ProspectTraceRow] = Field(default_factory=list)
 
 
 class RequeueRow(BaseModel):
@@ -125,7 +125,7 @@ class RequeueResult(BaseModel):
 
     campaign_name: str
     index_name: str
-    rows: List[RequeueRow] = Field(default_factory=list)
+    rows: list[RequeueRow] = Field(default_factory=list)
 
 
 class PurgeInvalidPlaceIdsResult(BaseModel):
@@ -134,7 +134,7 @@ class PurgeInvalidPlaceIdsResult(BaseModel):
     campaign_name: str
     index_name: str
     dry_run: bool
-    removed_place_ids: List[str] = Field(default_factory=list)
+    removed_place_ids: list[str] = Field(default_factory=list)
     checkpoint_before: int = 0
     checkpoint_after: int = 0
 
@@ -147,8 +147,8 @@ class CleanQuoteCorruptionResult(BaseModel):
     dry_run: bool
     checkpoint_total: int = 0
     rows_cleaned: int = 0
-    fields_affected: Dict[str, int] = Field(default_factory=dict)
-    sample_place_ids: List[str] = Field(default_factory=list)
+    fields_affected: dict[str, int] = Field(default_factory=dict)
+    sample_place_ids: list[str] = Field(default_factory=list)
 
 
 class ArchiveWalNodeResult(BaseModel):
@@ -168,7 +168,7 @@ class ArchiveWalResult(BaseModel):
     index_name: str
     required_field_count: int
     dry_run: bool
-    nodes: List[ArchiveWalNodeResult] = Field(default_factory=list)
+    nodes: list[ArchiveWalNodeResult] = Field(default_factory=list)
 
     @property
     def total_archived(self) -> int:
@@ -265,7 +265,7 @@ class IndexService:
 
     def list_interrupted_runs(
         self, index_name: str = "google_maps_prospects"
-    ) -> List[str]:
+    ) -> list[str]:
         """List run_ids under processing/ on S3 (interrupted compact runs)."""
         from cocli.core.compact import CompactManager
 
@@ -278,7 +278,7 @@ class IndexService:
             Bucket=manager._bucket, Prefix=proc_prefix, Delimiter="/"
         )
 
-        interrupted_runs: List[str] = []
+        interrupted_runs: list[str] = []
         for page in pages:
             if "CommonPrefixes" in page:
                 for cp in page["CommonPrefixes"]:
@@ -508,7 +508,7 @@ class IndexService:
                         ids.add(line[: -len(".usv")])
         return ids
 
-    def discover_all_place_ids(self, index_name: str = "google_maps_prospects") -> List[str]:
+    def discover_all_place_ids(self, index_name: str = "google_maps_prospects") -> list[str]:
         """Every place_id this campaign has ever touched - the seed set for
         a whole-campaign traceability audit (as opposed to a caller-supplied
         list for targeted debugging).
@@ -540,7 +540,7 @@ class IndexService:
         return sorted(gm_list_ids | checkpoint_ids | wal_ids)
 
     def trace_prospects(
-        self, place_ids: List[str], index_name: str = "google_maps_prospects"
+        self, place_ids: list[str], index_name: str = "google_maps_prospects"
     ) -> ProspectTraceResult:
         """Trace each place_id across gm-list -> gm-details -> Pi WAL ->
         checkpoint -> enrichment, reporting where (if anywhere) its trail
@@ -579,7 +579,7 @@ class IndexService:
 
         wal_ids = self._fetch_pi_wal_ids(index_name)
 
-        checks: List[StationCheck] = [
+        checks: list[StationCheck] = [
             GmListResultsCheck(gm_list_results_dir),
             QueueBucketCheck(
                 "gm-details",
@@ -598,7 +598,7 @@ class IndexService:
         )
         domain_index = ProspectDomainIndex(checkpoint_path, wal_root)
 
-        rows: List[ProspectTraceRow] = []
+        rows: list[ProspectTraceRow] = []
         for trace_row in trace_identities(checks, place_ids):
             r = trace_row.results
             gm_list_result = r["gm-list"]
@@ -639,7 +639,7 @@ class IndexService:
     # ------------------------------------------------------------------
 
     def requeue_stuck_details(
-        self, place_ids: List[str], index_name: str = "google_maps_prospects"
+        self, place_ids: list[str], index_name: str = "google_maps_prospects"
     ) -> RequeueResult:
         """Recover gm-details tasks that were acked with no real output (the
         gm-details-acks-unconditionally incident, fixed in worker_service.py's
@@ -684,8 +684,8 @@ class IndexService:
         gm_details_completed_dir = campaign_paths.queue("gm-details").completed
         gm_list_results_dir = campaign_paths.queue("gm-list").completed / "results"
 
-        tasks_by_id: Dict[str, GmItemTask] = {}
-        needs_gm_list_fallback: List[str] = []
+        tasks_by_id: dict[str, GmItemTask] = {}
+        needs_gm_list_fallback: list[str] = []
         for place_id in place_ids:
             marker_path = gm_details_completed_dir / f"{place_id}.json"
             if not marker_path.exists():
@@ -745,7 +745,7 @@ class IndexService:
             nodes = []
         candidate_nodes = [n for n in nodes if n.enabled] or nodes
 
-        out_rows: List[RequeueRow] = []
+        out_rows: list[RequeueRow] = []
         for place_id in place_ids:
             task = tasks_by_id.get(place_id)
             if task is None:
@@ -800,7 +800,7 @@ class IndexService:
             # Pending task is confirmed written - now safe to clear the
             # stale completed marker, checking every node since it could
             # have been produced by any of them.
-            rm_errors: List[str] = []
+            rm_errors: list[str] = []
             for node in nodes:
                 node_target = node.ip_address or node.hostname
                 remote_completed = shlex.quote(f"{remote_base}/completed/{place_id}.json")
@@ -833,7 +833,7 @@ class IndexService:
     # enqueued into the enrichment queue at all)
     # ------------------------------------------------------------------
 
-    def requeue_enrichment_gaps(self, place_ids: List[str]) -> RequeueResult:
+    def requeue_enrichment_gaps(self, place_ids: list[str]) -> RequeueResult:
         """Push a fresh EnrichmentTask for each place_id whose prospect
         record has a resolved domain but was never enqueued for enrichment -
         the "Identity Gap (enrichment-enqueue)" category from
@@ -882,8 +882,8 @@ class IndexService:
             enrichment_queue.path / "failed",
         )
 
-        out_rows: List[RequeueRow] = []
-        tasks_to_push: List[EnrichmentTask] = []
+        out_rows: list[RequeueRow] = []
+        tasks_to_push: list[EnrichmentTask] = []
         seen_domains: set[str] = set()
         for place_id in place_ids:
             domain = domain_index.get_domain(place_id)
@@ -1032,7 +1032,7 @@ class IndexService:
     # ------------------------------------------------------------------
 
     def requeue_missing_details(
-        self, place_ids: List[str], batch_size: int = 1000
+        self, place_ids: list[str], batch_size: int = 1000
     ) -> RequeueResult:
         """Push a fresh gm-details task for each place_id, built directly
         from the prospects checkpoint (name/company_slug/category/gmb_url) -
@@ -1088,7 +1088,7 @@ class IndexService:
             )
 
         model_fields = GoogleMapsProspect.model_fields
-        columns: Dict[str, str] = {}
+        columns: dict[str, str] = {}
         for name, field in model_fields.items():
             field_type = "VARCHAR"
             type_str = str(field.annotation)
@@ -1121,8 +1121,8 @@ class IndexService:
             "gm-details", gm_details_queue.completed, gm_details_queue.pending
         )
 
-        out_rows: List[RequeueRow] = []
-        tasks_to_push: List[tuple[str, str]] = []  # (place_id, task_json)
+        out_rows: list[RequeueRow] = []
+        tasks_to_push: list[tuple[str, str]] = []  # (place_id, task_json)
         for place_id in place_ids:
             row = rows_by_id.get(place_id)
             gmb_url = row[3] if row else None
@@ -1285,8 +1285,8 @@ class IndexService:
         US = "\x1f"
         lines = checkpoint_path.read_text(encoding="utf-8").splitlines()
 
-        kept_lines: List[str] = []
-        removed_ids: List[str] = []
+        kept_lines: list[str] = []
+        removed_ids: list[str] = []
         for line in lines:
             if not line:
                 continue
@@ -1376,10 +1376,10 @@ class IndexService:
             return re.sub(r"\s+", " ", v).strip()
 
         lines = checkpoint_path.read_text(encoding="utf-8").splitlines()
-        out_lines: List[str] = []
+        out_lines: list[str] = []
         rows_cleaned = 0
-        fields_affected: Dict[str, int] = {}
-        sample_place_ids: List[str] = []
+        fields_affected: dict[str, int] = {}
+        sample_place_ids: list[str] = []
 
         for line in lines:
             if not line:
@@ -1526,7 +1526,7 @@ if idx_lines and not dry_run:
 print(f"COCLI_ARCHIVE_RESULT archived={{archived}} kept={{kept}}")
 """
 
-        node_results: List[ArchiveWalNodeResult] = []
+        node_results: list[ArchiveWalNodeResult] = []
         for node in candidate_nodes:
             target = node.ip_address or node.hostname
             try:
@@ -1608,7 +1608,7 @@ print(f"COCLI_ARCHIVE_RESULT archived={{archived}} kept={{kept}}")
     # ------------------------------------------------------------------
 
     @staticmethod
-    def index_model_map() -> Dict[str, Type[BaseUsvModel]]:
+    def index_model_map() -> dict[str, type[BaseUsvModel]]:
         """Map index names to their Frictionless/Pydantic USV models."""
         from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
         from cocli.models.campaigns.indexes.email import EmailEntry

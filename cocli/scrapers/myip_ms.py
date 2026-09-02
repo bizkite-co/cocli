@@ -1,7 +1,8 @@
+from __future__ import annotations
 import csv
 import re
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional
 from playwright.sync_api import sync_playwright, Page, Playwright
 from bs4 import BeautifulSoup
 import uuid
@@ -92,7 +93,7 @@ def _click_full_list_link(page: Page, debug: bool) -> None:
 def _extract_data_from_page(
     page: Page,
     ip_address: str,
-    processed_urls: Set[str],
+    processed_urls: set[str],
     writer: csv.DictWriter[str],
     debug: bool,
 ) -> int:

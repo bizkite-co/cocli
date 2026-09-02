@@ -1,6 +1,7 @@
+from __future__ import annotations
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from ..models.tasks import MissionTask, TaskStatus
 
 __all__ = ["TaskIndexManager", "TaskStatus"]
@@ -16,7 +17,7 @@ class TaskIndexManager:
     def __init__(self, issues_root: Path = Path("docs/issues")):
         self.issues_root = issues_root
         self.index_path = issues_root / "mission.usv"
-        self.tasks: List[MissionTask] = []
+        self.tasks: list[MissionTask] = []
         self.load()
 
     def resolve_file(self, slug: str) -> Optional[Path]:

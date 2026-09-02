@@ -1,6 +1,7 @@
+from __future__ import annotations
 import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Optional, Any
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -13,7 +14,7 @@ from ..models.companies.website import Website
 from ..models.people.person import Person
 from ..models.companies.note import Note
 
-def _render_company_details(company: Company, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
+def _render_company_details(company: Company, tags: list[str], content: str, website_data: Optional[Website]) -> Panel:
     """Renders company details, including tags, services, and markdown content."""
     output = ""
 
@@ -43,7 +44,7 @@ def _render_company_details(company: Company, tags: List[str], content: str, web
 
 
 
-def display_company_view(console: Console, company_data: Dict[str, Any]) -> None:
+def display_company_view(console: Console, company_data: dict[str, Any]) -> None:
     console.clear()
 
     company = Company.model_validate(company_data["company"])
@@ -70,7 +71,7 @@ def display_company_view(console: Console, company_data: Dict[str, Any]) -> None
     console.print(meetings_panel)
     console.print(notes_panel)
 
-def _render_contacts_from_data(contacts_data: List[Dict[str, Any]]) -> Panel:
+def _render_contacts_from_data(contacts_data: list[dict[str, Any]]) -> Panel:
     """Renders a list of contacts from pre-fetched data."""
     if not contacts_data:
         return Panel("No contacts found.", title="Contacts", border_style="blue")
@@ -92,7 +93,7 @@ def _render_contacts_from_data(contacts_data: List[Dict[str, Any]]) -> Panel:
 
     return Panel(Columns(contact_panels, expand=True, equal=True), title="Contacts", border_style="blue")
 
-def _render_meetings_from_data(meetings_data: List[Dict[str, Any]]) -> Tuple[Panel, Dict[int, Path]]:
+def _render_meetings_from_data(meetings_data: list[dict[str, Any]]) -> tuple[Panel, dict[int, Path]]:
     """Renders upcoming and recent meetings from pre-fetched data."""
     next_meetings = []
     recent_meetings = []
@@ -141,7 +142,7 @@ def _render_meetings_from_data(meetings_data: List[Dict[str, Any]]) -> Tuple[Pan
     meeting_map = {num: file for num, file in all_displayable_meetings}
     return Panel(Markdown(output), title="Meetings", border_style="magenta"), meeting_map
 
-def _render_notes_from_data(notes_data: List[Dict[str, Any]]) -> Panel:
+def _render_notes_from_data(notes_data: list[dict[str, Any]]) -> Panel:
     """Renders the most recent three notes from pre-fetched data."""
     notes = [Note.model_validate(n) for n in notes_data]
     notes.sort(key=lambda n: n.timestamp, reverse=True)

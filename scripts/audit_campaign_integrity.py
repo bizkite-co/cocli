@@ -1,8 +1,9 @@
+from __future__ import annotations
 import csv
 import logging
 import argparse
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from cocli.core.config import load_campaign_config
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
@@ -33,8 +34,8 @@ def audit_campaign(campaign_name: str, fix: bool = False, output_csv: Optional[s
     manager = ProspectsIndexManager(campaign_name)
     
     report_data = []
-    prospects_to_remove: List[Path] = []
-    companies_to_untag: List[Company] = []
+    prospects_to_remove: list[Path] = []
+    companies_to_untag: list[Company] = []
 
     # Patterns that indicate cross-contamination from OTHER campaigns
     # If we are in turboship (flooring), wealth management terms are contamination.

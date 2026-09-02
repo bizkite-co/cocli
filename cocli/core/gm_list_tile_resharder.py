@@ -2,7 +2,6 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Set
 from cocli.core.config import get_campaigns_dir
 from cocli.core.sharding import get_grid_tile_id, get_geo_shard
 from cocli.core.constants import UNIT_SEP
@@ -58,7 +57,7 @@ def reshard_google_maps_list_item_tiles(campaign_name: str) -> int:
 
 
 def _merge_usv(src: Path, dest: Path) -> None:
-    existing_pids: Set[str] = set()
+    existing_pids: set[str] = set()
     if dest.exists():
         for line in dest.read_text().splitlines():
             if line.strip():

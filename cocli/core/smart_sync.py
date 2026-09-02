@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import logging
 import sys
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any, Optional
 
 from .logging_config import setup_file_logging
 from .config import get_cocli_base_dir
@@ -18,7 +19,7 @@ STATE_FILE = DATA_DIR / ".smart_sync_state.json"
 
 logger = logging.getLogger(__name__)
 
-def load_state() -> Dict[str, Any]:
+def load_state() -> dict[str, Any]:
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text()) # type: ignore
@@ -27,7 +28,7 @@ def load_state() -> Dict[str, Any]:
             return {}
     return {}
 
-def save_state(state: Dict[str, Any]) -> None:
+def save_state(state: dict[str, Any]) -> None:
     try:
         STATE_FILE.write_text(json.dumps(state))
     except Exception as e:
@@ -58,7 +59,7 @@ def run_smart_sync(
     prefix: str,
     local_base: Path,
     campaign_name: str,
-    aws_config: Dict[str, Any],
+    aws_config: dict[str, Any],
     workers: int = 20,
     full: bool = False,
     force: bool = False,
@@ -96,13 +97,13 @@ def run_smart_sync(
         console.print(f"[bold blue]Full Sync Scan for {target_name}[/bold blue] (Checking all files...)")
         logger.info("Full sync scan.")
 
-    to_download: List[Tuple[str, Path]] = []
+    to_download: list[tuple[str, Path]] = []
     sync_start_time = datetime.now(timezone.utc).timestamp() - 60 
 
     # 1. List & Filter
     paginator = s3.get_paginator('list_objects_v2')
     # If we are syncing config, don't recurse into subdirectories
-    kwargs: Dict[str, Any] = {'Bucket': bucket_name, 'Prefix': prefix}
+    kwargs: dict[str, Any] = {'Bucket': bucket_name, 'Prefix': prefix}
     if target_name == "campaign-config":
         kwargs['Delimiter'] = '/'
         kwargs['PaginationConfig'] = {'MaxItems': 1000}

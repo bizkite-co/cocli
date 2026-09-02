@@ -15,7 +15,6 @@ run `cocli data compact-emails` afterward to fold them into shards.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import List
 
 from pydantic import BaseModel
 
@@ -29,7 +28,7 @@ class RetrofitResult(BaseModel):
     dry_run: bool
     scanned: int = 0
     matched: int = 0
-    sample_names: List[str] = []
+    sample_names: list[str] = []
 
 
 def retrofit_personnel_names(

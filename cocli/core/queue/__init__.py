@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List
 from ...models.campaigns.queues.base import QueueMessage
 
 class QueueManager(ABC):
@@ -13,7 +12,7 @@ class QueueManager(ABC):
         pass
 
     @abstractmethod
-    def poll(self, batch_size: int = 1) -> List[QueueMessage]:
+    def poll(self, batch_size: int = 1) -> list[QueueMessage]:
         """
         Retrieve a batch of messages from the queue.
         These messages should be considered 'locked' or 'invisible' to other consumers.

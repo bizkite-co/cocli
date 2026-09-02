@@ -18,8 +18,6 @@ discovery-gen is still PR7.
 
 from __future__ import annotations
 
-from typing import Dict
-
 from stations.segments import phases, shard_by_char_index, shard_by_hash
 from stations.station import StationDecl
 
@@ -92,7 +90,7 @@ QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
 DFQ_DOMAIN_SHARD_STATION: StationDecl[object] = ENRICHMENT_QUEUE_STATION
 
 # queue_name → StationDecl (FilesystemQueue / QueueLayout resolution)
-QUEUE_STATIONS: Dict[str, StationDecl[object]] = {
+QUEUE_STATIONS: dict[str, StationDecl[object]] = {
     "gm-details": GM_DETAILS_QUEUE_STATION,
     "gm-list": GM_LIST_QUEUE_STATION,
     "enrichment": ENRICHMENT_QUEUE_STATION,

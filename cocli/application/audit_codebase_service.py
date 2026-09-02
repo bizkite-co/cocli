@@ -3,7 +3,7 @@
 Provides audit operations focusing on static codebase and filesystem.
 """
 
-from typing import Any, List
+from typing import Any
 from .audit_service import AuditService
 from ..models.cli_help import CliCommandMatch
 
@@ -19,10 +19,10 @@ class AuditCodebaseService:
 
     def search_cli_tree(
         self, click_command: Any, query: str, limit: int = 25
-    ) -> List[CliCommandMatch]:
+    ) -> list[CliCommandMatch]:
         return self._service.search_cli_tree(click_command, query, limit=limit)
 
-    def get_tui_actions(self, classes: List[type]) -> str:
+    def get_tui_actions(self, classes: list[type]) -> str:
         return self._service.get_tui_actions(classes)
 
     def get_tui_operations(self) -> str:

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import ClassVar, Optional
 from ..base import BaseUsvModel
 from pydantic import Field

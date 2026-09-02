@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, cast, Dict, Any
+from typing import TYPE_CHECKING, cast, Any
 from textual.app import ComposeResult
 from textual.widgets import Label, ListView, ListItem
 from textual.containers import Container
@@ -49,7 +49,7 @@ class TemplateList(Container):
         counts = app.services.get_template_counts()
         self.call_after_refresh(self._apply_counts, counts)
 
-    def _apply_counts(self, counts: Dict[str, int]) -> None:
+    def _apply_counts(self, counts: dict[str, int]) -> None:
         for item_id, count in counts.items():
             try:
                 item = self.query_one(f"#{item_id}", ListItem)

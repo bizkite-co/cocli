@@ -1,7 +1,7 @@
 import datetime
 import logging
 import re
-from typing import List, Any
+from typing import Any
 import yaml
 from pytz import timezone
 from tzlocal import get_localzone
@@ -17,9 +17,9 @@ class MeetingService:
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
 
-    def get_all_meetings(self) -> List[CompanyMeeting]:
+    def get_all_meetings(self) -> list[CompanyMeeting]:
         """Gathers all meeting data from all companies."""
-        all_meetings: List[CompanyMeeting] = []
+        all_meetings: list[CompanyMeeting] = []
         companies_dir = paths.companies.ensure()
 
         local_tz: Any
@@ -110,7 +110,7 @@ class MeetingService:
                                 continue
         return all_meetings
 
-    def get_upcoming_meetings(self) -> List[CompanyMeeting]:
+    def get_upcoming_meetings(self) -> list[CompanyMeeting]:
         """Gathers and returns sorted list of upcoming meetings."""
         all_meetings = self.get_all_meetings()
         local_tz = get_localzone()
@@ -120,7 +120,7 @@ class MeetingService:
             key=lambda m: m.datetime_local,
         )
 
-    def get_recent_meetings(self, days_limit: int = 180) -> List[CompanyMeeting]:
+    def get_recent_meetings(self, days_limit: int = 180) -> list[CompanyMeeting]:
         """Gathers and returns sorted list of recent meetings within a day limit."""
         all_meetings = self.get_all_meetings()
         local_tz = get_localzone()

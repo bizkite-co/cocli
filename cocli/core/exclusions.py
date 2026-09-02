@@ -1,5 +1,6 @@
+from __future__ import annotations
 import json
-from typing import Optional, Dict, List
+from typing import Optional
 from datetime import datetime
 import logging
 
@@ -17,8 +18,8 @@ class ExclusionManager:
         )
         self.exclude_dir.mkdir(parents=True, exist_ok=True)
         # In-memory cache for fast lookup
-        self._slug_map: Dict[str, Exclusion] = {}
-        self._domain_map: Dict[str, Exclusion] = {}
+        self._slug_map: dict[str, Exclusion] = {}
+        self._domain_map: dict[str, Exclusion] = {}
         self._load_all()
 
     def _load_all(self) -> None:
@@ -85,7 +86,7 @@ class ExclusionManager:
         if file_path.exists():
             file_path.unlink()
 
-    def list_exclusions(self) -> List[Exclusion]:
+    def list_exclusions(self) -> list[Exclusion]:
         # Return unique exclusions (some might have both slug and domain)
         unique = {}
         for exc in self._slug_map.values():
@@ -95,7 +96,7 @@ class ExclusionManager:
         return list(unique.values())
 
 
-def list_all_exclusions(campaign: str) -> List[Exclusion]:
+def list_all_exclusions(campaign: str) -> list[Exclusion]:
     """All exclusions that apply to this campaign: its own campaign-scoped
     list plus the shared/global one - either excludes (Mark, 2026-09-01:
     a company can be excluded everywhere, or just for one campaign/vertical)."""

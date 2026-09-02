@@ -6,9 +6,9 @@ from pathlib import Path
 import boto3
 import sys
 
-from typing import Any, Dict
+from typing import Any
 
-def get_limited_policy(bucket_name: str) -> Dict[str, Any]:
+def get_limited_policy(bucket_name: str) -> dict[str, Any]:
     return {
         "Version": "2012-10-17",
         "Statement": [
@@ -25,7 +25,7 @@ def get_limited_policy(bucket_name: str) -> Dict[str, Any]:
         ]
     }
 
-def setup_iam_user(iam_client: Any, campaign_name: str, bucket_name: str) -> Dict[str, str]:
+def setup_iam_user(iam_client: Any, campaign_name: str, bucket_name: str) -> dict[str, str]:
     user_name = f"cocli-scraper-{campaign_name}"
     policy_name = f"CocliScraperPolicy-{campaign_name}"
     print(f"Setting up IAM User: {user_name}...")

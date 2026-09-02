@@ -1,9 +1,10 @@
+from __future__ import annotations
 from bs4 import BeautifulSoup
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 from .google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 from .google_maps_parsers.extract_website import extract_website
 
-def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
+def parse_gmb_page(html: str, debug: bool = False) -> dict[str, Any]:
     """
     Parses the HTML of a Google My Business page to extract additional information.
     """

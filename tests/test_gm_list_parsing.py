@@ -52,7 +52,7 @@ See the comment on _fetch_live_items below for the corrected story.)
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from playwright.async_api import async_playwright
@@ -74,20 +74,20 @@ SCAN_IDLE_TIMEOUT_S = 20
 SCAN_ABSOLUTE_TIMEOUT_S = 180
 
 
-def _load_locations() -> List[Dict[str, Any]]:
+def _load_locations() -> list[dict[str, Any]]:
     if not JSON_PATH.exists():
         return []
     with open(JSON_PATH, "r") as f:
         truth = json.load(f)
-    locations: List[Dict[str, Any]] = truth.get("locations", [])
+    locations: list[dict[str, Any]] = truth.get("locations", [])
     return locations
 
 
-def _location_ids(location: Dict[str, Any]) -> str:
+def _location_ids(location: dict[str, Any]) -> str:
     return str(location.get("name", "unknown"))
 
 
-async def _fetch_live_items(lat: float, lon: float, query: str) -> List[Dict[str, Any]]:
+async def _fetch_live_items(lat: float, lon: float, query: str) -> list[dict[str, Any]]:
     """Runs the real production Navigator + SidebarScraper.scrape() against
     live Google Maps (real scrolling/hydration/periodic block-detection,
     no tile_id so the tile-bounds filter and early-stop logic are inert -
@@ -133,7 +133,7 @@ async def _fetch_live_items(lat: float, lon: float, query: str) -> List[Dict[str
         )
 
         scraper = SidebarScraper(page)
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         try:
             async for item in iterate_with_idle_timeout(
                 scraper.scrape(
@@ -166,7 +166,7 @@ async def _fetch_live_items(lat: float, lon: float, query: str) -> List[Dict[str
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("location", _load_locations(), ids=_location_ids)
-async def test_ground_truth_location_still_returns_expected_results(location: Dict[str, Any]) -> None:
+async def test_ground_truth_location_still_returns_expected_results(location: dict[str, Any]) -> None:
     name = location["name"]
     lat = float(location["lat"])
     lon = float(location["lon"])
@@ -199,7 +199,7 @@ async def test_ground_truth_location_still_returns_expected_results(location: Di
         min_reviews = expectation.get("min_reviews", 0)
         min_rating = expectation.get("min_rating", 0.0)
 
-        def _meets_bar(item: Dict[str, Any]) -> bool:
+        def _meets_bar(item: dict[str, Any]) -> bool:
             reviews = item.get("reviews_count") or 0
             rating = item.get("average_rating") or 0.0
             return bool(reviews >= min_reviews and rating >= min_rating)

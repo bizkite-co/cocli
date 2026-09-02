@@ -1,5 +1,5 @@
 import argparse
-from typing import Set, Dict, Any, List
+from typing import Any
 
 from cocli.utils.usv_utils import USVReader
 from cocli.models.campaigns.queues.to_call import ToCallTask
@@ -38,7 +38,7 @@ def populate_to_call(
         return
 
     # 1. Load enriched domains (Companies with emails)
-    enriched_domains: Set[str] = set()
+    enriched_domains: set[str] = set()
     if not skip_email_check:
         print("Loading enriched email domains...")
         if email_shards_dir.exists():
@@ -61,8 +61,8 @@ def populate_to_call(
         files_to_process.extend(list(wal_dir.rglob("*.usv")))
 
     # 3. Find candidates
-    candidates: List[Dict[str, Any]] = []
-    seen_slugs: Set[str] = set()
+    candidates: list[dict[str, Any]] = []
+    seen_slugs: set[str] = set()
 
     print("Gathering candidates...")
     for usv_file in files_to_process:

@@ -1,7 +1,7 @@
 import re
 import os
 from pathlib import Path
-from typing import List, Pattern
+from typing import Pattern
 
 class SchemaSource:
     """
@@ -10,10 +10,10 @@ class SchemaSource:
     """
     def __init__(self, schema_root: Path):
         self.schema_root = schema_root
-        self.templates: List[str] = self._load_templates()
-        self.patterns: List[Pattern[str]] = self._compile_patterns()
+        self.templates: list[str] = self._load_templates()
+        self.patterns: list[Pattern[str]] = self._compile_patterns()
 
-    def _load_templates(self) -> List[str]:
+    def _load_templates(self) -> list[str]:
         templates = []
         if not self.schema_root.exists():
             return []
@@ -31,7 +31,7 @@ class SchemaSource:
                     templates.append(str(rel_root / f))
         return templates
 
-    def _compile_patterns(self) -> List[Pattern[str]]:
+    def _compile_patterns(self) -> list[Pattern[str]]:
         patterns = []
         # Replace {variable} with a regex that matches a single path component
         var_regex = re.compile(r'\{[^}]+\}')

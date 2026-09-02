@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.live import Live
 from collections import deque
-from typing import Deque, Dict, Any
+from typing import Any
 from cocli.core.paths import paths
 
 console = Console()
@@ -70,7 +70,7 @@ def audit_gossip(timeout_seconds: float = 60.0) -> None:
         "Total": 0
     }
     
-    recent_samples: Deque[Dict[str, Any]] = deque(maxlen=20)
+    recent_samples: deque[dict[str, Any]] = deque(maxlen=20)
     start_time = time.time()
     
     def generate_report_table() -> Table:

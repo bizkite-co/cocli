@@ -1,8 +1,9 @@
+from __future__ import annotations
 import math
 import os
 import json
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import Optional, Any
 from rich.console import Console
 
 # Optional dependency for high-quality KML generation
@@ -19,7 +20,7 @@ console = Console()
 # 0.1 degrees is the standardized grid step for discovery.
 DEFAULT_GRID_STEP_DEG = 0.1
 
-def generate_global_grid(center_lat: float, center_lon: float, radius_miles: float, step_deg: float = DEFAULT_GRID_STEP_DEG) -> List[Dict[str, Any]]:
+def generate_global_grid(center_lat: float, center_lon: float, radius_miles: float, step_deg: float = DEFAULT_GRID_STEP_DEG) -> list[dict[str, Any]]:
     """
     Generates a grid of tiles covering a circular area defined by a center and radius.
     
@@ -83,7 +84,7 @@ def generate_global_grid(center_lat: float, center_lon: float, radius_miles: flo
         
     return grid_tiles
 
-def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[list[dict[str, Any]]] = None) -> list[dict[str, Any]]:
     """Helper to load grid tiles for a campaign from its config or provided locations."""
     from cocli.core.config import load_campaign_config, get_campaign_dir
     config = load_campaign_config(campaign_name)
@@ -167,7 +168,7 @@ def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[List[
             
     return all_tiles
 
-def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None) -> None:
+def export_to_kml(tiles: list[dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None) -> None:
     """
     Exports grid tiles to a KML file.
     

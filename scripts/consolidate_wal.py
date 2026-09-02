@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ def consolidate() -> None:
 
     # Dictionary to track the "Winner" for each place_id
     # winners[place_id] = { 'path': Path, 'ext': '.usv', 'mtime': float }
-    winners: Dict[str, Dict[str, Any]] = {}
+    winners: dict[str, dict[str, Any]] = {}
     all_files = []
 
     # 1. Collect all files from all subdirectories

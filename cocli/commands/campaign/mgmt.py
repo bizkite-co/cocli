@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -430,7 +430,7 @@ def restore_names(
             console=console,
         ) as progress:
             task = progress.add_task("Restoring names...", total=None, slug="")
-            final_stats: Dict[str, Any] = {}
+            final_stats: dict[str, Any] = {}
             for update in service.restore_names_from_index(dry_run=dry_run):
                 if "total" in update:
                     progress.update(
@@ -487,7 +487,7 @@ def sanitize_discovery(
         def log_cb(msg: str) -> None:
             console.print(f"  {msg.strip()}")
 
-        async def run_op() -> Dict[str, Any]:
+        async def run_op() -> dict[str, Any]:
             return await service.execute(
                 "op_sanitize_discovery", log_callback=log_cb
             )
@@ -567,7 +567,7 @@ def compile_to_call(
 
         log_cb = operation_log_callback(console)
 
-        async def run_op() -> Dict[str, Any]:
+        async def run_op() -> dict[str, Any]:
             return await service.execute(
                 "op_compile_to_call",
                 log_callback=log_cb,

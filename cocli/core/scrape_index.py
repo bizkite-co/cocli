@@ -1,9 +1,10 @@
+from __future__ import annotations
 import json
 import math
 import logging
 import csv
 from datetime import datetime, timedelta, UTC
-from typing import List, Optional, NamedTuple, Tuple, Iterator, Any
+from typing import Optional, NamedTuple, Iterator, Any
 from pathlib import Path
 
 from .config import get_scraped_areas_index_dir
@@ -272,7 +273,7 @@ class ScrapeIndex:
             logger.error(f"Failed to save witness index for {tile_id}: {e}")
             return None
 
-    def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
+    def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[tuple[ScrapedArea, float]]:
         """
         Checks if a given bounding box overlaps with existing scraped areas.
         """
@@ -335,21 +336,21 @@ class ScrapeIndex:
         """Adds a new wilderness area to the index."""
         self.add_area("wilderness", bounds, lat_miles, lon_miles, items_found)
 
-    def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
+    def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[tuple[ScrapedArea, float]]:
         """Checks if a given bounding box overlaps with wilderness areas."""
         return self.is_area_scraped("wilderness", bounds, overlap_threshold_percent=overlap_threshold_percent)
 
-    def get_wilderness_areas(self) -> List[ScrapedArea]:
+    def get_wilderness_areas(self) -> list[ScrapedArea]:
         """Loads all wilderness areas."""
         return self.get_all_areas_for_phrases(["wilderness"])
 
-    def get_all_areas_for_phrases(self, phrases: List[str]) -> List[ScrapedArea]:
+    def get_all_areas_for_phrases(self, phrases: list[str]) -> list[ScrapedArea]:
         """
         Recursively loads ALL areas for the given phrases.
         Usage: KML generation (infrequent).
         Includes both legacy JSON and Phase 10 Witness (CSV) indexes.
         """
-        all_areas: List[ScrapedArea] = []
+        all_areas: list[ScrapedArea] = []
         seen_tiles: set[str] = set() # (phrase, tile_id)
 
         for phrase in phrases:
@@ -392,7 +393,7 @@ class ScrapeIndex:
                              all_areas.append(area)
         return all_areas
 
-    def get_all_scraped_areas(self) -> List[ScrapedArea]:
+    def get_all_scraped_areas(self) -> list[ScrapedArea]:
         """Loads ALL scraped areas (all phrases). Expensive."""
         # Collect all unique phrases from both indexes
         phrases = set()

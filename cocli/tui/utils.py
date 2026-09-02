@@ -1,5 +1,5 @@
 import sys
-from typing import IO, Any, List
+from typing import IO, Any
 
 def dump_tree(widget: Any, indent: int = 0, file: IO[str] = sys.stdout, max_children: int = 3) -> None:
     """
@@ -9,7 +9,7 @@ def dump_tree(widget: Any, indent: int = 0, file: IO[str] = sys.stdout, max_chil
     node_id = f' (id="{widget.id}")' if getattr(widget, "id", None) else ""
     file.write(" " * indent + f"{widget.__class__.__name__}{node_id}\n")
     
-    children: List[Any] = list(getattr(widget, "children", []))
+    children: list[Any] = list(getattr(widget, "children", []))
     if not children:
         return
 

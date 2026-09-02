@@ -1,5 +1,6 @@
+from __future__ import annotations
 
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 from playwright.sync_api import sync_playwright
 from .google_maps_parser import parse_business_listing_html
 import logging
@@ -8,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 def find_business_on_google_maps(
     company_name: str,
-    location_param: Dict[str, str],
+    location_param: dict[str, str],
     debug: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[dict[str, Any]]:
     """
     Finds a single business on Google Maps and returns its data.
     """

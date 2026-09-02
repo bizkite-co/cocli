@@ -1,4 +1,3 @@
-from typing import Dict, List, Type
 from pydantic import BaseModel
 from .gm_list import ScrapeTask
 from .gm_details import GmItemTask
@@ -15,16 +14,16 @@ class QueueMetadata(BaseModel):
     name: QueueName
     label: str
     description: str
-    model_class: Type[BaseModel]
+    model_class: type[BaseModel]
     from_model_name: str
     to_model_name: str
-    from_models: List[str]
-    to_models: List[str]
-    from_property_map: Dict[str, PropertyInfo]
-    to_property_map: Dict[str, PropertyInfo]
+    from_models: list[str]
+    to_models: list[str]
+    from_property_map: dict[str, PropertyInfo]
+    to_property_map: dict[str, PropertyInfo]
     sharding_strategy: str
 
-QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
+QUEUES_METADATA: dict[QueueName, QueueMetadata] = {
     "discovery-gen": QueueMetadata(
         name="discovery-gen",
         label="discovery-gen/",

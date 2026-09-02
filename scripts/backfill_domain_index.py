@@ -1,7 +1,8 @@
+from __future__ import annotations
 import typer
 import yaml
 from pathlib import Path
-from typing import Optional, Iterable, List
+from typing import Optional, Iterable
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign
@@ -78,7 +79,7 @@ def main(
             
         # 1. Check if company belongs to campaign (Fast tag check)
         tags_path = company_path / "tags.lst"
-        tags: List[str] = []
+        tags: list[str] = []
         if not tags_path.exists():
             continue
             

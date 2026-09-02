@@ -1,6 +1,7 @@
+from __future__ import annotations
 import requests
 import time
-from typing import Optional, Dict, Any, cast
+from typing import Optional, Any, cast
 import logging
 import json
 
@@ -9,12 +10,12 @@ from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
-def get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
+def get_coordinates_from_zip(zip_code: str) -> Optional[dict[str, float]]:
     """
     Retrieves latitude and longitude for a given zip code using Nominatim (OpenStreetMap).
     """
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "postalcode": zip_code,
         "format": "json",
         "addressdetails": 1,
@@ -50,7 +51,7 @@ def get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
             return None
     return None
 
-def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float]]:
+def get_coordinates_from_city_state(city_state: str) -> Optional[dict[str, float]]:
     """
     Retrieves latitude and longitude for a given city and state using Nominatim (OpenStreetMap).
     Expected format: "City,State" (e.g., "Brea,CA").
@@ -65,13 +66,13 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
         try:
             with open(cache_file, 'r') as f:
                 logger.info(f"Loading coordinates for '{city_state}' from cache.")
-                return cast(Dict[str, float], json.load(f))
+                return cast(dict[str, float], json.load(f))
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Could not read cache file {cache_file}: {e}. Fetching from API.")
 
     # If not in cache or cache is invalid, fetch from API
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "q": city_state,
         "format": "json",
         "addressdetails": 1,
@@ -117,12 +118,12 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
             return None
     return None
 
-def get_coordinates_from_address(address: str) -> Optional[Dict[str, float]]:
+def get_coordinates_from_address(address: str) -> Optional[dict[str, float]]:
     """
     Retrieves latitude and longitude for a given address using Nominatim (OpenStreetMap).
     """
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "q": address,
         "format": "json",
         "addressdetails": 1,

@@ -1,7 +1,8 @@
+from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Any, Dict
+from typing import Optional, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 from cocli.core.paths import paths
@@ -22,9 +23,9 @@ class AuditNode(BaseModel):
     path: Path
     status: AuditStatus
     is_dir: bool
-    children: List['AuditNode'] = Field(default_factory=list)
+    children: list['AuditNode'] = Field(default_factory=list)
     message: Optional[str] = None
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -139,7 +140,7 @@ class FsAuditor:
         except Exception as e:
             logger.debug(f"Failed to audit USV rows for {usv_path}: {e}")
 
-    def get_orphans(self, node: AuditNode) -> List[Path]:
+    def get_orphans(self, node: AuditNode) -> list[Path]:
         """Recursively collects paths of all items marked as ORPHAN."""
         orphans = []
         for child in node.children:
@@ -151,7 +152,7 @@ class FsAuditor:
                 orphans.extend(self.get_orphans(child))
         return orphans
 
-    def generate_removal_report(self, orphans: List[Path], output_path: Path) -> None:
+    def generate_removal_report(self, orphans: list[Path], output_path: Path) -> None:
         """
         Generates a text file containing absolute local paths of orphans.
         This report can be fed into scripts/execute_cleanup.py for distributed removal.

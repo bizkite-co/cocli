@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any
 from cocli.application.operation_service import OperationService
 from cocli.core.config import set_campaign
 
@@ -43,7 +43,7 @@ async def main() -> None:
     )
     
     if result.get("status") == "success":
-        data: Dict[str, Any] = result.get("result", {})
+        data: dict[str, Any] = result.get("result", {})
         print("\n--- Operation Successful ---")
         print(f"Top leads found: {data.get('top_leads_found', 0)}")
         print(f"Newly tagged leads: {data.get('newly_tagged', 0)}")

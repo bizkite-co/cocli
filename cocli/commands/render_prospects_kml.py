@@ -1,7 +1,8 @@
+from __future__ import annotations
 import simplekml # type: ignore
 import typer
 import logging
-from typing import Dict, List, Optional
+from typing import Optional
 
 from ..core.config import get_campaign_dir
 from ..models.companies.company import Company
@@ -34,9 +35,9 @@ def render_prospects_kml(
     kml = simplekml.Kml()
 
     # --- Load all Companies for lookup ---
-    companies_by_place_id: Dict[str, Company] = {}
-    companies_by_slug: Dict[str, Company] = {}
-    companies_by_hash: Dict[str, Company] = {}
+    companies_by_place_id: dict[str, Company] = {}
+    companies_by_slug: dict[str, Company] = {}
+    companies_by_hash: dict[str, Company] = {}
     
     for company_obj in Company.get_all():
         if company_obj is None:
@@ -48,7 +49,7 @@ def render_prospects_kml(
             companies_by_hash[company_obj.company_hash] = company_obj
 
     # --- Load all People for lookup ---
-    people_by_company_name: Dict[str, List[Person]] = {}
+    people_by_company_name: dict[str, list[Person]] = {}
     for person in Person.get_all():
         if person.company_name:
             company_name_key = str(person.company_name)
@@ -91,7 +92,7 @@ def render_prospects_kml(
         # At this point, 'company' is guaranteed to be a Company object
 
         # Get associated People
-        associated_people: List[Person] = people_by_company_name.get(str(company.name) if company.name else "", [])
+        associated_people: list[Person] = people_by_company_name.get(str(company.name) if company.name else "", [])
 
         placemark = kml.newpoint(name=name)
         placemark.coords = [(lon, lat)]

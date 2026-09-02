@@ -1,6 +1,7 @@
+from __future__ import annotations
 import re
 from pathlib import Path
-from typing import Optional, List, Set, Dict, Any, Callable
+from typing import Optional, Any, Callable
 
 from cocli.core.tasks import TaskIndexManager, TaskStatus
 from cocli.models.tasks import MissionTask
@@ -14,7 +15,7 @@ class TaskService:
         """Syncs the task index with the filesystem."""
         return self.manager.sync()
 
-    def get_all_tasks(self) -> List[MissionTask]:
+    def get_all_tasks(self) -> list[MissionTask]:
         """Returns all non-completed tasks."""
         return self.manager.tasks
 
@@ -33,7 +34,7 @@ class TaskService:
         """Resolves the markdown file path for a task slug."""
         return self.manager.resolve_file(slug)
 
-    def get_markdown_content_with_links(self, path: Path, seen: Optional[Set[Path]] = None) -> List[Dict[str, str]]:
+    def get_markdown_content_with_links(self, path: Path, seen: Optional[set[Path]] = None) -> list[dict[str, str]]:
         """
         Recursively reads a markdown file and extracts its content plus any
         linked local markdown files. Returns list of dicts with 'name' and 'content'.
@@ -58,7 +59,7 @@ class TaskService:
 
         return results
 
-    def start_task(self, slug: Optional[str] = None) -> Dict[str, Any]:
+    def start_task(self, slug: Optional[str] = None) -> dict[str, Any]:
         """
         Moves a task to ACTIVE. If slug is None, gets the first pending/draft task.
         Returns a dict indicating success or error status.
@@ -114,7 +115,7 @@ class TaskService:
         body: Optional[str] = None,
         draft: bool = False,
         depends_on: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Creates a new task in the mission queue."""
         from cocli.utils.textual_utils import sanitize_id
         if not slug:
@@ -166,7 +167,7 @@ class TaskService:
         commit_message: Optional[str] = None,
         commit_body: Optional[str] = None,
         commit_fn: Optional[Callable[[str, Optional[str]], None]] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Moves a task to COMPLETED, and executes commit_fn.
         """

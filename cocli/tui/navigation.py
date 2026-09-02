@@ -1,4 +1,5 @@
-from typing import Optional, Type, TYPE_CHECKING
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
 from textual.widget import Widget
 from datetime import datetime
 
@@ -14,9 +15,9 @@ class NavNode:
     """
     def __init__(
         self, 
-        widget_class: Type[Widget], 
+        widget_class: type[Widget], 
         parent_action: Optional[str] = None, 
-        root_widget: Optional[Type[Widget]] = None,
+        root_widget: Optional[type[Widget]] = None,
         model_type: Optional[str] = None,
         is_branch_root: bool = False
     ):

@@ -23,7 +23,7 @@ drift) still stops the loop rather than continuing to scan discarded
 content.
 """
 
-from typing import Any, List
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -53,7 +53,7 @@ def _make_page(url: str) -> MagicMock:
     return page
 
 
-async def _collect(scanner: SidebarScraper, tile_id: str) -> List[Any]:
+async def _collect(scanner: SidebarScraper, tile_id: str) -> list[Any]:
     return [
         item
         async for item in scanner.scrape(
@@ -130,7 +130,7 @@ class _DriftingPage:
     2026-08-16: correctly in-bounds at the start, drifting only after the
     scan is already underway."""
 
-    def __init__(self, urls: List[str]) -> None:
+    def __init__(self, urls: list[str]) -> None:
         self._urls = urls
         self._index = 0
         self.mouse = MagicMock()

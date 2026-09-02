@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
+from __future__ import annotations
 import duckdb
 import logging
-from typing import List, Any, cast, Optional, Tuple
+from typing import Any, cast, Optional
 from cocli.utils.duckdb_utils import load_usv_to_duckdb
 from cocli.core.paths import paths
 from cocli.core.cache import get_cache_path, CACHE_FILE_NAME
@@ -38,7 +39,7 @@ def verify_stack() -> None:
     # 3. Schema Inspection
     print("\nStep 3: Inspecting DuckDB Columns...")
     for table in ["items_checkpoint", "items_cache"]:
-        res_cols: List[Tuple[Any, ...]] = con.execute(f"PRAGMA table_info('{table}')").fetchall()
+        res_cols: list[tuple[Any, ...]] = con.execute(f"PRAGMA table_info('{table}')").fetchall()
         cols = [cast(str, c[1]) for c in res_cols]
         print(f"Table '{table}' columns: {', '.join(cols)}")
         
@@ -65,7 +66,7 @@ def verify_stack() -> None:
         """)
         print("SUCCESS: VIEW created without Binder Errors.")
         
-        res_count: Optional[Tuple[Any, ...]] = con.execute("SELECT count(*) FROM items").fetchone()
+        res_count: Optional[tuple[Any, ...]] = con.execute("SELECT count(*) FROM items").fetchone()
         count = res_count[0] if res_count else 0
         print(f"Total results in VIEW: {count}")
         

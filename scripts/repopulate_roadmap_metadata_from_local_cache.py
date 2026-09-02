@@ -1,7 +1,8 @@
+from __future__ import annotations
 import sys
 import os
 import argparse
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 from pathlib import Path
 from io import StringIO
 
@@ -12,7 +13,7 @@ from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
 
-def load_google_maps_usv_cache(cache_path: Path) -> Dict[str, Dict[str, Any]]:
+def load_google_maps_usv_cache(cache_path: Path) -> dict[str, dict[str, Any]]:
     """Loads the local USV cache as a dictionary indexed by Place ID."""
     cache = {}
     if not cache_path.exists():
@@ -31,8 +32,8 @@ def load_google_maps_usv_cache(cache_path: Path) -> Dict[str, Dict[str, Any]]:
     return cache
 
 def repopulate_prospect_metadata_from_cache_row(
-    hollow_row: Dict[str, Any], 
-    cache: Dict[str, Dict[str, Any]]
+    hollow_row: dict[str, Any], 
+    cache: dict[str, dict[str, Any]]
 ) -> Optional[GoogleMapsProspect]:
     """
     Takes a hollow prospect row and attempts to fill missing attributes 

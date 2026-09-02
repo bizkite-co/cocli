@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import os
 import logging
-from typing import Protocol, Optional, Dict, Any, cast
+from typing import Protocol, Optional, Any, cast
 from ..utils.op_utils import get_op_secret, get_op_item
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class SecretProvider(Protocol):
         """Retrieves a single secret value by key/URI."""
         ...
 
-    def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
+    def get_item(self, item_id: str) -> Optional[dict[str, Any]]:
         """Retrieves a full secret item (e.g. JSON object) by ID."""
         ...
 
@@ -34,7 +35,7 @@ class OnePasswordProvider:
         
         return get_op_secret(key)
 
-    def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
+    def get_item(self, item_id: str) -> Optional[dict[str, Any]]:
         return get_op_item(item_id)
 
 class EnvSecretProvider:
@@ -47,13 +48,13 @@ class EnvSecretProvider:
         env_key = key.replace("op://", "").replace("/", "_").replace(" ", "_").upper()
         return os.environ.get(env_key) or os.environ.get(key)
 
-    def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
+    def get_item(self, item_id: str) -> Optional[dict[str, Any]]:
         # For items in Env, we might expect a JSON string in an env var
         val = self.get_secret(item_id)
         if val:
             import json
             try:
-                return cast(Dict[str, Any], json.loads(val))
+                return cast(dict[str, Any], json.loads(val))
             except Exception:
                 pass
         return None

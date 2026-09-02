@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import Field
-from typing import Optional, List, ClassVar
+from typing import Optional, ClassVar
 from datetime import datetime, UTC
 from ...domain import Domain
 from ...email_address import EmailAddress
@@ -25,7 +26,7 @@ class WebsiteDomainCsv(BaseIndexModel):
     contact_url: Optional[str] = None
     services_url: Optional[str] = None
     products_url: Optional[str] = None
-    tags: List[str] = []
+    tags: list[str] = []
     scraper_version: Optional[int] = 1
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False

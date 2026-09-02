@@ -1,5 +1,6 @@
+from __future__ import annotations
 import logging
-from typing import AsyncIterator, Dict, List, Optional, Any
+from typing import AsyncIterator, Optional, Any
 from playwright.async_api import Browser
 
 from .gm_scraper.coordinator import ScrapeCoordinator
@@ -10,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 async def scrape_google_maps(
     browser: Browser,
-    location_param: Dict[str, str],
-    search_strings: List[str],
+    location_param: dict[str, str],
+    search_strings: list[str],
     campaign_name: str,
     debug: bool = False,
     force_refresh: bool = False,
@@ -27,7 +28,7 @@ async def scrape_google_maps(
     overlap_threshold_percent: float = 60.0,
     expansion_factor: float = 1.0,
     max_initial_expansion_attempts: int = 3,
-    grid_tiles: Optional[List[Dict[str, Any]]] = None,
+    grid_tiles: Optional[list[dict[str, Any]]] = None,
     s3_client: Any = None,
     s3_bucket: Optional[str] = None,
     processed_by: Optional[str] = None

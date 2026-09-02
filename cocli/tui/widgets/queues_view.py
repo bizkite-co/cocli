@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional, TYPE_CHECKING, cast, Union
+from __future__ import annotations
+from typing import Any, Optional, TYPE_CHECKING, cast, Union
 
 import logging
 import asyncio
@@ -187,7 +188,7 @@ class QueueDetail(VerticalScroll):
         # 3. Audit results are loaded on-demand via 'r' key (was auto-load, removed for performance)
 
     def _render_property_table(
-        self, widget_id: str, props: Dict[str, PropertyInfo], color: str
+        self, widget_id: str, props: dict[str, PropertyInfo], color: str
     ) -> None:
         """Renders a vertical list of properties into a Vertical widget."""
         container = self.query_one(widget_id, Vertical)

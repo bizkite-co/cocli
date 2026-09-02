@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
+from __future__ import annotations
 import csv
 import logging
 from pathlib import Path

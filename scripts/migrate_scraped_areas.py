@@ -1,7 +1,6 @@
 import typer
 import csv
 from rich.console import Console
-from typing import List # Added import
 
 from cocli.core.config import get_all_campaign_dirs, get_cocli_base_dir, get_scraped_areas_index_dir
 from cocli.core.text_utils import slugify
@@ -58,7 +57,7 @@ def main(
                 continue
 
             # Group by phrase
-            rows_by_phrase: dict[str, List[List[str]]] = {}
+            rows_by_phrase: dict[str, list[list[str]]] = {}
             for row in rows_to_write:
                 phrase = row[phrase_idx]
                 slug = slugify(phrase)

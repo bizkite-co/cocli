@@ -6,7 +6,6 @@ import ast
 import json
 import stat
 from pathlib import Path
-from typing import List
 
 
 from stations.schema import SCHEMA_FILENAME, is_schema_protected, write_schema_sidecar
@@ -48,7 +47,7 @@ def _is_direct_datapackage_write(node: ast.AST) -> bool:
 def test_no_ad_hoc_datapackage_writes_in_cocli_package() -> None:
     """Grep/AST audit: no open(..., 'w') of datapackage.json outside allowlist."""
     root = _repo_root() / "cocli"
-    offenders: List[str] = []
+    offenders: list[str] = []
     for path in root.rglob("*.py"):
         rel = str(path.relative_to(_repo_root())).replace("\\", "/")
         if rel in _ALLOWED_WRITE_MODULES:

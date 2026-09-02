@@ -1,10 +1,11 @@
+from __future__ import annotations
 import typer
 import csv
 import toml
 import logging
 import yaml
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 from rich.console import Console
 from datetime import datetime
 
@@ -137,7 +138,7 @@ def generate_grid(
 
     target_locations_csv = prospecting_config.get("target-locations-csv")
 
-    target_locations: List[Dict[str, Any]] = []
+    target_locations: list[dict[str, Any]] = []
     if target_locations_csv:
         csv_path = Path(target_locations_csv)
         if not csv_path.is_absolute():

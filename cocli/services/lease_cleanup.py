@@ -10,7 +10,6 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ def purge_expired_leases(
     queue_dir: Path,
     max_heartbeat_age_minutes: int = 30,
     dry_run: bool = False,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Remove expired lease files from a queue directory.
 
@@ -122,7 +121,7 @@ def purge_expired_leases(
 def force_purge_all_leases(
     queue_dir: Path,
     dry_run: bool = False,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Force remove ALL lease files from a queue directory.
 

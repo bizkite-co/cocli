@@ -7,7 +7,7 @@ import socket
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,7 @@ def make_video_run_id(slug: str, when: Optional[datetime] = None) -> str:
     return f"{compact}_{safe}_{uuid.uuid4().hex[:4]}"
 
 
-def default_host_info() -> Dict[str, Any]:
+def default_host_info() -> dict[str, Any]:
     return {
         "hostname": socket.gethostname(),
         "platform": platform.system(),
@@ -68,7 +68,7 @@ class VideoNormalizeSettings(BaseModel):
     crf: Optional[int] = None
     cq: Optional[int] = None
     audio: str = "aac@192k"
-    loudness: Dict[str, float] = Field(default_factory=dict)
+    loudness: dict[str, float] = Field(default_factory=dict)
     denoise_nr: Optional[int] = None
 
 
@@ -100,13 +100,13 @@ class VideoJobRun(BaseModel):
     started_at: datetime = Field(default_factory=utc_now)
     completed_at: Optional[datetime] = None
     duration_seconds: Optional[float] = None
-    phases: Dict[str, PhaseTiming] = Field(default_factory=dict)
+    phases: dict[str, PhaseTiming] = Field(default_factory=dict)
     input: Optional[VideoFileIdentity] = None
     output: Optional[VideoFileIdentity] = None
     settings: Optional[VideoNormalizeSettings] = None
     stt: Optional[VideoSttSettings] = None
-    host: Dict[str, Any] = Field(default_factory=default_host_info)
-    errors: List[str] = Field(default_factory=list)
+    host: dict[str, Any] = Field(default_factory=default_host_info)
+    errors: list[str] = Field(default_factory=list)
     notes: Optional[str] = None
 
     @classmethod

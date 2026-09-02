@@ -1,6 +1,6 @@
 from transitions import Machine
 from pathlib import Path
-from typing import List, Dict, Any, cast
+from typing import Any, cast
 import toml
 import typer
 
@@ -57,7 +57,7 @@ class CampaignWorkflow:
         self.config_path = self._get_campaign_config_path(name)
         self.state = self._load_current_state()
 
-        transitions: List[Dict[str, Any]] = [
+        transitions: list[dict[str, Any]] = [
             { 'trigger': 'start_import', 'source': 'idle', 'dest': 'import_customers', 'before': 'set_campaign_context', 'after': 'run_import_customers' },
             { 'trigger': 'start_prospecting', 'source': ['idle', 'import_customers'], 'dest': 'prospecting_scraping', 'before': 'set_campaign_context', 'after': 'run_prospecting_scrape' },
             { 'trigger': 'finish_scraping', 'source': 'prospecting_scraping', 'dest': 'prospecting_ingesting', 'after': 'run_prospecting_ingest' },

@@ -1,5 +1,5 @@
 import logging
-from typing import Iterator, Tuple, List, Dict, Any
+from typing import Iterator, Any
 from .utils import calculate_new_coords
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class SpiralStrategy:
         self.leg_count = 0
         self.steps_taken_in_leg = 0
 
-    def __iter__(self) -> Iterator[Tuple[float, float]]:
+    def __iter__(self) -> Iterator[tuple[float, float]]:
         # Yield the starting point first
         yield self.current_lat, self.current_lon
         
@@ -38,10 +38,10 @@ class SpiralStrategy:
                     self.steps_in_direction += 1
 
 class GridStrategy:
-    def __init__(self, tiles: List[Dict[str, Any]]):
+    def __init__(self, tiles: list[dict[str, Any]]):
         self.tiles = tiles
 
-    def __iter__(self) -> Iterator[Tuple[float, float, str]]:
+    def __iter__(self) -> Iterator[tuple[float, float, str]]:
         logger.info(f"GridStrategy starting with {len(self.tiles)} tiles.")
         for tile in self.tiles:
             # Check for direct keys first (new format)

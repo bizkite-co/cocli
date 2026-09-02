@@ -1,7 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import asyncio
-from typing import List, Dict, Any
+from typing import Any
 import duckdb
 
 from cocli.core.paths import paths
@@ -11,7 +11,7 @@ from cocli.models.campaigns.queues.gm_details import GmItemTask
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger("bulk_enqueue")
 
-def get_hollow_place_ids(campaign_name: str, limit: int = 10000) -> List[Dict[str, Any]]:
+def get_hollow_place_ids(campaign_name: str, limit: int = 10000) -> list[dict[str, Any]]:
     """
     Uses DuckDB to find companies that have a Place ID but no rating.
     Uses positional indexing to bypass alignment issues.

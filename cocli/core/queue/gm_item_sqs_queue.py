@@ -1,6 +1,7 @@
+from __future__ import annotations
 import json
 import logging
-from typing import List, Optional
+from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 
@@ -38,11 +39,11 @@ class GmItemSQSQueue:
             logger.error(f"Error pushing to SQS: {e}")
             raise
 
-    def poll(self, batch_size: int = 1) -> List[GmItemTask]:
+    def poll(self, batch_size: int = 1) -> list[GmItemTask]:
         """
         Retrieve a batch of messages from SQS.
         """
-        messages: List[GmItemTask] = []
+        messages: list[GmItemTask] = []
         try:
             logger.debug(f"GmItemSQSQueue.poll: Requesting {batch_size} messages from {self.queue_url}")
             response = self.sqs.receive_message(

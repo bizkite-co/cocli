@@ -1,6 +1,7 @@
+from __future__ import annotations
 import json
 import logging
-from typing import List, Optional
+from typing import Optional
 from botocore.exceptions import ClientError
 
 from ...models.command import CocliCommand
@@ -25,11 +26,11 @@ class CommandSQSQueue:
             logger.error(f"Failed to create SQS client: {e}")
             raise
 
-    def poll(self, batch_size: int = 1) -> List[CocliCommand]:
+    def poll(self, batch_size: int = 1) -> list[CocliCommand]:
         """
         Retrieve a batch of commands from SQS.
         """
-        commands: List[CocliCommand] = []
+        commands: list[CocliCommand] = []
         try:
             response = self.sqs.receive_message(
                 QueueUrl=self.queue_url,

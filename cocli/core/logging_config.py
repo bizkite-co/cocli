@@ -1,10 +1,11 @@
+from __future__ import annotations
 
 import collections
 import logging
 import sys
 import time
 from datetime import datetime
-from typing import Deque, Optional
+from typing import Optional
 
 from pathlib import Path
 
@@ -27,8 +28,8 @@ class RollingErrorCounter(logging.Handler):
         max_message_length: int = 300,
     ) -> None:
         super().__init__(level=level)
-        self._timestamps: Deque[float] = collections.deque()
-        self._messages: Deque[str] = collections.deque(maxlen=max_messages)
+        self._timestamps: collections.deque[float] = collections.deque()
+        self._messages: collections.deque[str] = collections.deque(maxlen=max_messages)
         self._max_message_length = max_message_length
 
     def emit(self, record: logging.LogRecord) -> None:

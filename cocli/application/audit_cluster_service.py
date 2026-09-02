@@ -2,8 +2,9 @@
 
 Provides audit operations focusing on cluster nodes, infrastructure, and paths.
 """
+from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, Optional
 from .audit_service import AuditService
 
 class AuditClusterService:
@@ -16,5 +17,5 @@ class AuditClusterService:
     def audit_queue_completion(self, execute: bool = False) -> dict[str, Any]:
         return self._service.audit_queue_completion(execute)
 
-    def audit_cluster_paths(self, target_paths: List[str], campaigns: Optional[List[str]] = None) -> List[dict[str, Any]]:
+    def audit_cluster_paths(self, target_paths: list[str], campaigns: Optional[list[str]] = None) -> list[dict[str, Any]]:
         return self._service.audit_cluster_paths(target_paths, campaigns)

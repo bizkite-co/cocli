@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import List
 
 
 class CliCommandMatch(BaseModel):
@@ -8,4 +7,4 @@ class CliCommandMatch(BaseModel):
 
     path: str
     description: str
-    options: List[str] = []
+    options: list[str] = []

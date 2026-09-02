@@ -1,6 +1,7 @@
+from __future__ import annotations
 import typer
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.markdown import Markdown
@@ -15,7 +16,7 @@ console = Console()
 
 ISSUES_ROOT = Path("docs/issues")
 
-def render_markdown_with_links(path: Path, seen: Optional[Set[Path]] = None) -> None:
+def render_markdown_with_links(path: Path, seen: Optional[set[Path]] = None) -> None:
     """Renders a markdown file and recursively renders any local .md links found within it."""
     if seen is None:
         seen = set()

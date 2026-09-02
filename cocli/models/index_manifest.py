@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Dict
 from datetime import datetime, UTC
 
 class IndexShard(BaseModel):
@@ -11,7 +10,7 @@ class IndexShard(BaseModel):
 class IndexManifest(BaseModel):
     version: int = 1
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    shards: Dict[str, IndexShard] = {} # shard_id -> IndexShard
+    shards: dict[str, IndexShard] = {} # shard_id -> IndexShard
 
     @classmethod
     def get_header(cls) -> str:
@@ -29,7 +28,7 @@ class IndexManifest(BaseModel):
     @classmethod
     def from_usv(cls, content: str) -> "IndexManifest":
         """Parses a manifest string."""
-        shards: Dict[str, IndexShard] = {}
+        shards: dict[str, IndexShard] = {}
         if not content or not content.strip():
             return cls(shards=shards)
             

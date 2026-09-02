@@ -192,7 +192,11 @@ exclude = [
 ]
 [tool.ruff.lint]
 ignore = ["E402"]
-extend-select = ["TRY002"]  # raise Exception(...) directly - always create/use a specific exception
+extend-select = [
+    "TRY002",  # raise Exception(...) directly - always create/use a specific exception
+    "FA100",   # from __future__ import annotations (simplify Optional/List)
+    "UP006",   # list[T] instead of typing.List[T]
+]
 [tool.ruff.lint.per-file-ignores]
 "cocli/main.py" = ["E402"]
 

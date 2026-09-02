@@ -1,6 +1,5 @@
 import math
 import logging
-from typing import List, Tuple
 from ..models.target_location import TargetLocation
 from ..core.scrape_index import ScrapedArea
 
@@ -15,7 +14,7 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def get_min_max_distance(lat: float, lon: float, area: ScrapedArea) -> Tuple[float, float]:
+def get_min_max_distance(lat: float, lon: float, area: ScrapedArea) -> tuple[float, float]:
     """
     Returns the minimum and maximum distance from a point to a ScrapedArea rectangle (miles).
     """
@@ -36,7 +35,7 @@ def get_min_max_distance(lat: float, lon: float, area: ScrapedArea) -> Tuple[flo
     
     return min_dist, max_dist
 
-def calculate_saturation_score(target: TargetLocation, areas: List[ScrapedArea], max_proximity: float = 20.0) -> float:
+def calculate_saturation_score(target: TargetLocation, areas: list[ScrapedArea], max_proximity: float = 20.0) -> float:
     """
     Calculates the saturation score for a target location based on scraped areas.
     Score increases with more scraped areas within max_proximity.

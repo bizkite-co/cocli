@@ -1,4 +1,5 @@
 """Video processing commands for cocli."""
+from __future__ import annotations
 
 import platform
 import re

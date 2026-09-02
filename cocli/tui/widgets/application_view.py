@@ -1,4 +1,5 @@
-from typing import Any, TYPE_CHECKING, cast, Dict, Optional
+from __future__ import annotations
+from typing import Any, TYPE_CHECKING, cast, Optional
 import logging
 import asyncio
 from datetime import datetime
@@ -320,7 +321,7 @@ class ApplicationView(Container):
             self.active_category = category
 
             # Map categories to their sidebar and content view IDs
-            category_map: Dict[str, Dict[str, Optional[str]]] = {
+            category_map: dict[str, dict[str, Optional[str]]] = {
                 "campaigns": {
                     "sidebar": "sidebar_campaigns",
                     "view": "campaign-detail",
@@ -655,7 +656,7 @@ class ApplicationView(Container):
         op = app.services.operation_service.get_details(op_id)
         if not op:
             return
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if op_id == "op_compile_to_call":
             try:
                 params["limit"] = int(

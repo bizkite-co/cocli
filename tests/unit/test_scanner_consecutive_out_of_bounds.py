@@ -13,7 +13,7 @@ consecutive misses instead of working through an entire batch of results
 we'd never use.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,7 +35,7 @@ def _fake_place_id(i: int) -> str:
     return f"ChIJfakePlaceID{i:011d}"
 
 
-def _fake_parsed(i: int, coords: Dict[str, str]) -> Dict[str, Any]:
+def _fake_parsed(i: int, coords: dict[str, str]) -> dict[str, Any]:
     return {"Place_ID": _fake_place_id(i), "Name": f"Business {i}", **coords}
 
 

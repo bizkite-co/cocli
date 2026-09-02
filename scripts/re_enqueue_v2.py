@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typer
 import csv
 from rich.console import Console

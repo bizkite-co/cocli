@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import logging
 import re
-from typing import AsyncIterator, Set, Optional
+from typing import AsyncIterator, Optional
 from playwright.async_api import Page, Locator
 
 from ....core.config import load_scraper_settings
@@ -104,7 +105,7 @@ class SidebarScraper:
     async def scrape(
         self,
         search_string: str,
-        processed_place_ids: Set[str],
+        processed_place_ids: set[str],
         force_refresh: bool,
         ttl_days: int,
         tile_id: Optional[str] = None

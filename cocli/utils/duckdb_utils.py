@@ -1,10 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
+from __future__ import annotations
 import fnmatch
 import json
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Optional
 import duckdb
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ USV_COPY_OPTIONS = "DELIMITER '\x1f', HEADER FALSE, QUOTE ''"
 
 def get_schema_field_names(
     datapackage_path: Path, resource_name: Optional[str] = None
-) -> List[str]:
+) -> list[str]:
     """
     Returns list of field names from a datapackage's schema.
     """
@@ -41,7 +42,7 @@ def get_schema_field_names(
     return [f["name"] for f in fields]
 
 
-def normalize_column_names(columns_str: str, valid_columns: List[str]) -> str:
+def normalize_column_names(columns_str: str, valid_columns: list[str]) -> str:
     """
     Normalizes a comma-separated list of column names, replacing known aliases.
 
@@ -55,7 +56,7 @@ def normalize_column_names(columns_str: str, valid_columns: List[str]) -> str:
     if not columns_str.strip():
         return "*"
 
-    valid_set: Set[str] = set(valid_columns)
+    valid_set: set[str] = set(valid_columns)
     aliases = {
         "company_slug": "slug",
         "reviews": "reviews_count",
@@ -84,7 +85,7 @@ def normalize_column_names(columns_str: str, valid_columns: List[str]) -> str:
     return ", ".join(normalized) if normalized else "*"
 
 
-def extract_columns_from_query(query: str) -> Set[str]:
+def extract_columns_from_query(query: str) -> set[str]:
     """
     Extracts column references from a SQL WHERE clause.
     Handles: column_name, table.column_name, "column name"
@@ -99,7 +100,7 @@ def extract_columns_from_query(query: str) -> Set[str]:
     return {m for m in matches if m.upper() not in sql_keywords and m != "*"}
 
 
-def validate_query_columns(query: str, valid_columns: List[str]) -> List[str]:
+def validate_query_columns(query: str, valid_columns: list[str]) -> list[str]:
     """
     Validates that all column references in a query exist in the schema.
     Returns list of unknown/invalid columns.
@@ -175,7 +176,7 @@ def find_datapackage(file_path: Path) -> Optional[Path]:
 
 def get_duckdb_schema_from_datapackage(
     datapackage_path: Path, resource_name: Optional[str] = None
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Parses a Frictionless Data datapackage.json and returns a dictionary
     mapping column names to DuckDB types.
@@ -229,7 +230,7 @@ def load_usv_to_duckdb(
     # 1. Discover datapackage if not provided
     dp_path = datapackage_path or find_datapackage(usv_path)
 
-    columns: Dict[str, str] = {}
+    columns: dict[str, str] = {}
     if dp_path and dp_path.exists():
         try:
             # Note: We use the filename as the resource hint

@@ -1,8 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import logging
 import json
 from datetime import datetime, UTC
-from typing import Any, List, Optional, Dict
+from typing import Any, Optional
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
 from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
@@ -30,9 +31,9 @@ class GmListProcessor:
     async def process_results(
         self,
         task: ScrapeTask,
-        items: List[GoogleMapsListItem],
+        items: list[GoogleMapsListItem],
         s3_client: Any = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """
         Saves discovery results to the deep-sharded trace path and writes the receipt.

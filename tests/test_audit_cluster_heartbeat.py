@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 from rich.console import Console
@@ -15,24 +15,24 @@ from cocli.commands.audit import (
 
 
 class FakePaginator:
-    def __init__(self, pages_by_prefix: Dict[str, List[Dict[str, Any]]]) -> None:
+    def __init__(self, pages_by_prefix: dict[str, list[dict[str, Any]]]) -> None:
         self._pages_by_prefix = pages_by_prefix
 
-    def paginate(self, Bucket: str, Prefix: str) -> List[Dict[str, Any]]:
+    def paginate(self, Bucket: str, Prefix: str) -> list[dict[str, Any]]:
         return self._pages_by_prefix.get(Prefix, [{"Contents": [], "KeyCount": 0}])
 
 
 class FakeS3Client:
     def __init__(
         self,
-        heartbeats: Dict[str, Dict[str, Any]],
-        queue_keys_by_prefix: Dict[str, List[str]] | None = None,
+        heartbeats: dict[str, dict[str, Any]],
+        queue_keys_by_prefix: dict[str, list[str]] | None = None,
     ) -> None:
         from cocli.core.paths import paths
 
         self._heartbeats = heartbeats
         status_prefix = paths.s3.status_root
-        pages: Dict[str, List[Dict[str, Any]]] = {
+        pages: dict[str, list[dict[str, Any]]] = {
             status_prefix: [
                 {
                     "Contents": [
@@ -48,7 +48,7 @@ class FakeS3Client:
     def get_paginator(self, name: str) -> FakePaginator:
         return self._paginator
 
-    def get_object(self, Bucket: str, Key: str) -> Dict[str, Any]:
+    def get_object(self, Bucket: str, Key: str) -> dict[str, Any]:
         host = Key.split("/")[-1].removesuffix(".json")
         body = json.dumps(self._heartbeats[host]).encode()
 

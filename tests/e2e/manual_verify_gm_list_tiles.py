@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 from pathlib import Path
-from typing import List, Set, Tuple
 
 from playwright.async_api import Browser, async_playwright
 
@@ -42,12 +41,12 @@ from cocli.scrapers.google.gm_scraper.scanner import SidebarScraper
 
 def find_high_yield_tiles(
     campaign_name: str, min_rows: int, limit: int
-) -> List[Tuple[str, str, float, float, Path]]:
+) -> list[tuple[str, str, float, float, Path]]:
     """Returns (tile_id, phrase, lat, lon, source_file), highest row-count
     first, deduplicated by tile so each browser session covers a genuinely
     different location rather than the same tile's other search phrases."""
     results_root = paths.campaign(campaign_name).queue("gm-list").completed / "results"
-    candidates: List[Tuple[int, str, str, float, float, Path]] = []
+    candidates: list[tuple[int, str, str, float, float, Path]] = []
 
     for f in results_root.rglob("*.usv"):
         parts = f.relative_to(results_root).parts
@@ -69,8 +68,8 @@ def find_high_yield_tiles(
 
     candidates.sort(key=lambda c: c[0], reverse=True)
 
-    seen_tiles: Set[str] = set()
-    picked: List[Tuple[str, str, float, float, Path]] = []
+    seen_tiles: set[str] = set()
+    picked: list[tuple[str, str, float, float, Path]] = []
     for n, tile_id, phrase, lat, lon, src in candidates:
         if tile_id in seen_tiles:
             continue
@@ -83,7 +82,7 @@ def find_high_yield_tiles(
 
 def find_zero_result_tiles(
     campaign_name: str, limit: int
-) -> List[Tuple[str, str, float, float, Path]]:
+) -> list[tuple[str, str, float, float, Path]]:
     """Returns (tile_id, phrase, lat, lon, receipt_file) for real completed
     gm-list tasks that recorded result_count == 0 - a .json completion
     receipt under gm-list/completed/results with no sibling .usv (no data
@@ -98,7 +97,7 @@ def find_zero_result_tiles(
     import json
 
     results_root = paths.campaign(campaign_name).queue("gm-list").completed / "results"
-    candidates: List[Tuple[str, str, str, float, float, Path]] = []  # (completed_at, tile_id, phrase, lat, lon, src)
+    candidates: list[tuple[str, str, str, float, float, Path]] = []  # (completed_at, tile_id, phrase, lat, lon, src)
 
     for f in results_root.rglob("*.json"):
         if f.name in ("datapackage.json", "schema_ledger.json"):
@@ -121,8 +120,8 @@ def find_zero_result_tiles(
 
     candidates.sort(key=lambda c: c[0], reverse=True)  # most recent first
 
-    seen_tiles: Set[str] = set()
-    picked: List[Tuple[str, str, float, float, Path]] = []
+    seen_tiles: set[str] = set()
+    picked: list[tuple[str, str, float, float, Path]] = []
     for _completed_at, tile_id, phrase, lat, lon, src in candidates:
         if tile_id in seen_tiles:
             continue

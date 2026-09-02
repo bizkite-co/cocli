@@ -7,6 +7,7 @@ output, and per-run file logging. Kept as a script (not folded fully into
 directly; `cocli data export-enriched-emails` wraps the same service for
 callers that want it as a real subcommand.
 """
+from __future__ import annotations
 
 import logging
 import typer

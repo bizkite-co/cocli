@@ -1,6 +1,7 @@
+from __future__ import annotations
 import csv
 from pathlib import Path
-from typing import Optional, Dict, Any, Iterable
+from typing import Optional, Any, Iterable
 from datetime import datetime, UTC, timezone
 import json
 import logging
@@ -19,7 +20,7 @@ class WebsiteCache:
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file_usv = cache_dir / "website_data_cache.usv"
         self.cache_file_csv = cache_dir / "website_data_cache.csv"
-        self.data: Dict[str, Website] = {}
+        self.data: dict[str, Website] = {}
         self._load_data()
 
     def _load_data(self) -> None:
@@ -34,14 +35,14 @@ class WebsiteCache:
             return
 
         with open(active_file, "r", encoding="utf-8") as f:
-            reader: Iterable[Dict[str, Any]]
+            reader: Iterable[dict[str, Any]]
             if is_usv:
                 reader = USVDictReader(f)
             else:
                 reader = csv.DictReader(f)
 
             for row in reader:
-                processed_data: Dict[str, Any] = {}
+                processed_data: dict[str, Any] = {}
 
                 # Convert datetime fields
                 for field in ['created_at', 'updated_at']:

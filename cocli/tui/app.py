@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 import os
 import asyncio
@@ -7,10 +8,7 @@ from contextlib import contextmanager
 from typing import (
     Any,
     Optional,
-    Type,
-    List,
     cast,
-    Dict,
     Generator,
     AsyncGenerator,
     Callable,
@@ -247,7 +245,7 @@ class CocliCommandProvider(Provider):
     action_wrapper) - confirmed dead via grep (no caller besides each
     other) before deleting, not just unused-looking."""
 
-    def _commands(self) -> List[tuple[str, Callable[[], Any], str]]:
+    def _commands(self) -> list[tuple[str, Callable[[], Any], str]]:
         """The single source of command entries, MRU-sorted, shared by
         discover() (shown before typing) and search() (shown while
         typing) - the previous version hand-duplicated this list in both
@@ -472,8 +470,8 @@ class CocliApp(App[None]):
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
         self.auto_show = auto_show
-        self.process_runs: List[ProcessRun] = []
-        self.command_mru: List[str] = []
+        self.process_runs: list[ProcessRun] = []
+        self.command_mru: list[str] = []
         self.nav_manager = NavigationStateManager(self)
         self.browser_manager = BrowserManager()
 
@@ -482,7 +480,7 @@ class CocliApp(App[None]):
         if hasattr(self.services, "operation_service"):
             # Trigger lazy load if it's a property, but ensure it's synced
             _ = self.services.operation_service
-        self.nav_tree: Dict[Type[Any], NavNode] = {
+        self.nav_tree: dict[type[Any], NavNode] = {
             # --- Companies Branch ---
             CompanyDetail: NavNode(
                 widget_class=CompanyDetail,

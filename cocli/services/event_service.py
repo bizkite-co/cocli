@@ -1,5 +1,4 @@
 import logging
-from typing import List
 import yaml
 from ..models.campaigns.events import Event
 from ..core.paths import paths
@@ -12,11 +11,11 @@ class EventService:
         self.campaign_name = campaign_name
         self.events_wal = paths.campaign(campaign_name).queue(QueueIdentity.EVENTS).wal
 
-    def get_upcoming_events(self) -> List[Event]:
+    def get_upcoming_events(self) -> list[Event]:
         """
         Retrieves all events from the WAL, sorted by start_time ascending.
         """
-        events: List[Event] = []
+        events: list[Event] = []
         if not self.events_wal.exists():
             return events
 

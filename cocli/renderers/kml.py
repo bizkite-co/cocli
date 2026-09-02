@@ -1,7 +1,8 @@
+from __future__ import annotations
 import yaml
 import simplekml # type: ignore
 import toml
-from typing import Optional, Dict, List
+from typing import Optional
 import logging
 from pathlib import Path # Import Path
 
@@ -44,7 +45,7 @@ def render_kml_for_campaign(campaign_name: str, output_dir: Optional[Path] = Non
     
     # --- OPTIMIZATION: Pre-load all people and map them to their company slug ---
     logger.info("Pre-loading all person data...")
-    people_by_company_slug: Dict[str, List[Person]] = {}
+    people_by_company_slug: dict[str, list[Person]] = {}
     for person_obj in Person.get_all(): # Person.get_all() is an iterator
         if person_obj.company_name:
             company_slug = slugify(str(person_obj.company_name))

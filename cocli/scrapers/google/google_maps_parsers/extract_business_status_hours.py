@@ -1,6 +1,5 @@
 import re
 from bs4 import BeautifulSoup
-from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,7 +7,7 @@ logger = logging.getLogger(__name__)
 STATUS_HOURS_RE = re.compile(r"(Open|Closed|Closes|Opens)\s*(.*?)(?:\n|$)", re.IGNORECASE)
 HOURS_RE = re.compile(r"⋅\s*(.*)")
 
-def extract_business_status_hours(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
+def extract_business_status_hours(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> dict[str, str]:
     """
     Extracts business status and hours from innerText or falls back to HTML selectors.
     """

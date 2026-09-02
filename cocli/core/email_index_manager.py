@@ -1,7 +1,8 @@
+from __future__ import annotations
 import json
 import logging
 import hashlib
-from typing import List, Optional
+from typing import Optional
 
 from ..models.campaigns.indexes.email import EmailEntry
 from .config import get_campaign_dir
@@ -56,7 +57,7 @@ class EmailIndexManager:
             logger.error(f"Error writing email to inbox {path}: {e}")
             return False
 
-    def query(self, sql_where: Optional[str] = None) -> List[EmailEntry]:
+    def query(self, sql_where: Optional[str] = None) -> list[EmailEntry]:
         """
         Queries the email index using DuckDB.
         Merges inbox and shards, taking the latest 'last_seen' for each email.

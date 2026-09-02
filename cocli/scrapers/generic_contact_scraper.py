@@ -1,6 +1,5 @@
 import asyncio
 import re
-from typing import List, Dict
 import logging
 
 from bs4 import BeautifulSoup
@@ -12,7 +11,7 @@ class GenericContactScraper:
     def __init__(self) -> None:
         pass
 
-    async def find_contact_pages(self, domain: str) -> List[str]:
+    async def find_contact_pages(self, domain: str) -> list[str]:
         """
         Attempts to find potential contact pages for a given domain.
         """
@@ -61,7 +60,7 @@ class GenericContactScraper:
             await browser.close()
         return list(set(contact_urls)) # Return unique URLs
 
-    async def scrape_page_for_contacts(self, url: str) -> List[Dict[str, str]]:
+    async def scrape_page_for_contacts(self, url: str) -> list[dict[str, str]]:
         """
         Scrapes a given URL for email addresses, names, and roles.
         It looks for mailto: links and attempts to infer associated names and roles.

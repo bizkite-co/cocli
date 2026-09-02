@@ -9,7 +9,6 @@ identity-trace-capability-given-a-workflow-item-id-walk-all-declared-stations-an
 """
 
 from pathlib import Path
-from typing import Dict
 
 from cocli.core.prospect_trace import (
     US,
@@ -123,7 +122,7 @@ def test_trace_identities_produces_one_row_per_identity() -> None:
     assert rows[1].results["station-1"].state == "absent"
 
 
-def _states(gm_list: str, gm_details: str, pi_wal: str, checkpoint: str) -> Dict[str, StationResult]:
+def _states(gm_list: str, gm_details: str, pi_wal: str, checkpoint: str) -> dict[str, StationResult]:
     return {
         "gm-list": StationResult(station="gm-list", state=gm_list),
         "gm-details": StationResult(station="gm-details", state=gm_details),

@@ -1,11 +1,12 @@
+from __future__ import annotations
 import re
 from bs4 import BeautifulSoup
-from typing import Dict, Optional
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
+def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> dict[str, str]:
     """
     Extracts the website URL and domain from HTML or falls back to innerText.
     """

@@ -1,10 +1,11 @@
+from __future__ import annotations
 import json
 import logging
 import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 from ..core.config import get_cocli_base_dir
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 def get_state_file() -> Path:
     return get_cocli_base_dir() / ".smart_sync_up_state.json"
 
-def load_state() -> Dict[str, Any]:
+def load_state() -> dict[str, Any]:
     state_file = get_state_file()
     if state_file.exists():
         try:
@@ -24,7 +25,7 @@ def load_state() -> Dict[str, Any]:
             logger.error(f"Failed to load state file: {e}")
     return {}
 
-def save_state(state: Dict[str, Any]) -> None:
+def save_state(state: dict[str, Any]) -> None:
     try:
         get_state_file().write_text(json.dumps(state))
     except Exception as e:
@@ -43,7 +44,7 @@ def run_smart_sync_up(
     prefix: str,
     local_base: Path,
     campaign_name: str,
-    aws_config: Dict[str, Any],
+    aws_config: dict[str, Any],
     workers: int = 20,
     delete_remote: bool = False,
     only_modified_since_minutes: Optional[int] = None
@@ -75,7 +76,7 @@ def run_smart_sync_up(
          return
 
     # 1. List Local Files
-    local_files: Dict[str, Path] = {}
+    local_files: dict[str, Path] = {}
     if local_base.exists():
         logger.info(f"Scanning local directory: {local_base}")
         
@@ -104,7 +105,7 @@ def run_smart_sync_up(
         logger.warning(f"Local base directory does not exist: {local_base}")
 
     # 2. List Remote Files (Only if we need to delete or check for existing files)
-    remote_keys: Dict[str, str] = {}
+    remote_keys: dict[str, str] = {}
     if delete_remote:
         logger.info(f"Scanning S3 prefix for deletions: s3://{bucket_name}/{prefix}")
         paginator = s3.get_paginator('list_objects_v2')

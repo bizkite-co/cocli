@@ -1,6 +1,7 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field
 from datetime import datetime, UTC
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 from pathlib import Path
 
 class RawWitness(BaseModel):
@@ -14,7 +15,7 @@ class RawWitness(BaseModel):
     campaign_name: str
     url: str
     html: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     version: str = "1.1.0"
 
     def get_dir_path(self) -> str:
@@ -66,7 +67,7 @@ class RawWebsiteWitness(BaseModel):
     url: str
     html: str
     # Playwright config, headers, etc.
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     version: str = "1.0.0"
 
     def get_dir_path(self) -> str:

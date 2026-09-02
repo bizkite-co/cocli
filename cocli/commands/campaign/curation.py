@@ -1,6 +1,7 @@
+from __future__ import annotations
 import typer
 import logging
-from typing import Optional, List
+from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.live import Live
@@ -29,7 +30,7 @@ def get_char() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
 
-def render_event_table(events: List[Event], selected_index: int) -> Table:
+def render_event_table(events: list[Event], selected_index: int) -> Table:
     table = Table(box=None, expand=True)
     table.add_column("", width=3)
     table.add_column("Date", width=15)

@@ -1,7 +1,8 @@
+from __future__ import annotations
 import importlib
 import pkgutil
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Optional
 import logging
 import yaml
 from cocli.core.text_utils import slugify
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 class EnrichmentManager:
     def __init__(self, company_data_dir: Path):
         self.company_data_dir = company_data_dir
-        self.scripts: Dict[str, EnrichmentScript] = {}
+        self.scripts: dict[str, EnrichmentScript] = {}
         self._discover_scripts()
 
     def _discover_scripts(self) -> None:
@@ -38,7 +39,7 @@ class EnrichmentManager:
                 except Exception as e:
                     logger.error(f"Error loading enrichment script {name}: {e}")
 
-    def get_available_script_names(self) -> List[str]:
+    def get_available_script_names(self) -> list[str]:
         """Returns a list of names of all discovered enrichment scripts."""
         return list(self.scripts.keys())
 
@@ -134,7 +135,7 @@ class EnrichmentManager:
             return datetime.fromtimestamp(run_file_path.stat().st_mtime)
         return None
 
-    def get_unenriched_companies(self, script_name: str) -> List[str]:
+    def get_unenriched_companies(self, script_name: str) -> list[str]:
         """
         Returns a list of company names that have not been enriched by the given script.
         """

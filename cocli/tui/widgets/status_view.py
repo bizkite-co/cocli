@@ -1,8 +1,9 @@
+from __future__ import annotations
 from textual.app import ComposeResult
 from textual.widgets import Static, Label
 from textual.containers import VerticalScroll, Container, Horizontal
 from textual import work
-from typing import Any, Dict, Optional, List, TYPE_CHECKING, cast
+from typing import Any, Optional, TYPE_CHECKING, cast
 import asyncio
 from datetime import datetime
 import logging
@@ -23,8 +24,8 @@ class StatusView(VerticalScroll):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.status_data: Optional[Dict[str, Any]] = None
-        self.cluster_health: List[Dict[str, Any]] = []
+        self.status_data: Optional[dict[str, Any]] = None
+        self.cluster_health: list[dict[str, Any]] = []
         self.can_focus = True
 
     def compose(self) -> ComposeResult:

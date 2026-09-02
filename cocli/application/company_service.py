@@ -1,4 +1,5 @@
-from typing import Dict, Any, Optional
+from __future__ import annotations
+from typing import Any, Optional
 import datetime
 
 from ..models.companies.company import Company
@@ -96,7 +97,7 @@ async def update_company_from_website_data(
     return modified
 
 
-def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
+def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
     """
     Retrieves all necessary data for displaying a company's detailed view.
 
@@ -153,7 +154,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         website_data = website_cache.get_by_url(company.domain)
 
     # Load lifecycle data for status display
-    lifecycle_dates: Dict[str, Any] = {
+    lifecycle_dates: dict[str, Any] = {
         "list_found_at": None,
         "details_found_at": None,
         "enqueued_at": None,
@@ -308,7 +309,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
 
 def backfill_missing_companies_from_prospects(
     campaign_name: str, dry_run: bool = True, min_hours_since_last_run: Optional[float] = None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Materializes companies/<slug> directories for prospects that exist in a
     campaign's prospects checkpoint but were never compiled into a company
@@ -377,7 +378,7 @@ def backfill_missing_companies_from_prospects(
     # Last-write-wins per slug: read_all_prospects() yields the cold
     # checkpoint first, then hotter WAL entries - a later entry for the
     # same slug is the fresher record.
-    prospects_by_slug: Dict[str, GoogleMapsProspect] = {}
+    prospects_by_slug: dict[str, GoogleMapsProspect] = {}
     for prospect in manager.read_all_prospects():
         if not prospect.slug or prospect.slug in existing_slugs:
             continue

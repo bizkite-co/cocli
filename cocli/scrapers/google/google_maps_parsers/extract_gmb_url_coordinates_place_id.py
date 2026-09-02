@@ -1,11 +1,10 @@
 import re
 from bs4 import BeautifulSoup
-from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)
 
-def extract_gmb_url_coordinates_place_id(soup: BeautifulSoup, debug: bool = False) -> Dict[str, str]:
+def extract_gmb_url_coordinates_place_id(soup: BeautifulSoup, debug: bool = False) -> dict[str, str]:
     """
     Extracts GMB URL, Latitude, Longitude, Coordinates, and Place_ID from HTML.
     """

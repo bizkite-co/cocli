@@ -1,5 +1,4 @@
 import typer
-from typing import List
 import logging
 
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
@@ -7,7 +6,7 @@ from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 logger = logging.getLogger(__name__)
 
 def flag_email_providers(
-    domains: List[str] = typer.Argument(..., help="A list of email provider domains to flag in the cache.")
+    domains: list[str] = typer.Argument(..., help="A list of email provider domains to flag in the cache.")
 ) -> None:
     """
     Flags a list of domains as email providers in the website cache.

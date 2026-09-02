@@ -11,7 +11,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ class RolloutBatchStatus(BaseModel):
     """Discovery-gen batches deployed for a campaign."""
 
     campaign_name: str
-    batches: Dict[str, int] = Field(default_factory=dict)
+    batches: dict[str, int] = Field(default_factory=dict)
 
     @property
     def total_tasks(self) -> int:
@@ -52,7 +52,7 @@ class RolloutDiagnostics(BaseModel):
     """Intermediate artifact: hub-side rollout status / progress / report data."""
 
     campaign_name: str
-    batches: Dict[str, int] = Field(default_factory=dict)
+    batches: dict[str, int] = Field(default_factory=dict)
     hub_companies: int = 0
     total_tasks: int = 0
     avg_per_task: float = 0.0
@@ -62,7 +62,7 @@ class RolloutDiagnostics(BaseModel):
     def from_counts(
         cls,
         campaign_name: str,
-        batches: Dict[str, int],
+        batches: dict[str, int],
         hub_companies: int,
     ) -> "RolloutDiagnostics":
         total = sum(batches.values())
@@ -97,7 +97,7 @@ class BroadcastConfigResult(BaseModel):
     campaign_name: str
     success: bool = True
     message: str = ""
-    scaling: Dict[str, Any] = Field(default_factory=dict)
+    scaling: dict[str, Any] = Field(default_factory=dict)
 
 
 class RolloutSyncResult(BaseModel):
@@ -120,7 +120,7 @@ class DeploymentService:
     # Existing infra methods
     # ------------------------------------------------------------------
 
-    def deploy_infra(self) -> Dict[str, Any]:
+    def deploy_infra(self) -> dict[str, Any]:
         """Deploys AWS Infrastructure using CDK."""
         try:
             cmd = f"cocli infrastructure deploy-infra --campaign {self.campaign_name}"
@@ -129,7 +129,7 @@ class DeploymentService:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def scale_service(self, count: int) -> Dict[str, Any]:
+    def scale_service(self, count: int) -> dict[str, Any]:
         """
         Scales the enrichment service in Fargate.
         Corresponds to 'make scale'.
@@ -162,7 +162,7 @@ class DeploymentService:
             logger.error(f"Failed to scale service: {e}")
             return {"status": "error", "message": str(e)}
 
-    def get_service_status(self) -> Dict[str, Any]:
+    def get_service_status(self) -> dict[str, Any]:
         """Returns status of Fargate service."""
         from ..core.reporting import get_active_fargate_tasks, get_boto3_session
 
@@ -177,7 +177,7 @@ class DeploymentService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def get_pi_hostnames() -> Dict[str, str]:
+    def get_pi_hostnames() -> dict[str, str]:
         """PI hostnames (Tailscale MagicDNS names)."""
         return {
             "cocli5x0": "cocli5x0.tail87cf32.ts.net",
@@ -185,7 +185,7 @@ class DeploymentService:
         }
 
     @staticmethod
-    def ssh_run(hostname: str, command: str) -> Tuple[int, str]:
+    def ssh_run(hostname: str, command: str) -> tuple[int, str]:
         """Run command on remote host via SSH. Returns (exit_code, output)."""
         try:
             result = subprocess.run(
@@ -221,7 +221,7 @@ class DeploymentService:
         dg_queue = paths.campaign(name).queue("discovery-gen")
         batches_dir = dg_queue.pending / "batches"
 
-        batches: Dict[str, int] = {}
+        batches: dict[str, int] = {}
         if batches_dir.exists():
             for batch_file in batches_dir.glob("*.usv"):
                 with open(batch_file, "r") as f:
@@ -232,10 +232,10 @@ class DeploymentService:
 
     def get_pi_stats(
         self, campaign_name: Optional[str] = None
-    ) -> Dict[str, PiNodeStats]:
+    ) -> dict[str, PiNodeStats]:
         """Scraping stats from each PI via SSH (rollout diagnostics)."""
         name = campaign_name or self.campaign_name
-        stats: Dict[str, PiNodeStats] = {}
+        stats: dict[str, PiNodeStats] = {}
 
         for pi_name, hostname in self.get_pi_hostnames().items():
             wal_command = (

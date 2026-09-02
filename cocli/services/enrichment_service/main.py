@@ -1,10 +1,11 @@
+from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import logging
 import os
 from playwright.async_api import async_playwright
 import toml 
-from typing import Optional, Dict, Any, cast
+from typing import Optional, Any, cast
 from contextlib import asynccontextmanager
 
 # Adjust imports to be absolute from the project root
@@ -43,7 +44,7 @@ class EnrichmentRequest(BaseModel):
     navigation_timeout_ms: Optional[int] = None # New field
 
 @app.get("/debug/network")
-async def debug_network() -> Dict[str, Any]:
+async def debug_network() -> dict[str, Any]:
     results = {}
     
     # 1. DNS Check
@@ -124,7 +125,7 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
             }
             
             # Extract the 'campaign' section and merge other sections into it
-            flat_config = cast(Dict[str, Any], campaign_data.pop("campaign"))
+            flat_config = cast(dict[str, Any], campaign_data.pop("campaign"))
             # Now flat_config is a dict. Merge the rest of campaign_data into it.
             # Use ** for dictionary unpacking to ensure mypy knows it's a dict
             final_config_dict = {**flat_config, **campaign_data}

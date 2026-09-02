@@ -1,22 +1,20 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import json
 import logging
 from enum import Enum
 from datetime import datetime
 from pathlib import Path
 from typing import (
-    List,
-    Dict,
     Any,
-    Type,
     TypeVar,
     Optional,
-    Tuple,
     Protocol,
     runtime_checkable,
     ClassVar,
     Callable,
     Sequence,
+    get_origin,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -24,6 +22,13 @@ from pydantic import BaseModel, ValidationError
 from ..core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
+
+
+def _annotation_is_list(annotation: Any) -> bool:
+    """True for list[T] / List[T], including postponed (string) annotations."""
+    if get_origin(annotation) is list:
+        return True
+    return "list[" in str(annotation).replace(" ", "").lower()
 
 
 class ResourcePathPolicy(Enum):
@@ -34,7 +39,7 @@ class ResourcePathPolicy(Enum):
 class SchemaConflictError(Exception):
     """Raised when a Pydantic model change would break existing USV data positioning."""
 
-    def __init__(self, message: str, diff: List[str]):
+    def __init__(self, message: str, diff: list[str]):
         super().__init__(message)
         self.diff = diff
 
@@ -59,12 +64,12 @@ class SchemaGenerator(Protocol):
     def get_schema_hash(cls) -> str: ...
 
     @classmethod
-    def get_datapackage_fields(cls) -> List[Dict[str, Any]]: ...
+    def get_datapackage_fields(cls) -> list[dict[str, Any]]: ...
 
     @classmethod
     def get_datapackage(
         cls, resource_name: str, resource_path: str | None = None
-    ) -> Dict[str, Any]: ...
+    ) -> dict[str, Any]: ...
 
     @classmethod
     def save_datapackage(
@@ -104,7 +109,7 @@ class QueueWriter(Protocol):
     @classmethod
     def write_queue_files(
         cls,
-        items: List["BaseUsvModel"],
+        items: list["BaseUsvModel"],
         queue_dir: Path,
         resource_name: str,
         resource_path: str,
@@ -121,7 +126,7 @@ class QueueWriter(Protocol):
         ...
 
 
-from typing import Protocol, ClassVar, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class OMOPQueueRecord(Protocol):
@@ -206,7 +211,7 @@ class BaseUsvModel(BaseModel):
         return UNIT_SEP.join(values) + "\n"
 
     @classmethod
-    def validate_record(cls: Type[T], usv_line: str) -> Tuple[bool, Optional[T], str]:
+    def validate_record(cls: type[T], usv_line: str) -> tuple[bool, Optional[T], str]:
         """
         Validates a single USV record against this model's schema.
         Returns (is_valid, parsed_model, error_message).
@@ -243,7 +248,7 @@ class BaseUsvModel(BaseModel):
 
                 # Check for list fields (semicolon separated)
                 field_info = cls.model_fields[field_name]
-                if "List" in str(field_info.annotation):
+                if _annotation_is_list(field_info.annotation):
                     data[field_name] = [t.strip() for t in val.split(";") if t.strip()]
                 else:
                     data[field_name] = val  # type: ignore[assignment]
@@ -256,8 +261,8 @@ class BaseUsvModel(BaseModel):
 
     @classmethod
     def validate_file(
-        cls: Type[T], usv_path: Path, invalid_path: Optional[Path] = None
-    ) -> Dict[str, int]:
+        cls: type[T], usv_path: Path, invalid_path: Optional[Path] = None
+    ) -> dict[str, int]:
         """
         Validates all records in a USV file.
         Writes invalid records to invalid_path if provided.
@@ -290,7 +295,7 @@ class BaseUsvModel(BaseModel):
                 f_invalid.close()
 
     @classmethod
-    def from_usv(cls: Type[T], usv_str: str) -> T:
+    def from_usv(cls: type[T], usv_str: str) -> T:
         """Parses a Unit-Separated Value string into a model instance."""
         # Strip both Record Separator and Newline
         line = usv_str.strip("\x1e\n")
@@ -302,7 +307,7 @@ class BaseUsvModel(BaseModel):
             name for name, info in cls.model_fields.items() if not info.exclude
         ]
 
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         for i, field_name in enumerate(field_names):
             if i < len(parts):
                 val: Any = parts[i]
@@ -312,7 +317,7 @@ class BaseUsvModel(BaseModel):
 
                 # Check for list fields (semicolon separated)
                 field_info = cls.model_fields[field_name]
-                if "List" in str(field_info.annotation):
+                if _annotation_is_list(field_info.annotation):
                     data[field_name] = [t.strip() for t in val.split(";") if t.strip()]
                 else:
                     data[field_name] = val
@@ -320,14 +325,14 @@ class BaseUsvModel(BaseModel):
         return cls.model_validate(data)
 
     @classmethod
-    def usv_field_names(cls) -> List[str]:
+    def usv_field_names(cls) -> list[str]:
         """Field names in USV column order (excludes ``exclude=True`` fields)."""
         return [
             name for name, info in cls.model_fields.items() if not info.exclude
         ]
 
     @classmethod
-    def duckdb_read_csv_columns(cls) -> Dict[str, str]:
+    def duckdb_read_csv_columns(cls) -> dict[str, str]:
         """DuckDB ``read_csv(..., columns=)`` map derived from this model.
 
         Semantic authority is the Pydantic model / datapackage field list.
@@ -341,7 +346,7 @@ class BaseUsvModel(BaseModel):
             "datetime": "VARCHAR",
             "boolean": "VARCHAR",
         }
-        cols: Dict[str, str] = {}
+        cols: dict[str, str] = {}
         for field in cls.get_datapackage_fields():
             name = str(field["name"])
             ftype = str(field.get("type") or "string")
@@ -366,7 +371,7 @@ class BaseUsvModel(BaseModel):
         return hashlib.sha256(schema_str.encode()).hexdigest()[:16]
 
     @classmethod
-    def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
+    def get_datapackage_fields(cls) -> list[dict[str, Any]]:
         """Generates Frictionless Data field definitions from Pydantic metadata."""
         fields = []
         for name, field in cls.model_fields.items():
@@ -414,7 +419,7 @@ class BaseUsvModel(BaseModel):
     @classmethod
     def get_datapackage(
         cls, resource_name: str, resource_path: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Returns a Frictionless Data Package schema with path strategy."""
 
         # Determine the path pattern: explicit override or model-level policy
@@ -481,7 +486,7 @@ class BaseUsvModel(BaseModel):
 
         # 3. Update ledger next to the station (not CWD — that was silent drift)
         ledger_path = path / "schema_ledger.json"
-        ledger: Dict[str, Any] = {}
+        ledger: dict[str, Any] = {}
         if ledger_path.exists():
             try:
                 with open(ledger_path, "r") as f:
@@ -640,7 +645,7 @@ class BaseUsvModel(BaseModel):
         *,
         resource_name: str,
         schema_hash: str,
-        fields: List[Dict[str, Any]],
+        fields: list[dict[str, Any]],
     ) -> None:
         """Append one JSON line when schema hash changes (audit trail, not dual authority)."""
         from datetime import datetime, timezone
@@ -710,8 +715,8 @@ class BaseUsvModel(BaseModel):
 
     @classmethod
     def save_usv_with_datapackage(
-        cls: Type[T],
-        items: List[T],
+        cls: type[T],
+        items: list[T],
         output_path: Path,
         resource_name: Optional[str] = None,
     ) -> None:
@@ -736,7 +741,7 @@ class BaseUsvModel(BaseModel):
 
 
 def write_queue_files(
-    model_class: Type[SchemaGenerator],
+    model_class: type[SchemaGenerator],
     items: Sequence[BaseUsvModel],
     queue_dir: Path,
     resource_name: str,

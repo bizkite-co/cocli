@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import socket
 import asyncio
 import json
@@ -6,7 +7,7 @@ import logging
 import os
 import time
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext
 
@@ -57,7 +58,7 @@ SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 # _compute_queue_pending()).
 
 
-def _is_orphaned_playwright_future(context: Dict[str, Any]) -> bool:
+def _is_orphaned_playwright_future(context: dict[str, Any]) -> bool:
     """True for the general "Future/Task exception was never retrieved"
     shape from an orphaned Playwright internal Future, documented on ticket
     investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation.
@@ -97,7 +98,7 @@ def _is_orphaned_playwright_future(context: Dict[str, Any]) -> bool:
 
 
 def _write_orphaned_playwright_future_record(
-    campaign_name: str, context: Dict[str, Any]
+    campaign_name: str, context: dict[str, Any]
 ) -> None:
     """Append a structured record of a suppressed orphaned-Playwright-Future
     warning to a durable, campaign-scoped file - downgrading the console
@@ -141,7 +142,7 @@ def install_playwright_leak_exception_handler(
     default unhandled-exception warning; everything else still goes through
     the loop's normal default handler unchanged."""
 
-    def _handler(loop: asyncio.AbstractEventLoop, context: Dict[str, Any]) -> None:
+    def _handler(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
         if _is_orphaned_playwright_future(context):
             logger.debug(
                 "Suppressed known orphaned-Playwright-Future noise "
@@ -223,8 +224,8 @@ class WorkerService:
         self.processed_by = processed_by or (os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0])
         self.role = role
         self._load_config()
-        self.worker_tasks: List[asyncio.Task[Any]] = []
-        self.child_workers: List["WorkerService"] = []
+        self.worker_tasks: list[asyncio.Task[Any]] = []
+        self.child_workers: list["WorkerService"] = []
         self.content_type: Optional[str] = None
         self.worker_count: int = 1
         self.last_activity_ts: Optional[float] = None
@@ -541,9 +542,9 @@ class WorkerService:
 
             try:
                 location_param = {"latitude": str(task.latitude), "longitude": str(task.longitude)}
-                discovered_items: List[GoogleMapsListItem] = []
+                discovered_items: list[GoogleMapsListItem] = []
                 # Keep track of Place IDs in this specific search to avoid redundant enqueuing
-                pushed_place_ids: Set[str] = set()
+                pushed_place_ids: set[str] = set()
 
                 # Idle timeout (resets per item) instead of one fixed ceiling
                 # for the whole tile+phrase task - a source that keeps
@@ -631,7 +632,7 @@ class WorkerService:
                 logger.error(f"Details worker: browser connectivity check failed: {e}")
                 break
 
-            tasks: List[GmItemTask] = await asyncio.to_thread(gm_list_item_queue.poll, batch_size=1)
+            tasks: list[GmItemTask] = await asyncio.to_thread(gm_list_item_queue.poll, batch_size=1)
             if not tasks:
                 if once:
                     return
@@ -705,7 +706,7 @@ class WorkerService:
                 logger.error(f"Enrichment worker: browser connectivity check failed: {e}")
                 break
 
-            tasks: List[QueueMessage] = await asyncio.to_thread(enrichment_queue.poll, batch_size=1)
+            tasks: list[QueueMessage] = await asyncio.to_thread(enrichment_queue.poll, batch_size=1)
             if not tasks:
                 if once:
                     return
@@ -783,7 +784,7 @@ class WorkerService:
                     s3_client = self.get_s3_client()
                     details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
                     coros = [self._run_scrape_task_loop(browser, details_q, s3_client, debug, once, headless, workers) for _ in range(workers)]
-                    tasks: List[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
+                    tasks: list[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
                     
                     # Run until workers finish or max session duration reached
                     while time.time() - session_start < max_session_duration_s:
@@ -823,7 +824,7 @@ class WorkerService:
                     details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
                     enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
                     coros = [self._run_details_task_loop(context, details_q, enrich_q, s3_client, debug, once) for _ in range(workers)]
-                    tasks: List[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
+                    tasks: list[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
                     
                     while time.time() - session_start < max_session_duration_s:
                         done, pending = await asyncio.wait(tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
@@ -865,7 +866,7 @@ class WorkerService:
                     s3_client = self.get_s3_client()
                     enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
                     coros = [self._run_enrichment_task_loop(context, enrich_q, debug, once, s3_client) for _ in range(workers)]
-                    tasks: List[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
+                    tasks: list[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
                     
                     while time.time() - session_start < max_session_duration_s:
                         done, pending = await asyncio.wait(tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
@@ -888,7 +889,7 @@ class WorkerService:
 
 
 
-    async def _compute_queue_pending(self) -> Dict[str, int]:
+    async def _compute_queue_pending(self) -> dict[str, int]:
         """Live pending counts for this node's own local queues.
 
         The audit machine's own local disk is never a faithful mirror of
@@ -906,8 +907,8 @@ class WorkerService:
         from ..core.queue.factory import get_queue_manager
         from .gm_list_enqueue_service import enqueue_unscraped_to_gm_list_pending
 
-        def _compute() -> Dict[str, int]:
-            result: Dict[str, int] = {}
+        def _compute() -> dict[str, int]:
+            result: dict[str, int] = {}
             try:
                 gm_details_q = get_queue_manager(
                     "gm-details", queue_type="gm_list_item", campaign_name=self.campaign_name
@@ -963,7 +964,7 @@ class WorkerService:
 
         return await asyncio.to_thread(_compute)
 
-    async def _compute_gm_list_tile_coverage(self) -> Dict[str, int]:
+    async def _compute_gm_list_tile_coverage(self) -> dict[str, int]:
         """Deduplicated (lat,lon) tile-level gm-list coverage.
 
         Distinct from _compute_queue_pending()'s gm-list figure, which is
@@ -985,13 +986,13 @@ class WorkerService:
 
         from ..core.paths import paths
 
-        def _compute() -> Dict[str, int]:
+        def _compute() -> dict[str, int]:
             campaign_paths = paths.campaign(self.campaign_name)
             dg_root = campaign_paths.queue("discovery-gen").completed
             gm_list_root = campaign_paths.queue("gm-list").completed / "results"
 
-            def _tile_set(root: Path, pattern: str) -> Set[str]:
-                tiles: Set[str] = set()
+            def _tile_set(root: Path, pattern: str) -> set[str]:
+                tiles: set[str] = set()
                 if not root.exists():
                     return tiles
                 for f in root.rglob(pattern):
@@ -1024,8 +1025,8 @@ class WorkerService:
         # orchestrator actually launched (run_orchestrated_workers populates
         # self.child_workers) - previously this was always {} regardless of what
         # was running, which is why the heartbeat's worker counts were always 0.
-        designation: Dict[str, int] = {}
-        last_activity: Dict[str, str] = {}
+        designation: dict[str, int] = {}
+        last_activity: dict[str, str] = {}
         for child in self.child_workers:
             if not child.content_type:
                 continue
@@ -1100,7 +1101,7 @@ class WorkerService:
                 await asyncio.sleep(interval)
             await browser.close()
 
-    def _reclaim_expired_leases(self, content_types: Set[str]) -> None:
+    def _reclaim_expired_leases(self, content_types: set[str]) -> None:
         """Reclaims leases abandoned by a previous crashed/killed worker
         before new workers of these content types start claiming. Without
         this, a worker that dies mid-task leaves its lease.json sitting in
@@ -1128,7 +1129,7 @@ class WorkerService:
                     f"lease(s) (found={metrics['leases_found']})"
                 )
 
-    async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:
+    async def run_orchestrated_workers(self, worker_definitions: list[Any], headless: bool = True, debug: bool = False) -> None:
         """
         Launches and manages multiple named worker instances.
         """
@@ -1220,7 +1221,7 @@ class WorkerService:
             logger.warning("No worker tasks created; idling (heartbeat/config-watch only).")
             await asyncio.Event().wait()
 
-    async def get_cluster_health(self) -> List[Dict[str, Any]]:
+    async def get_cluster_health(self) -> list[dict[str, Any]]:
         """
         Checks health of all Raspberry Pi workers.
         """
@@ -1245,7 +1246,7 @@ class WorkerService:
                 results.append({"host": host, "online": False})
         return results
 
-    def resolve_worker_definitions(self, hostname: str, running_in_fargate: bool) -> List[Any]:
+    def resolve_worker_definitions(self, hostname: str, running_in_fargate: bool) -> list[Any]:
         """Resolves node config and returns a list of WorkerDefinitions for the host."""
         from ..models.campaigns.worker_config import WorkerDefinition
         from ..services.cluster_service import ClusterService

@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import Field, model_validator, BeforeValidator
-from typing import Optional, Dict, Any, Annotated, List, Protocol, runtime_checkable
+from typing import Optional, Any, Annotated, Protocol, runtime_checkable
 from datetime import datetime, UTC
 from pathlib import Path
 import logging
@@ -185,7 +186,7 @@ class GoogleMapsPlace(GoogleMapsIdx):
 
     @model_validator(mode='before')
     @classmethod
-    def recover_lat_lon_from_tile_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def recover_lat_lon_from_tile_id(cls, values: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(values, dict):
             return values
             
@@ -205,7 +206,7 @@ class GoogleMapsPlace(GoogleMapsIdx):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_identity(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def sanitize_identity(cls, values: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(values, dict):
             return values
             
@@ -218,7 +219,7 @@ class GoogleMapsPlace(GoogleMapsIdx):
 
     @model_validator(mode='before')
     @classmethod
-    def hydrate_address_components(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def hydrate_address_components(cls, values: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(values, dict):
             return values
             
@@ -233,7 +234,7 @@ class GoogleMapsPlace(GoogleMapsIdx):
 
     @model_validator(mode='before')
     @classmethod
-    def clean_empty_values(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def clean_empty_values(cls, values: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(values, dict):
             return values
             
@@ -269,7 +270,7 @@ class GoogleMapsPlace(GoogleMapsIdx):
         return UNIT_SEP.join(values) + "\n"
 
     @classmethod
-    def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
+    def get_datapackage_fields(cls) -> list[dict[str, Any]]:
         """Frictionless field defs, including constraints (BaseUsvModel), plus the
         DEPRECATED flag this domain uses for fields Google Maps no longer provides."""
         fields = super().get_datapackage_fields()

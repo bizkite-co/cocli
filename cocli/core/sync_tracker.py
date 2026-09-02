@@ -1,6 +1,7 @@
 """
 SyncTracker: Manages PI sync timestamps for campaigns.
 """
+from __future__ import annotations
 
 from datetime import datetime, UTC
 from typing import Optional

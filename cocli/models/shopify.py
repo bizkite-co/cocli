@@ -1,4 +1,5 @@
-from typing import Optional, List
+from __future__ import annotations
+from typing import Optional
 from pydantic import BaseModel, Field
 from .phone import OptionalPhone
 
@@ -8,7 +9,7 @@ class ShopifyData(BaseModel):
     last_name: Optional[str] = None
     email: Optional[str] = None
     phone: OptionalPhone = None
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     company_name: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None

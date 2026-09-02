@@ -1,8 +1,9 @@
+from __future__ import annotations
 import os
 import json
 import boto3
 import logging
-from typing import Dict, Any, cast, Optional
+from typing import Any, cast, Optional
 from rich.console import Console
 from datetime import datetime, UTC
 
@@ -17,14 +18,14 @@ console = Console()
 __all__ = ["get_campaign_stats", "get_boto3_session", "get_s3_client", "get_data_bucket_name", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
 
 
-def get_data_bucket_name(config: Dict[str, Any], campaign_name: str) -> str:
+def get_data_bucket_name(config: dict[str, Any], campaign_name: str) -> str:
     """Returns the environment-aware data bucket name."""
     aws_config = config.get("aws", {})
     base_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
     return paths.s3.bucket(base_name)
 
 
-def get_s3_client(session: Optional[boto3.Session] = None, session_config: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Any:
+def get_s3_client(session: Optional[boto3.Session] = None, session_config: Optional[dict[str, Any]] = None, **kwargs: Any) -> Any:
     """Returns a configured S3 client, respecting COCLI_S3_ENDPOINT."""
     if not session and session_config:
         session = get_boto3_session(session_config)
@@ -52,7 +53,7 @@ def get_s3_client(session: Optional[boto3.Session] = None, session_config: Optio
     return session.client("s3", **kwargs)
 
 
-def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, profile_name: Optional[str] = None) -> boto3.Session:
+def get_boto3_session(config: dict[str, Any], max_pool_connections: int = 10, profile_name: Optional[str] = None) -> boto3.Session:
     """Creates a boto3 session, prioritizing non-interactive IoT auth for TUI/Background tasks."""
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
@@ -140,7 +141,7 @@ def get_active_fargate_tasks(
         logger.warning(f"Could not fetch ECS service status: {e}")
         return 0
 
-def get_exclusions_data(campaign_name: str) -> Dict[str, Any]:
+def get_exclusions_data(campaign_name: str) -> dict[str, Any]:
     """Returns only the exclusions list."""
     exclusion_manager = ExclusionManager(campaign_name)
     exclusions = exclusion_manager.list_exclusions()
@@ -150,12 +151,12 @@ def get_exclusions_data(campaign_name: str) -> Dict[str, Any]:
             exc["created_at"] = exc["created_at"].isoformat()
     return data
 
-def get_queries_data(campaign_name: str) -> Dict[str, Any]:
+def get_queries_data(campaign_name: str) -> dict[str, Any]:
     """Returns only the search queries."""
     config = load_campaign_config(campaign_name)
     return {"queries": config.get("prospecting", {}).get("queries", [])}
 
-def get_locations_data(campaign_name: str) -> Dict[str, Any]:
+def get_locations_data(campaign_name: str) -> dict[str, Any]:
     """Returns only the locations and their status."""
     config = load_campaign_config(campaign_name)
     prospecting_config = config.get("prospecting", {})
@@ -166,12 +167,12 @@ def get_locations_data(campaign_name: str) -> Dict[str, Any]:
         "locations": stats.get("locations", [])
     }
 
-def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
+def get_campaign_stats(campaign_name: str) -> dict[str, Any]:
     """Collects statistics for a campaign, including local file counts and cloud status."""
     from cocli.core.text_utils import slugify
     import duckdb
     
-    stats: Dict[str, Any] = {}
+    stats: dict[str, Any] = {}
     config = load_campaign_config(campaign_name)
     prospecting_config = config.get("prospecting", {})
     queries = prospecting_config.get("queries", [])

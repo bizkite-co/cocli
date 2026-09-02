@@ -5,7 +5,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple, Any
+from typing import Any
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
 
 console = Console()
@@ -65,7 +65,7 @@ def main(
 
     console.print(f"[bold blue]Scanning local queue: {local_queue_dir}[/bold blue]")
     
-    files_to_upload: List[Tuple[Path, str]] = []
+    files_to_upload: list[tuple[Path, str]] = []
     
     # Walk the directory
     with console.status("[bold green]Collecting files...[/bold green]"):

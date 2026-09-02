@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import List
 
 class TileStatusResult(BaseModel):
     """map-tile has no processing phase (removed 2026-08-09) - it's a pure
@@ -14,11 +13,11 @@ class MissionReconciliationResult(BaseModel):
     mission_total: int
     receipt_total: int
     unscraped_count: int
-    unscraped_ids: List[str]
+    unscraped_ids: list[str]
     orphaned_receipt_count: int
-    orphaned_receipt_ids: List[str]
+    orphaned_receipt_ids: list[str]
     pending_total: int
     stale_pending_count: int
-    stale_pending_ids: List[str]
+    stale_pending_ids: list[str]
     truly_pending_count: int
-    truly_pending_ids: List[str]
+    truly_pending_ids: list[str]

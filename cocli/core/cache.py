@@ -1,8 +1,9 @@
+from __future__ import annotations
 import os
 import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 
 from .config import get_cocli_base_dir, get_companies_dir, get_people_dir
 from ..models.companies.cache import CompanyCacheItem
@@ -82,7 +83,7 @@ def is_cache_valid(campaign: Optional[str] = None) -> bool:
     return True
 
 
-def _fast_extract_metadata(index_path: Path) -> Dict[str, Any]:
+def _fast_extract_metadata(index_path: Path) -> dict[str, Any]:
     """Regex-based frontmatter extraction."""
     data = {}
     try:
@@ -139,7 +140,7 @@ def build_cache(campaign: Optional[str] = None) -> None:
     from .paths import paths
 
     logger.info(f"Building high-performance search cache for {campaign or 'global'}...")
-    items: List[CompanyCacheItem] = []
+    items: list[CompanyCacheItem] = []
     companies_dir = paths.companies.path
     people_dir = paths.people.path
 
@@ -228,7 +229,7 @@ def get_cached_items(
     filter_str: Optional[str] = None,
     campaign: Optional[str] = None,
     force_rebuild: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """LEGACY ADAPTER: Still used by some CLI commands. Rebuilds USV if needed."""
     if force_rebuild or not is_cache_valid(campaign=campaign):
         build_cache(campaign=campaign)

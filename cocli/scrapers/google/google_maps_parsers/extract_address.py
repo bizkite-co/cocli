@@ -1,11 +1,10 @@
 import re
 from bs4 import BeautifulSoup
-from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)
 
-def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
+def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> dict[str, str]:
     """
     Extracts address components from a soup object, preferring specific HTML structure,
     and falling back to innerText parsing.

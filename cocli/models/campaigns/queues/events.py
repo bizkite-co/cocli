@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 from typing import Optional, Literal
 from pathlib import Path
 from pydantic import Field

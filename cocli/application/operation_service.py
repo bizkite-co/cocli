@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import logging
 import asyncio
-from typing import Any, Dict, Optional, Callable, List
+from typing import Any, Optional, Callable
 from dataclasses import dataclass, field as dataclass_field
 
 from .services import ServiceContainer
@@ -24,7 +25,7 @@ class OperationMetadata:
     source_path: Optional[str] = None
     dest_path: Optional[str] = None
     process_details: Optional[str] = None
-    steps: List[OperationStep] = dataclass_field(default_factory=list)
+    steps: list[OperationStep] = dataclass_field(default_factory=list)
 
 
 class OperationService:
@@ -44,7 +45,7 @@ class OperationService:
         )
 
         # Define the Registry
-        self.operations: Dict[str, OperationMetadata] = {
+        self.operations: dict[str, OperationMetadata] = {
             "op_report": OperationMetadata(
                 "op_report",
                 "Campaign Report",
@@ -300,7 +301,7 @@ class OperationService:
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
         return self.operations.get(op_id)
 
-    def list_operations(self) -> List[OperationMetadata]:
+    def list_operations(self) -> list[OperationMetadata]:
         return list(self.operations.values())
 
     def _purge_to_call_pending_files(self) -> int:
@@ -325,8 +326,8 @@ class OperationService:
         op_id: str,
         log_callback: Optional[Callable[[str], None]] = None,
         step_callback: Optional[Callable[[str, str], None]] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Executes the specified operation asynchronously.
         This is the shared logic used by both the TUI and CLI.
@@ -450,7 +451,7 @@ class OperationService:
                 )
             elif op_id == "op_compact_index":
 
-                async def run_compaction() -> Dict[str, Any]:
+                async def run_compaction() -> dict[str, Any]:
                     log_step(
                         "s3_sync_down",
                         "pending",
@@ -480,7 +481,7 @@ class OperationService:
                 result = await run_compaction()
             elif op_id == "op_compile_lifecycle":
 
-                def run_compile() -> Dict[str, Any]:
+                def run_compile() -> dict[str, Any]:
                     gen = self.services.campaign_service.compile_lifecycle_index()
                     count = 0
                     for update in gen:
@@ -491,9 +492,9 @@ class OperationService:
                 result = await asyncio.to_thread(run_compile)
             elif op_id == "op_restore_names":
 
-                def run_restore() -> Dict[str, Any]:
+                def run_restore() -> dict[str, Any]:
                     gen = self.services.campaign_service.restore_names_from_index()
-                    final: Dict[str, Any] = {}
+                    final: dict[str, Any] = {}
                     for update in gen:
                         final = update
                     return final
@@ -519,7 +520,7 @@ class OperationService:
                     "indexes/scraped-tiles/",
                 ]
 
-                def run_check() -> Dict[str, Any]:
+                def run_check() -> dict[str, Any]:
                     return {
                         "results": self.services.audit_service.audit_cluster_paths(
                             paths_to_check
@@ -529,7 +530,7 @@ class OperationService:
                 result = await asyncio.to_thread(run_check)
             elif op_id == "op_compact_prospects":
 
-                async def run_compaction() -> Dict[str, Any]:
+                async def run_compaction() -> dict[str, Any]:
                     log_step(
                         "s3_sync_down",
                         "pending",
@@ -573,8 +574,8 @@ class OperationService:
                 result = await run_compaction()
             elif op_id == "op_compile_to_call":
 
-                async def run_workflow() -> Dict[str, Any]:
-                    report: Dict[str, Any] = {"steps": []}
+                async def run_workflow() -> dict[str, Any]:
+                    report: dict[str, Any] = {"steps": []}
                     dry_run = bool(params.get("dry_run"))
                     report["dry_run"] = dry_run
                     log_step("job-start", "success")
@@ -697,7 +698,7 @@ class OperationService:
                     skipped_do_not_call = 0
                     would_create = 0
                     would_update = 0
-                    sample_slugs: List[str] = []
+                    sample_slugs: list[str] = []
                     limit = params.get("limit")
                     from cocli.models.companies.company import Company
                     from cocli.models.company_name import CompanyName
@@ -877,7 +878,7 @@ class OperationService:
                     raise
             elif op_id == "op_purge_to_call":
 
-                async def run_purge_to_call() -> Dict[str, Any]:
+                async def run_purge_to_call() -> dict[str, Any]:
                     dry_run = bool(params.get("dry_run"))
                     log_step("purge_pending", "task-start")
                     if dry_run:
@@ -920,7 +921,7 @@ class OperationService:
                 )
             elif op_id == "op_scrape_details":
 
-                async def run_local_scrape() -> Dict[str, Any]:
+                async def run_local_scrape() -> dict[str, Any]:
                     place_id = params.get("place_id")
                     slug = params.get("company_slug")
                     if not place_id:
@@ -964,7 +965,7 @@ class OperationService:
                 result = await run_local_scrape()
             elif op_id == "op_re_enrich":
 
-                async def run_local_enrichment() -> Dict[str, Any]:
+                async def run_local_enrichment() -> dict[str, Any]:
                     slug = params.get("company_slug")
                     domain = params.get("domain")
                     if not slug or not domain:
@@ -1020,7 +1021,7 @@ class OperationService:
                 result = await run_local_enrichment()
             elif op_id == "op_refresh_dev":
 
-                async def run_refresh() -> Dict[str, Any]:
+                async def run_refresh() -> dict[str, Any]:
                     from ..core.environment import get_environment, Environment
                     import subprocess
                     import os
@@ -1092,7 +1093,7 @@ class OperationService:
                 result = await run_refresh()
             elif op_id == "op_sanitize_discovery":
 
-                async def run_sanitization() -> Dict[str, Any]:
+                async def run_sanitization() -> dict[str, Any]:
                     from ..services.cluster_service import ClusterService
                     from pathlib import Path
                     import importlib.util
@@ -1153,7 +1154,7 @@ class OperationService:
                 result = await run_sanitization()
             elif op_id == "op_purge_pending":
 
-                async def run_purge() -> Dict[str, Any]:
+                async def run_purge() -> dict[str, Any]:
                     from pathlib import Path
                     import importlib.util
 
@@ -1198,7 +1199,7 @@ class OperationService:
                 result = await run_purge()
             elif op_id == "op_rollout_discovery":
 
-                async def run_rollout() -> Dict[str, Any]:
+                async def run_rollout() -> dict[str, Any]:
                     batch_name = params.get("batch_name", f"rollout_{int(time.time())}")
                     limit = int(params.get("limit", 50))
                     ttl_days = int(params.get("ttl_days", 30))
@@ -1242,7 +1243,7 @@ class OperationService:
                         state = toml.load(state_path)
                         current_offset = state.get("last_offset", 0)
 
-                    tasks: List[MissionTask] = []
+                    tasks: list[MissionTask] = []
                     skipped_count = 0
 
                     if not frontier_path.exists():

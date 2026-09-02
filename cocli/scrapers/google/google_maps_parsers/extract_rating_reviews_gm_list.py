@@ -1,7 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import re
 from bs4 import BeautifulSoup
-from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,7 +11,7 @@ COMBO_ARIA_RE = re.compile(r'aria-label="(\d\.\d)\s*stars?\s*([\d,]+)\s*Reviews?
 LIST_ARIA_RATING_RE = re.compile(r"(\d\.\d)\s*stars?", re.IGNORECASE)
 LIST_ARIA_REVIEWS_RE = re.compile(r"([\d,]+)\s*Reviews?", re.IGNORECASE)
 
-def extract_rating_reviews_gm_list(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
+def extract_rating_reviews_gm_list(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> dict[str, str]:
     """
     Specialized extraction for Google Maps SEARCH RESULTS (List View).
     Prioritizes combined semantic ARIA labels.

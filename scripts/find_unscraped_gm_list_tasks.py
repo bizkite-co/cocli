@@ -1,7 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 from pathlib import Path
-from typing import List, Any
+from typing import Any
 from cocli.core.paths import paths
 from cocli.core.text_utils import slugify
 from cocli.core.sharding import get_geo_shard, get_grid_tile_id
@@ -51,7 +51,7 @@ def find_unscraped_gm_list_tasks(campaign_name: str, limit: int = 50) -> None:
         return
 
     logger.info(f"Loading GM List mission from {mission_path}...")
-    all_tasks: List[Any] = []
+    all_tasks: list[Any] = []
     with open(mission_path, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
@@ -66,7 +66,7 @@ def find_unscraped_gm_list_tasks(campaign_name: str, limit: int = 50) -> None:
 
     logger.info(f"Checking {len(all_tasks)} potential tasks for missing/hollow results...")
     
-    unscraped: List[Any] = []
+    unscraped: list[Any] = []
     for t in all_tasks:
         lat: float = t['latitude']
         lon: float = t['longitude']

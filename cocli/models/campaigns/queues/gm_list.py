@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Optional, ClassVar, Literal
 from pathlib import Path
 from pydantic import Field

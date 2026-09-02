@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Protocol, Set
+from typing import Optional, Protocol
 
 US = "\x1f"
 
@@ -42,7 +42,7 @@ class StationResult:
 @dataclass
 class TraceRow:
     identity: str
-    results: Dict[str, StationResult]
+    results: dict[str, StationResult]
 
 
 class StationCheck(Protocol):
@@ -53,12 +53,12 @@ class StationCheck(Protocol):
     def check(self, identity: str) -> StationResult: ...
 
 
-def trace_identity(checks: List[StationCheck], identity: str) -> Dict[str, StationResult]:
+def trace_identity(checks: list[StationCheck], identity: str) -> dict[str, StationResult]:
     """Walk every given station for one identity."""
     return {c.name: c.check(identity) for c in checks}
 
 
-def trace_identities(checks: List[StationCheck], identities: List[str]) -> List[TraceRow]:
+def trace_identities(checks: list[StationCheck], identities: list[str]) -> list[TraceRow]:
     """Walk every given station for each identity - the group report."""
     return [TraceRow(identity=i, results=trace_identity(checks, i)) for i in identities]
 
@@ -70,7 +70,7 @@ class GmListResultsCheck:
     name = "gm-list"
 
     def __init__(self, results_dir: Path) -> None:
-        self._index: Dict[str, List[str]] = {}
+        self._index: dict[str, list[str]] = {}
         if not results_dir.exists():
             return
         for f in results_dir.rglob("*.usv"):
@@ -96,7 +96,7 @@ class GmListResultsCheck:
             detail=f"{len(hits)} hit(s); latest {hits[-1]}",
         )
 
-    def all_identities(self) -> Set[str]:
+    def all_identities(self) -> set[str]:
         """Every place_id gm-list's *current* results tree still shows.
         Part of the seed set for a whole-campaign audit, alongside
         CheckpointPresenceCheck.all_identities() - gm-list alone is not
@@ -120,15 +120,15 @@ class QueueBucketCheck:
         failed_dir: Optional[Path] = None,
     ) -> None:
         self.name = name
-        self._completed: Set[str] = (
+        self._completed: set[str] = (
             {f.stem for f in completed_dir.glob("*.json")} if completed_dir.exists() else set()
         )
-        self._pending: Set[str] = set()
+        self._pending: set[str] = set()
         if pending_dir.exists():
             for f in pending_dir.rglob("*"):
                 if f.is_file() and not f.name.endswith(".lease"):
                     self._pending.add(f.stem if f.suffix else f.name)
-        self._failed: Set[str] = (
+        self._failed: set[str] = (
             {f.stem for f in failed_dir.glob("*.json")}
             if failed_dir is not None and failed_dir.exists()
             else set()
@@ -151,7 +151,7 @@ class CheckpointPresenceCheck:
     name = "checkpoint"
 
     def __init__(self, checkpoint_path: Path) -> None:
-        self._ids: Set[str] = set()
+        self._ids: set[str] = set()
         if not checkpoint_path.exists():
             return
         with open(checkpoint_path, "r", encoding="utf-8", errors="replace") as f:
@@ -164,7 +164,7 @@ class CheckpointPresenceCheck:
         state = "present" if identity in self._ids else "absent"
         return StationResult(station=self.name, state=state)
 
-    def all_identities(self) -> Set[str]:
+    def all_identities(self) -> set[str]:
         """Every identity present in the checkpoint - part of the seed set
         for a whole-campaign audit alongside GmListResultsCheck.all_identities().
         Confirmed live 2026-08-18: some checkpoint entries have no
@@ -200,7 +200,7 @@ class ProspectDomainIndex:
         from cocli.utils.usv_utils import USVDictReader
 
         fieldnames = list(GoogleMapsProspect.model_fields.keys())
-        self._rows: Dict[str, Dict[str, str]] = {}
+        self._rows: dict[str, dict[str, str]] = {}
 
         if checkpoint_path.exists():
             try:
@@ -251,7 +251,7 @@ class PrebuiltSetCheck:
     node's WAL directory). The set is built by the caller; this class has no
     knowledge of how, keeping it free of any services/-layer dependency."""
 
-    def __init__(self, name: str, ids: Set[str]) -> None:
+    def __init__(self, name: str, ids: set[str]) -> None:
         self.name = name
         self._ids = ids
 
@@ -270,7 +270,7 @@ _GM_LIST_COLUMNS = [
 ]
 
 
-def find_gm_list_rows(results_dir: Path, place_ids: Set[str]) -> Dict[str, Dict[str, str]]:
+def find_gm_list_rows(results_dir: Path, place_ids: set[str]) -> dict[str, dict[str, str]]:
     """Targeted lookup of full gm-list result rows for a specific, small set
     of place_ids - deliberately not a full-index build like
     GmListResultsCheck (which stays presence-only/lightweight, since it
@@ -286,7 +286,7 @@ def find_gm_list_rows(results_dir: Path, place_ids: Set[str]) -> Dict[str, Dict[
     fresh re-scrape, not a source of truth, so picking a specific "best"
     duplicate isn't required here.
     """
-    found: Dict[str, Dict[str, str]] = {}
+    found: dict[str, dict[str, str]] = {}
     if not place_ids or not results_dir.exists():
         return found
     remaining = set(place_ids)
@@ -314,7 +314,7 @@ def find_gm_list_rows(results_dir: Path, place_ids: Set[str]) -> Dict[str, Dict[
 
 
 def diagnose_prospect_trace(
-    results: Dict[str, StationResult], enrichment: Optional[StationResult] = None
+    results: dict[str, StationResult], enrichment: Optional[StationResult] = None
 ) -> str:
     """google_maps_prospects-specific interpretation of a combined trace.
 
@@ -361,7 +361,7 @@ def diagnose_prospect_trace(
 # gap categories from docs/_schema/traceability.md's Section 3, for
 # aggregate reporting (cocli audit campaign). Order matters - first prefix
 # match wins.
-GAP_CATEGORY_BY_VERDICT_PREFIX: List[tuple[str, str]] = [
+GAP_CATEGORY_BY_VERDICT_PREFIX: list[tuple[str, str]] = [
     ("present in checkpoint, enrichment completed", "no gap"),
     ("present in current checkpoint", "no gap"),
     ("present in checkpoint, no domain found yet", "no gap (pre-enrichment)"),

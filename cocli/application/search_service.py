@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
+from __future__ import annotations
 import duckdb
 import os
 import logging
@@ -7,7 +8,7 @@ import threading
 import json
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Any, cast, Dict
+from typing import Optional, Any, cast
 from cocli.core.cache import get_cache_path, CACHE_FILE_NAME
 from cocli.core.config import get_campaign
 from cocli.core.exclusions import list_all_exclusions
@@ -25,7 +26,7 @@ from cocli.models.campaigns.indexes.email import EmailEntry
 logger = logging.getLogger(__name__)
 
 
-def _get_compacted_fallback_columns() -> Dict[str, str]:
+def _get_compacted_fallback_columns() -> dict[str, str]:
     """Return fallback columns for items_compacted table when no data exists."""
     return {
         "place_id": "VARCHAR",
@@ -40,7 +41,7 @@ def _get_compacted_fallback_columns() -> Dict[str, str]:
     }
 
 
-_FRICTIONLESS_TO_DUCK: Dict[str, str] = {
+_FRICTIONLESS_TO_DUCK: dict[str, str] = {
     "string": "VARCHAR",
     "integer": "BIGINT",
     "number": "DOUBLE",
@@ -49,7 +50,7 @@ _FRICTIONLESS_TO_DUCK: Dict[str, str] = {
 }
 
 
-def _columns_from_datapackage_fields(fields: List[Dict[str, Any]]) -> Dict[str, str]:
+def _columns_from_datapackage_fields(fields: list[dict[str, Any]]) -> dict[str, str]:
     """Map Frictionless field defs to DuckDB column types."""
     return {
         str(field["name"]): _FRICTIONLESS_TO_DUCK.get(
@@ -91,7 +92,7 @@ def _load_email_index(
     con.execute("DROP TABLE IF EXISTS items_emails_by_slug")
     con.execute("DROP TABLE IF EXISTS items_emails_by_domain")
 
-    files: List[str] = []
+    files: list[str] = []
     if emails_root and emails_root.exists():
         shards_dir = emails_root / "shards"
         inbox_dir = emails_root / "inbox"
@@ -151,11 +152,11 @@ _last_campaign: Optional[str] = None
 _lock = threading.RLock()
 
 # Cache for template counts: { campaign_name: (timestamp, counts_dict) }
-_counts_cache: Dict[str, tuple[float, Dict[str, int]]] = {}
+_counts_cache: dict[str, tuple[float, dict[str, int]]] = {}
 _COUNTS_CACHE_TTL = 300  # 5 minutes
 
 
-def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
+def get_template_counts(campaign_name: Optional[str] = None) -> dict[str, int]:
     """Returns a dictionary of counts for each template filter."""
     global _con, _counts_cache
 
@@ -229,11 +230,11 @@ def get_fuzzy_search_results(
     campaign_name: Optional[str] = None,
     item_type: Optional[str] = None,
     limit: int = 500,
-    filters: Optional[Dict[str, Any]] = None,
+    filters: Optional[dict[str, Any]] = None,
     force_rebuild_cache: bool = False,
     offset: int = 0,
     sort_by: Optional[str] = None,
-) -> List[SearchResult]:
+) -> list[SearchResult]:
     """
     FDPE ENFORCEMENT: Provides fuzzy search results joined across multiple indices.
     """
@@ -615,7 +616,7 @@ def get_fuzzy_search_results(
 
             # 3. Build Query
             sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched FROM items WHERE 1=1"
-            params: List[Any] = []
+            params: list[Any] = []
 
             if item_type:
                 sql += " AND type = ?"
@@ -676,7 +677,7 @@ def get_fuzzy_search_results(
                         domain=domain,
                         email=str(r[4]) if r[4] else None,
                         phone_number=PhoneNumber.validate(str(r[5])) if r[5] else None,
-                        tags=cast(List[str], r[6]) if r[6] else [],
+                        tags=cast(list[str], r[6]) if r[6] else [],
                         display=str(r[7]),
                         average_rating=float(r[8]) if r[8] else None,
                         reviews_count=int(r[9]) if r[9] else None,

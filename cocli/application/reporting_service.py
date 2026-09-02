@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import logging
 import math
@@ -6,7 +7,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Callable, Optional, cast
 
 import toml
 from pydantic import BaseModel, Field
@@ -32,7 +33,7 @@ class VizExportResult(BaseModel):
     success: bool = True
     message: str = ""
     export_dir: Optional[Path] = None
-    files: List[Path] = Field(default_factory=list)
+    files: list[Path] = Field(default_factory=list)
     count: int = 0
 
 
@@ -44,7 +45,7 @@ class PublishKmlResult(BaseModel):
     message: str = ""
     bucket_name: str = ""
     domain: str = ""
-    uploaded_keys: List[str] = Field(default_factory=list)
+    uploaded_keys: list[str] = Field(default_factory=list)
     layers_key: str = "kml/layers.json"
 
 
@@ -52,7 +53,7 @@ class ReportingService:
     def __init__(self, campaign_name: Optional[str] = None):
         self.campaign_name = campaign_name or get_campaign() or ""
 
-    def get_environment_status(self) -> Dict[str, Any]:
+    def get_environment_status(self) -> dict[str, Any]:
         """
         Returns the current status of the cocli environment.
         Corresponds to 'cocli status'.
@@ -110,7 +111,7 @@ class ReportingService:
             "s3_data_root": s3_bucket
         }
 
-    def get_campaign_stats(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:
+    def get_campaign_stats(self, campaign_name: Optional[str] = None) -> dict[str, Any]:
         """
         Returns a comprehensive dictionary of campaign statistics.
         Caches the result to disk.
@@ -133,7 +134,7 @@ class ReportingService:
                 "last_updated": datetime.now(timezone.utc).isoformat()
             }
 
-    async def get_cluster_health(self) -> List[Dict[str, Any]]:
+    async def get_cluster_health(self) -> list[dict[str, Any]]:
         """
         Returns health status of all workers in the cluster.
         This is an SSH-based real-time check.
@@ -145,7 +146,7 @@ class ReportingService:
         ws = WorkerService(campaign_name=self.campaign_name)
         return await ws.get_cluster_health()
 
-    def get_index_stats(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:
+    def get_index_stats(self, campaign_name: Optional[str] = None) -> dict[str, Any]:
         """Returns record counts and paths for core system indexes."""
         from ..core.paths import paths
         import subprocess
@@ -223,7 +224,7 @@ class ReportingService:
             }
         }
 
-    def save_cached_report(self, campaign_name: str, report_type: str, data: Dict[str, Any]) -> None:
+    def save_cached_report(self, campaign_name: str, report_type: str, data: dict[str, Any]) -> None:
         """Saves a report to the local reports cache and the campaign exports dir."""
         from ..core.config import get_cocli_app_data_dir, get_campaigns_dir
         
@@ -241,7 +242,7 @@ class ReportingService:
             with open(exports_dir / f"{report_type}.json", "w") as f:
                 json.dump(data, f, indent=2)
 
-    def load_cached_report(self, campaign_name: str, report_type: str) -> Optional[Dict[str, Any]]:
+    def load_cached_report(self, campaign_name: str, report_type: str) -> Optional[dict[str, Any]]:
         """Loads a report from the campaign exports dir or the user cache fallback."""
         from ..core.config import get_cocli_app_data_dir, get_campaigns_dir
         import json
@@ -251,7 +252,7 @@ class ReportingService:
         if report_file.exists():
             try:
                 with open(report_file, "r") as f:
-                    return cast(Dict[str, Any], json.load(f))
+                    return cast(dict[str, Any], json.load(f))
             except Exception:
                 pass
 
@@ -260,12 +261,12 @@ class ReportingService:
         if fallback_file.exists():
             try:
                 with open(fallback_file, "r") as f:
-                    return cast(Dict[str, Any], json.load(f))
+                    return cast(dict[str, Any], json.load(f))
             except Exception:
                 return None
         return None
 
-    def get_email_analysis(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:
+    def get_email_analysis(self, campaign_name: Optional[str] = None) -> dict[str, Any]:
         """
         Returns deep analysis on emails for the campaign.
         Corresponds to 'make analyze-emails' / 'scripts/debug_stats.py'.
@@ -328,7 +329,7 @@ class ReportingService:
                 count=0,
             )
 
-        areas_by_phrase: Dict[str, List[Any]] = {}
+        areas_by_phrase: dict[str, list[Any]] = {}
         for area in scraped_areas:
             areas_by_phrase.setdefault(area.phrase, []).append(area)
 
@@ -336,9 +337,9 @@ class ReportingService:
         colors = ["ff0000ff", "ff00ff00", "ffff0000", "ff00ffff", "ffff00ff", "ffffff00"]
         phrase_colors = {phrase: colors[i % len(colors)] for i, phrase in enumerate(phrases)}
 
-        written: List[Path] = []
+        written: list[Path] = []
         for phrase, areas in areas_by_phrase.items():
-            kml_placemarks: List[str] = []
+            kml_placemarks: list[str] = []
             for area in areas:
                 coordinates = (
                     f"{area.lon_min},{area.lat_min},0 "
@@ -365,7 +366,7 @@ class ReportingService:
             out_path.write_text(kml_content)
             written.append(out_path)
 
-        aggregated_tiles: Dict[str, Dict[str, Any]] = {}
+        aggregated_tiles: dict[str, dict[str, Any]] = {}
         for area in scraped_areas:
             center_lat = (area.lat_min + area.lat_max) / 2
             center_lon = (area.lon_min + area.lon_max) / 2
@@ -385,7 +386,7 @@ class ReportingService:
             phrases_map = aggregated_tiles[tile_id]["phrases"]
             phrases_map[area.phrase] = phrases_map.get(area.phrase, 0) + area.items_found
 
-        agg_placemarks: List[str] = []
+        agg_placemarks: list[str] = []
         for tile_id, data in aggregated_tiles.items():
             lat_min, lon_min = data["lat"], data["lon"]
             lat_max, lon_max = lat_min + 0.1, lon_min + 0.1
@@ -466,7 +467,7 @@ class ReportingService:
                 count=0,
             )
 
-        kml_placemarks: List[str] = []
+        kml_placemarks: list[str] = []
         for area in legacy_areas:
             coordinates = (
                 f"{area.lon_min},{area.lat_min},0 {area.lon_max},{area.lat_min},0 "
@@ -505,11 +506,11 @@ class ReportingService:
         bucket_name: Optional[str] = None,
         domain: Optional[str] = None,
         campaign_name: Optional[str] = None,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Resolve AWS profile / domain / bucket for KML publish from campaign config."""
         name, campaign_dir = self._require_campaign_dir(campaign_name)
         config_path = campaign_dir / "config.toml"
-        config: Dict[str, Any] = {}
+        config: dict[str, Any] = {}
         if config_path.exists():
             with open(config_path, "r") as f:
                 config = toml.load(f)
@@ -601,7 +602,7 @@ class ReportingService:
 
         session = boto3.Session(profile_name=profile)
         s3 = session.client("s3")
-        uploaded: List[str] = []
+        uploaded: list[str] = []
 
         for local_path, remote_key in files_to_upload:
             if local_path.exists():
@@ -770,7 +771,7 @@ class ReportingService:
         )
 
 
-        targets: List[tuple[Path, Any]] = []
+        targets: list[tuple[Path, Any]] = []
         if checkpoint.exists():
             targets.append((checkpoint, GoogleMapsProspect))
         if venue_checkpoint.exists():
@@ -784,7 +785,7 @@ class ReportingService:
                 count=0,
             )
 
-        resources: List[Dict[str, Any]] = []
+        resources: list[dict[str, Any]] = []
         for path, model_cls in targets:
             with open(path, "r", encoding="utf-8") as f:
                 reader = USVDictReader(f)

@@ -1,7 +1,8 @@
+from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional
 import wasmtime
 
 logger = logging.getLogger(__name__)
@@ -30,9 +31,9 @@ class WasiRunner:
         return self._hash
 
     def run(self, 
-            args: List[str], 
-            dirs: Dict[str, str], 
-            env: Optional[Dict[str, str]] = None) -> int:
+            args: list[str], 
+            dirs: dict[str, str], 
+            env: Optional[dict[str, str]] = None) -> int:
         """
         Executes the WASI module with specific arguments and directory mappings.
         dirs: mapping of guest_path -> host_path

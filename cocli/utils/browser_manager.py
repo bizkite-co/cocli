@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 from typing import Optional, Any
 from playwright.async_api import async_playwright, Browser, Page

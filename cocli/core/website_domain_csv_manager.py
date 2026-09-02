@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional
 
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from .domain_index_manager import DomainIndexManager
@@ -25,7 +26,7 @@ class WebsiteDomainCsvManager:
             self.manager.root_dir = indexes_dir
             self.manager.protocol = ""
 
-        self.data: Dict[str, WebsiteDomainCsv] = {}
+        self.data: dict[str, WebsiteDomainCsv] = {}
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         return self.manager.get_by_domain(domain)
@@ -48,6 +49,6 @@ class WebsiteDomainCsvManager:
         self.rebuild_cache()
 
     @property
-    def all_items(self) -> List[WebsiteDomainCsv]:
+    def all_items(self) -> list[WebsiteDomainCsv]:
         """Legacy access to all items. WARNING: This can be slow for large indexes."""
         return self.manager.query()

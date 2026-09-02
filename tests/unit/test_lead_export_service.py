@@ -10,7 +10,7 @@ found_keywords test below locks that specific gap in.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from cocli.application.lead_export_service import export_enriched_emails
 from cocli.core.paths import paths
@@ -29,7 +29,7 @@ def _setup(tmp_path: Path) -> None:
     (tmp_path / "companies").mkdir(parents=True)
 
 
-def _write_checkpoint(tmp_path: Path, rows: List[str]) -> None:
+def _write_checkpoint(tmp_path: Path, rows: list[str]) -> None:
     checkpoint = (
         tmp_path / "campaigns" / CAMPAIGN / "indexes" / "google_maps_prospects" / "prospects.usv"
     )

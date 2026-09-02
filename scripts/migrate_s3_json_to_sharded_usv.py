@@ -4,7 +4,7 @@ import logging
 import typer
 import uuid
 import hashlib
-from typing import Any, Dict
+from typing import Any
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
@@ -54,7 +54,7 @@ def main(
 
     print(f"Downloading and sharding {len(json_keys)} files using {workers} workers...")
 
-    shard_data: Dict[str, Dict[str, WebsiteDomainCsv]] = {f"{i:02x}": {} for i in range(256)}
+    shard_data: dict[str, dict[str, WebsiteDomainCsv]] = {f"{i:02x}": {} for i in range(256)}
 
     with Progress(
         SpinnerColumn(),

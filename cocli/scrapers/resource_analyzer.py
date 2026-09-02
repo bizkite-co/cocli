@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ def is_likely_non_commercial(category: str) -> bool:
     cat_lower = category.lower()
     return any(c in cat_lower for c in NON_COMMERCIAL_CATEGORIES)
 
-def analyze_resource_value(name: str, category: str, description: str, reviews: str) -> Dict[str, Any]:
+def analyze_resource_value(name: str, category: str, description: str, reviews: str) -> dict[str, Any]:
     """
     Analyzes a resource to determine its fee structure and value for the "Value-First" policy.
     In a real implementation, this would call an LLM. For now, we use a rule-based heuristic.

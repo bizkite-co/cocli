@@ -1,3 +1,4 @@
+from __future__ import annotations
 import uuid
 from rich.console import Console
 from pathlib import Path

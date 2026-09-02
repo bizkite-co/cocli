@@ -2,8 +2,9 @@
 
 Provides audit operations focusing on queues and data quality.
 """
+from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, Optional
 from pathlib import Path
 from .audit_service import AuditService
 from cocli.models import TileStatusResult, MissionReconciliationResult
@@ -21,7 +22,7 @@ class AuditQueueService:
     def audit_enrichment(self, campaign_name: str) -> dict[str, Any]:
         return self._service.audit_enrichment(campaign_name)
 
-    def get_enrichment_interactive_targets(self, campaign_name: str) -> List[tuple[Optional[str], str, str, bool, bool]]:
+    def get_enrichment_interactive_targets(self, campaign_name: str) -> list[tuple[Optional[str], str, str, bool, bool]]:
         return self._service.get_enrichment_interactive_targets(campaign_name)
 
     def run_gm_list_html_audit(self, campaign: str, limit: int, output: str) -> Path:

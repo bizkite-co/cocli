@@ -1,7 +1,8 @@
+from __future__ import annotations
 from ...core.utils import generate_company_hash
 
 import re
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 from bs4 import BeautifulSoup
 
 from .google_maps_parsers.extract_name import extract_name
@@ -77,12 +78,12 @@ QUOTES_RE = re.compile(r'"(.*?)"')
 
 def parse_business_listing_html(
     item_html: str, keyword: Optional[str] = None, debug: bool = False
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Extracts business data from a single Google Maps listing HTML snippet, prioritizing innerText parsing.
     """
     soup = BeautifulSoup(item_html, "html.parser")
-    data: Dict[str, Any] = {header: "" for header in GOOGLE_MAPS_HEADERS}
+    data: dict[str, Any] = {header: "" for header in GOOGLE_MAPS_HEADERS}
     data["Keyword"] = keyword if keyword else ""
 
     inner_text = soup.get_text(separator="\n", strip=True)

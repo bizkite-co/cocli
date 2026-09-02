@@ -1,5 +1,4 @@
 import logging
-from typing import List
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta  # type: ignore
 
@@ -19,9 +18,9 @@ class EventGeneratorService:
         self.pending_dir = paths.campaign(campaign_name).queue(QueueIdentity.EVENTS).path / "pending"
         self.completed_dir = paths.campaign(campaign_name).queue(QueueIdentity.EVENTS).path / "completed"
 
-    def load_sources(self) -> List[EventSource]:
+    def load_sources(self) -> list[EventSource]:
         """Loads all active event sources from the filesystem."""
-        sources: List[EventSource] = []
+        sources: list[EventSource] = []
         if not self.sources_dir.exists():
             return sources
             
@@ -35,7 +34,7 @@ class EventGeneratorService:
                 logger.error(f"Failed to load event source {p}: {e}")
         return sources
 
-    def generate_tasks(self, windows_ahead: int = 1) -> List[EventScrapeTask]:
+    def generate_tasks(self, windows_ahead: int = 1) -> list[EventScrapeTask]:
         """
         Generates tasks for the specified number of windows ahead.
         """
@@ -58,7 +57,7 @@ class EventGeneratorService:
                 
         return generated_tasks
 
-    def _calculate_windows(self, source: EventSource, start_date: datetime, count: int) -> List[tuple[datetime, str]]:
+    def _calculate_windows(self, source: EventSource, start_date: datetime, count: int) -> list[tuple[datetime, str]]:
         """
         Returns a list of (date, window_id) tuples based on frequency.
         """

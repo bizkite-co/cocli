@@ -1,6 +1,7 @@
+from __future__ import annotations
 import json
 import logging
-from typing import List, Optional
+from typing import Optional
 from botocore.exceptions import ClientError
 
 from ...models.campaigns.queues.base import QueueMessage
@@ -48,11 +49,11 @@ class SQSQueue(QueueManager):
             logger.error(f"Error pushing to SQS: {e}")
             raise
 
-    def poll(self, batch_size: int = 1) -> List[QueueMessage]:
+    def poll(self, batch_size: int = 1) -> list[QueueMessage]:
         """
         Retrieve a batch of messages from SQS.
         """
-        messages: List[QueueMessage] = []
+        messages: list[QueueMessage] = []
         try:
             response = self.sqs.receive_message(
                 QueueUrl=self.queue_url,

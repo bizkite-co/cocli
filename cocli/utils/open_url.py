@@ -16,7 +16,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
-from typing import List, Sequence
+from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +43,8 @@ def open_url(url: str) -> bool:
     return False
 
 
-def _candidate_commands(url: str) -> List[List[str]]:
-    commands: List[List[str]] = []
+def _candidate_commands(url: str) -> list[list[str]]:
+    commands: list[list[str]] = []
     if sys.platform == "darwin":
         open_bin = shutil.which("open")
         if open_bin:

@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 from urllib.parse import quote
 
 from rich.console import Console
@@ -92,7 +92,7 @@ def print_accessible_path(
     path: Path,
     *,
     style: str = "cyan",
-) -> Tuple[str, Optional[str]]:
+) -> tuple[str, Optional[str]]:
     """
     Print a path with optional Windows form and a clickable terminal hyperlink.
 

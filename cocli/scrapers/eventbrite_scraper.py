@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import asyncio
 import re
 from datetime import datetime
-from typing import List, Optional, cast, Union
+from typing import Optional, cast, Union
 from playwright.async_api import async_playwright
 
 from bs4 import BeautifulSoup, Tag
@@ -17,7 +18,7 @@ class EventbriteScraper:
         self.debug = debug
         self.base_url = "https://www.eventbrite.com/d/ca--fullerton/events/"
 
-    async def scrape_fullerton(self) -> List[Event]:
+    async def scrape_fullerton(self) -> list[Event]:
         events = []
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=not self.debug)

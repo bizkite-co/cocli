@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, Any
 from .phone import OptionalPhone
 from .company_name import OptionalCompanyName
 from .company_address import OptionalCompanyAddress
@@ -16,7 +17,7 @@ def strip_quotes(v: Any) -> str:
 class SearchResult(BaseModel):
     type: str
     name: OptionalCompanyName = None
-    tags: List[str] = []
+    tags: list[str] = []
     display: str
     slug: Optional[str] = None
     domain: Optional[str] = None

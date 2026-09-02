@@ -1,10 +1,11 @@
 """
 Development utilities for testing and debugging pipeline stages.
 """
+from __future__ import annotations
 
 import typer
 import logging
-from typing import Optional, List, Annotated, Any
+from typing import Optional, Annotated, Any
 from pathlib import Path
 from rich.console import Console
 
@@ -17,7 +18,7 @@ console = Console()
 app = typer.Typer(no_args_is_help=True)
 
 
-def validate_usv_against_schema(usv_path: Path, model_class: type[Any]) -> tuple[bool, int, List[str]]:
+def validate_usv_against_schema(usv_path: Path, model_class: type[Any]) -> tuple[bool, int, list[str]]:
     """
     Validate a USV file against a Pydantic model schema.
     Returns: (is_valid, record_count, errors)

@@ -1,10 +1,11 @@
+from __future__ import annotations
 import json
 import subprocess
 import re
 import logging
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping, Optional, Tuple, Callable, Dict
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
 # Built-in encode profiles for draft vs publish passes (one normalize path).
 # Text/UI screencasts: prefer lower CRF and slower presets for publish clarity.
-ENCODE_PROFILES: Dict[str, Dict[str, Dict[str, Any]]] = {
+ENCODE_PROFILES: dict[str, dict[str, dict[str, Any]]] = {
     "publish": {
         "libx264": {"preset": "slow", "crf": 18},
         "h264_nvenc": {"preset": "p4", "cq": 20},
@@ -49,7 +50,7 @@ def resolve_encode_profile_name(
 def get_encode_profile_settings(
     profile_name: str,
     video_config: Optional[Mapping[str, Any]] = None,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """
     Return per-encoder settings for a named profile.
 
@@ -70,7 +71,7 @@ def get_encode_profile_settings(
             "Or define [video.encode.profiles.<name>] in campaign config."
         )
     # Deep-ish copy of built-in
-    settings: Dict[str, Dict[str, Any]] = {
+    settings: dict[str, dict[str, Any]] = {
         "libx264": dict(base["libx264"]),
         "h264_nvenc": dict(base["h264_nvenc"]),
     }
@@ -97,7 +98,7 @@ def get_encode_profile_settings(
 def build_codec_args(
     encoder: str,
     profile_settings: Mapping[str, Mapping[str, Any]],
-) -> Tuple[list[str], Optional[str], Optional[int], Optional[int]]:
+) -> tuple[list[str], Optional[str], Optional[int], Optional[int]]:
     """
     Build ffmpeg video codec args from encoder + profile settings.
 
@@ -124,7 +125,7 @@ def build_codec_args(
     )
 
 
-def _nvenc_is_usable() -> Tuple[bool, Optional[str]]:
+def _nvenc_is_usable() -> tuple[bool, Optional[str]]:
     """Return (usable, failure_reason) for h264_nvenc runtime probe."""
     probe = subprocess.run(
         [
@@ -158,7 +159,7 @@ def _nvenc_is_usable() -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def select_h264_encoder() -> Tuple[str, Optional[str], Optional[str]]:
+def select_h264_encoder() -> tuple[str, Optional[str], Optional[str]]:
     """
     Choose H.264 encoder.
 
@@ -184,10 +185,10 @@ def get_h264_encoder() -> str:
     return encoder
 
 
-def probe_video_identity(input_file: str | Path) -> Dict[str, Any]:
+def probe_video_identity(input_file: str | Path) -> dict[str, Any]:
     """Best-effort duration/size/dimensions for job-run receipts."""
     path = Path(input_file)
-    identity: Dict[str, Any] = {"path": str(path.resolve()) if path.exists() else str(path)}
+    identity: dict[str, Any] = {"path": str(path.resolve()) if path.exists() else str(path)}
     if path.exists():
         identity["bytes"] = path.stat().st_size
     try:
@@ -256,7 +257,7 @@ def get_duration(input_file: str | Path) -> float:
         ) from exc
 
 
-def parse_loudness_stats(stderr_output: str) -> Optional[Dict[str, float]]:
+def parse_loudness_stats(stderr_output: str) -> Optional[dict[str, float]]:
     """Parse loudness statistics from FFmpeg stderr output."""
     try:
         # Find the JSON block - look for "Input" section which contains measured values
@@ -339,12 +340,12 @@ def normalize_video(
     input_path: str | Path,
     output_path: Optional[str | Path] = None,
     callback: Optional[Callable[[float, float], None]] = None,
-    loudness_config: Optional[Dict[str, float]] = None,
-    denoise_config: Optional[Dict[str, int]] = None,
+    loudness_config: Optional[dict[str, float]] = None,
+    denoise_config: Optional[dict[str, int]] = None,
     job_run: Optional["VideoJobRun"] = None,
     encode_profile: Optional[str] = None,
     video_config: Optional[Mapping[str, Any]] = None,
-) -> Tuple[Optional[Path], Optional[Dict[str, float]]]:
+) -> tuple[Optional[Path], Optional[dict[str, float]]]:
     """
     Normalize video audio and compress for YouTube/Social.
 

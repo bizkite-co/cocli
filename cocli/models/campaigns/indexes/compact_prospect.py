@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pydantic import BeforeValidator, Field
 from typing import Annotated, Any, Optional, ClassVar
 from ...base import BaseUsvModel, ResourcePathPolicy

@@ -17,7 +17,7 @@ unintentional command surface changes or registration/import breakage:
 import difflib
 from io import StringIO
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any
 
 import pytest
 from typer.main import get_command
@@ -37,13 +37,13 @@ def _render_cli_tree() -> str:
 
 
 def _collect_leaves(
-    command: Any, path: Tuple[str, ...] = ()
-) -> List[Tuple[str, Tuple[str, ...]]]:
+    command: Any, path: tuple[str, ...] = ()
+) -> list[tuple[str, tuple[str, ...]]]:
     path = path + (command.name,) if command.name else path
     subcommands = getattr(command, "commands", {})
     if not subcommands:
         return [(command.name or "cocli", path)]
-    leaves: List[Tuple[str, Tuple[str, ...]]] = []
+    leaves: list[tuple[str, tuple[str, ...]]] = []
     for sub_name in sorted(subcommands):
         leaves.extend(_collect_leaves(subcommands[sub_name], path))
     return leaves
@@ -90,7 +90,7 @@ def runner() -> CliRunner:
     "leaf_path",
     [pytest.param(path, id="-".join(path)) for _name, path in _all_leaves],
 )
-def test_help_smoke(runner: CliRunner, leaf_path: Tuple[str, ...]) -> None:
+def test_help_smoke(runner: CliRunner, leaf_path: tuple[str, ...]) -> None:
     result = runner.invoke(main_app, list(leaf_path) + ["--help"])
     assert result.exit_code == 0, (
         f"`cocli {' '.join(leaf_path)} --help` exited {result.exit_code}:\n"

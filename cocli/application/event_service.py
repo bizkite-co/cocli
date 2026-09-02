@@ -1,7 +1,6 @@
 import logging
 import yaml
 from pathlib import Path
-from typing import List
 from ..models.campaigns.events import Event
 from ..core.paths import paths
 
@@ -14,7 +13,7 @@ class EventService:
     def __init__(self, campaign_name: str = "fullertonian"):
         self.campaign_name = campaign_name
 
-    def get_pending_events(self) -> List[Event]:
+    def get_pending_events(self) -> list[Event]:
         """
         Scans the events WAL for pending (non-curated) events.
         """

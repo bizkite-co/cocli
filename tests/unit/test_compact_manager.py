@@ -9,13 +9,14 @@ failures during `cocli index compact` each left a real batch stranded in S3
 processing/{run_id}/ with no way back to it. See task-agent ticket
 compact-wal-staging-violates-stations-c9-deletes-pi-sourced-data-before-commit-orphans-batches-on-failure
 and ~/repos/stations/spec/CONCURRENCY.md §3 (C6-C14, especially C9)."""
+from __future__ import annotations
 
 import json
 import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
@@ -29,11 +30,11 @@ def _node(hostname: str, ip_address: Optional[str] = None) -> PiNodeConfig:
     return PiNodeConfig(host=hostname, ip=ip_address)
 
 
-def _rsync_side_effect(files_by_host: Dict[str, int]) -> Any:
+def _rsync_side_effect(files_by_host: dict[str, int]) -> Any:
     """subprocess.run side_effect simulating rsync writing N fake WAL files
     per host into the destination the real code passed it."""
 
-    def _run(cmd: List[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         assert cmd[0] == "rsync"
         remote, dest_arg = cmd[-2], cmd[-1]
         dest = Path(dest_arg.rstrip("/"))
@@ -81,7 +82,7 @@ def test_isolate_wal_continues_past_one_nodes_rsync_failure(tmp_path: Path) -> N
     manager = CompactManager("test_campaign", "google_maps_prospects")
     nodes = [_node("cocli5x0"), _node("cocli5x1")]
 
-    def _run(cmd: List[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         remote = cmd[-2]
         host = remote.split("@")[1].split(":")[0]
         if host == "cocli5x0":
@@ -398,9 +399,9 @@ def test_isolate_wal_rsync_uses_accept_new_host_key_policy(tmp_path: Path) -> No
     manager = CompactManager("test_campaign", "google_maps_prospects")
     nodes = [_node("cocli5x0")]
 
-    captured_cmd: List[str] = []
+    captured_cmd: list[str] = []
 
-    def _run(cmd: List[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured_cmd.extend(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 

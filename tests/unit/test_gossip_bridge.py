@@ -3,7 +3,6 @@ import json
 import socket
 import threading
 import time
-from typing import Tuple
 from unittest.mock import MagicMock
 
 from cocli.core import gossip_bridge as _gossip_bridge_module
@@ -33,7 +32,7 @@ _module_patch("cocli.core.gossip_bridge.Zeroconf", MagicMock()).start()
 _module_patch("cocli.core.gossip_bridge.ServiceBrowser", MagicMock()).start()
 
 
-def _make_bridge() -> Tuple[_gossip_bridge_module.GossipBridge, MagicMock]:
+def _make_bridge() -> tuple[_gossip_bridge_module.GossipBridge, MagicMock]:
     # __new__ skips __init__, so none of __init__'s paths/config setup runs -
     # safe here since these tests only exercise broadcast_msg/_listen_loop.
     bridge = GossipBridge.__new__(GossipBridge)

@@ -1,8 +1,9 @@
+from __future__ import annotations
 import csv
 from datetime import datetime
 from pathlib import Path
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 import argparse # Import argparse
 import math # Import math for geographical calculations
 
@@ -69,12 +70,12 @@ def calculate_miles_from_bounds(lat_min: float, lat_max: float, lon_min: float, 
 
 
 # --- Helper for merging ScrapedArea objects ---
-def merge_scraped_areas(existing_areas: List[ScrapedArea], new_areas: List[ScrapedArea]) -> List[ScrapedArea]:
+def merge_scraped_areas(existing_areas: list[ScrapedArea], new_areas: list[ScrapedArea]) -> list[ScrapedArea]:
     """
     Merges a list of new ScrapedArea objects into an existing list, handling duplicates
     and prioritizing newer/more complete data.
     """
-    merged_map: Dict[tuple, ScrapedArea] = {}
+    merged_map: dict[tuple, ScrapedArea] = {}
 
     for area in existing_areas:
         key = (area.lat_min, area.lat_max, area.lon_min, area.lon_max)
@@ -112,7 +113,7 @@ def recover_scraped_area_data():
     ]
 
     # Group old areas by phrase
-    old_areas_by_phrase: Dict[str, List[ScrapedArea]] = {}
+    old_areas_by_phrase: dict[str, list[ScrapedArea]] = {}
 
     for file_path in old_scraped_area_csvs:
         if not file_path.exists():
@@ -211,7 +212,7 @@ def recover_website_domain_data():
     manager = WebsiteDomainCsvManager() # This loads existing data from website-domains.csv
 
     # Load prospects.csv data
-    prospects_data: List[Dict[str, Any]] = []
+    prospects_data: list[dict[str, Any]] = []
     if PROSPECTS_CSV_PATH.exists():
         with PROSPECTS_CSV_PATH.open('r', encoding='utf-8') as f:
             reader = csv.DictReader(f)

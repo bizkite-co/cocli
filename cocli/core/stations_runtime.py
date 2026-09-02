@@ -14,7 +14,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Generic, List, Optional, TypeVar
+from typing import Any, Callable, Generic, Optional, TypeVar
 
 from stations.backends import LocalPathBackend
 from stations.compactor import DefaultCompactor, last_write_wins_fold
@@ -43,7 +43,7 @@ class _CallbackLogEdge(Generic[U]):
     station: Any
     backend: Any
     _on_append: Callable[[U], None]
-    _appended: List[U]
+    _appended: list[U]
 
     def append(self, record: U) -> str:
         self._on_append(record)
@@ -75,7 +75,7 @@ def run_queue_transform_once(
         path_template="callback",
         model=object,
     )
-    appended: List[Any] = []
+    appended: list[Any] = []
 
     def _default_on_output(_out: U) -> None:
         return None
@@ -228,7 +228,7 @@ def compact_email_index_stations_only(
     )
 
 
-def load_email_entries_from_current(manager: Any) -> List[Any]:
+def load_email_entries_from_current(manager: Any) -> list[Any]:
     """Load folded EmailEntry list from stations CURRENT checkpoint."""
     from cocli.models.campaigns.indexes.email import EmailEntry
 
@@ -247,7 +247,7 @@ def load_email_entries_from_current(manager: Any) -> List[Any]:
     if base is None:
         return []
     if isinstance(base, list):
-        out: List[Any] = []
+        out: list[Any] = []
         for item in base:
             if isinstance(item, EmailEntry):
                 out.append(item)
@@ -284,7 +284,7 @@ def materialize_email_shards_from_current(manager: Any) -> int:
     if not entries:
         return 0
 
-    groups: dict[str, List[Any]] = {}
+    groups: dict[str, list[Any]] = {}
     for entry in entries:
         if not isinstance(entry, EmailEntry):
             continue
@@ -320,10 +320,10 @@ def _collect_prospect_usv_sources(
     index_dir: Path,
     *,
     checkpoint_path: Path,
-    staging_dirs: Optional[List[Path]] = None,
-) -> List[Path]:
+    staging_dirs: Optional[list[Path]] = None,
+) -> list[Path]:
     """Local USV sources for fold: wal/**, staging/**, naked root (not checkpoint)."""
-    files: List[Path] = []
+    files: list[Path] = []
     wal = index_dir / "wal"
     if wal.exists():
         files.extend(sorted(wal.rglob("*.usv")))
@@ -342,7 +342,7 @@ def _collect_prospect_usv_sources(
         files.append(checkpoint_path)
     # de-dupe preserving order
     seen: set[Path] = set()
-    out: List[Path] = []
+    out: list[Path] = []
     for p in files:
         rp = p.resolve()
         if rp not in seen:
@@ -352,8 +352,8 @@ def _collect_prospect_usv_sources(
 
 
 def _normalize_prospect_usv_files_to_model_width(
-    source_files: List[Path], work_dir: Path
-) -> List[Path]:
+    source_files: list[Path], work_dir: Path
+) -> list[Path]:
     """Pad/truncate headerless USV lines to current model field count.
 
     Append-only growth (decision 0003): short historical rows get trailing empties.
@@ -365,7 +365,7 @@ def _normalize_prospect_usv_files_to_model_width(
 
     width = len(GoogleMapsProspect.usv_field_names())
     work_dir.mkdir(parents=True, exist_ok=True)
-    normalized: List[Path] = []
+    normalized: list[Path] = []
     for i, src in enumerate(source_files):
         out = work_dir / f"norm_{i:04d}_{src.name}"
         kept = 0
@@ -402,7 +402,7 @@ def _normalize_prospect_usv_files_to_model_width(
 
 
 def _duckdb_fold_prospect_usv_files(
-    source_files: List[Path], dest: Path
+    source_files: list[Path], dest: Path
 ) -> bool:
     """Field-level LWW fold by place_id (product-scale Fold).
 
@@ -607,7 +607,7 @@ def compact_prospects_local(
     index_dir: Path,
     *,
     checkpoint_path: Path,
-    staging_dirs: Optional[List[Path]] = None,
+    staging_dirs: Optional[list[Path]] = None,
     compactor_id: Optional[str] = None,
 ) -> bool:
     """Local prospects compact: DuckDB LWW fold + stations CURRENT CAS + materialize.

@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import logging
 import asyncio
 from typing import Optional

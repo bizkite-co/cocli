@@ -46,7 +46,7 @@ import logging
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from cocli.core.entity_field_log import open_entity_field_log
 from cocli.core.paths import paths
@@ -95,7 +95,7 @@ def append_update(
     open_entity_field_log().append(record)
 
 
-def read_updates(target_dir: Path) -> List[DatagramRecord]:
+def read_updates(target_dir: Path) -> list[DatagramRecord]:
     """Load field-update facts for one entity via stations LogEdge.
 
     Callers fold onto base entity state (e.g. ``Company.from_directory``).

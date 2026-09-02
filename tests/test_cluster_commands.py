@@ -7,7 +7,8 @@ lived entirely in the Typer command wiring, not the service layer. A
 service-only test (see tests/unit/test_cluster_service.py) cannot catch a
 regression where the command layer stops passing log_callback through.
 """
-from typing import Any, Callable, List, Optional
+from __future__ import annotations
+from typing import Any, Callable, Optional
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -26,7 +27,7 @@ class FakeClusterService:
     def __init__(self, campaign_name: str) -> None:
         self.campaign_name = campaign_name
 
-    def get_nodes(self) -> List[FakeNode]:
+    def get_nodes(self) -> list[FakeNode]:
         return [FakeNode("fake-node")]
 
     async def stop_workers(self, log_callback: Optional[Callable[[str], None]] = None) -> None:
@@ -44,9 +45,9 @@ class FakeClusterService:
 
     async def prune_nodes(
         self,
-        validated_nodes: List[Any],
+        validated_nodes: list[Any],
         log_callback: Optional[Callable[[str], None]] = None,
-    ) -> List[dict]:
+    ) -> list[dict]:
         if log_callback:
             log_callback("Pruning fake-node...")
         return [{"node": "fake-node", "success": True, "reclaimed": "1 GB"}]

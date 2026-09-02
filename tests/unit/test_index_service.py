@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -124,10 +124,10 @@ def _make_compact_manager_mock(
     lock_ok: bool = True,
     moved: int = 1,
     lock_body: bytes | None = None,
-    wal_keys: List[str] | None = None,
-    proc_keys: List[str] | None = None,
-    checkpoint: Dict[str, Any] | None = None,
-    interrupted_prefixes: List[str] | None = None,
+    wal_keys: list[str] | None = None,
+    proc_keys: list[str] | None = None,
+    checkpoint: dict[str, Any] | None = None,
+    interrupted_prefixes: list[str] | None = None,
 ) -> MagicMock:
     manager = MagicMock()
     manager._bucket = "test-bucket"
@@ -155,7 +155,7 @@ def _make_compact_manager_mock(
     proc_keys = proc_keys if proc_keys is not None else []
     interrupted_prefixes = interrupted_prefixes if interrupted_prefixes is not None else []
 
-    def paginate(**kwargs: Any) -> List[Dict[str, Any]]:
+    def paginate(**kwargs: Any) -> list[dict[str, Any]]:
         prefix = kwargs.get("Prefix", "")
         if "Delimiter" in kwargs and prefix.endswith("processing/"):
             return [

@@ -1,10 +1,11 @@
+from __future__ import annotations
 import time
 import socket
 import logging
 import threading
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser, ServiceListener
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -68,7 +69,7 @@ class GossipBridge:
         self.node_id = get_node_id()
         self.zeroconf: Optional[Zeroconf] = None
         self.browser: Optional[ServiceBrowser] = None
-        self.peers: Dict[str, str] = {} # node_id -> ip_address
+        self.peers: dict[str, str] = {} # node_id -> ip_address
         self.running = False
         self.sock: Optional[socket.socket] = None
         self.observer = Observer()
@@ -76,23 +77,23 @@ class GossipBridge:
         
         # Persistent offsets to survive restarts
         self.offset_file = self.wal_dir / ".gossip_offsets.json"
-        self._sent_offsets: Dict[str, int] = self._load_offsets()
+        self._sent_offsets: dict[str, int] = self._load_offsets()
         
         # Real-time cluster status
-        self.heartbeats: Dict[str, Dict[str, Any]] = {}
+        self.heartbeats: dict[str, dict[str, Any]] = {}
 
         # Thread-local so only the listener thread (which applies remote
         # syncs) suppresses broadcasts; the main thread's genuine local
         # task completions must still broadcast normally. See broadcast_msg().
         self._suppress_broadcast = threading.local()
 
-    def _load_offsets(self) -> Dict[str, int]:
+    def _load_offsets(self) -> dict[str, int]:
         if self.offset_file.exists():
             try:
                 import json
                 with open(self.offset_file, "r") as f:
                     from typing import cast
-                    return cast(Dict[str, int], json.load(f))
+                    return cast(dict[str, int], json.load(f))
             except Exception:
                 pass
         return {}

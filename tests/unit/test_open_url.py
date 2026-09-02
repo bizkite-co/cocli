@@ -1,4 +1,5 @@
-from typing import List, Optional
+from __future__ import annotations
+from typing import Optional
 
 from cocli.utils.open_url import _candidate_commands, open_url
 
@@ -70,9 +71,9 @@ def test_open_url_spawns_first_successful_command(monkeypatch) -> None:
         "cocli.utils.open_url._candidate_commands",
         lambda url: [["xdg-open", url], ["explorer.exe", url]],
     )
-    spawned: List[List[str]] = []
+    spawned: list[list[str]] = []
 
-    def fake_spawn(command: List[str]) -> bool:
+    def fake_spawn(command: list[str]) -> bool:
         spawned.append(command)
         return command[0] == "explorer.exe"
 

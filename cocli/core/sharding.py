@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Union
 from .geo_types import LatScale1, LonScale1
 

@@ -1,5 +1,6 @@
+from __future__ import annotations
 import logging
-from typing import List, AsyncIterator, Optional, Dict, Any, Union
+from typing import AsyncIterator, Optional, Any, Union
 from playwright.async_api import Browser
 from geopy.distance import geodesic # type: ignore
 
@@ -37,12 +38,12 @@ class ScrapeCoordinator:
         self,
         start_lat: float,
         start_lon: float,
-        search_phrases: List[str],
+        search_phrases: list[str],
         max_proximity_miles: float = 0.0,
         panning_distance_miles: int = 5,
         force_refresh: bool = False,
         ttl_days: int = 30,
-        grid_tiles: Optional[List[Dict[str, Any]]] = None,
+        grid_tiles: Optional[list[dict[str, Any]]] = None,
         processed_by: Optional[str] = None
     ) -> AsyncIterator[GoogleMapsListItem]:
         

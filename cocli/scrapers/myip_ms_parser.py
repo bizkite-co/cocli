@@ -1,5 +1,5 @@
 from ..core.utils import generate_company_hash
-from typing import Dict, Any
+from typing import Any
 import re
 import logging
 
@@ -74,12 +74,12 @@ def extract_domain_from_url(url: str) -> str:
     match = re.search(r"https?://(?:www\.)?([a-zA-Z0-9.-]+)", url)
     return match.group(1) if match else ""
 
-def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict[str, Any]:
+def parse_myip_ms_listing(row_data: dict[str, str], debug: bool = False) -> dict[str, Any]:
     """
     Parses a single row of data from myip.ms (or converted XLSX) into a structured format
     compatible with the Company model.
     """
-    data: Dict[str, Any] = {header: "" for header in SHOPIFY_HEADERS}
+    data: dict[str, Any] = {header: "" for header in SHOPIFY_HEADERS}
     data["Keyword"] = "shopify-myip-ms" # Default keyword for this source
 
     if debug:

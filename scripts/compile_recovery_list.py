@@ -3,7 +3,6 @@ import os
 import re
 import sys
 import logging
-from typing import Set
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -26,21 +25,21 @@ def compile_list(campaign_name: str) -> None:
     index_dir = campaign_dir / "indexes" / "google_maps_prospects"
     
     # 1. Get already completed valid IDs (to exclude)
-    completed_ids: Set[str] = set()
+    completed_ids: set[str] = set()
     if completed_dir.exists():
         for f in completed_dir.glob("*.json"):
             completed_ids.add(f.stem)
     logger.info(f"Loaded {len(completed_ids)} already-completed valid IDs.")
 
     # 2. Get currently pending IDs (to avoid re-enqueuing)
-    pending_ids: Set[str] = set()
+    pending_ids: set[str] = set()
     if pending_dir.exists():
         for f in pending_dir.glob("*/*/task.json"):
             pending_ids.add(f.parent.name)
     logger.info(f"Loaded {len(pending_ids)} currently pending IDs.")
 
     # 3. Extract PIDs from all recovery files
-    all_found_pids: Set[str] = set()
+    all_found_pids: set[str] = set()
     pid_pattern = re.compile(r'ChIJ[a-zA-Z0-9_-]{10,}')
 
     files_to_scan = list(recovery_dir.glob("*.txt")) + list(recovery_dir.glob("*.usv"))
@@ -59,7 +58,7 @@ def compile_list(campaign_name: str) -> None:
     logger.info(f"Extracted {len(all_found_pids)} unique Place IDs from recovery folder.")
 
     # 4. Check actual local index status using Pydantic validation
-    actionable_hollow: Set[str] = set()
+    actionable_hollow: set[str] = set()
     hydrated_count = 0
     
     logger.info(f"Validating {len(all_found_pids)} potential recovery targets against local index...")

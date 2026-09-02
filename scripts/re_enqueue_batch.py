@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import logging
 import asyncio
 import shutil
@@ -24,8 +25,8 @@ async def re_enqueue_batch(campaign_name: str, target_file_name: str) -> None:
     pending_dir.mkdir(parents=True, exist_ok=True)
 
     # 2. Load Targets
-    from typing import Dict, List, Union
-    targets: List[Dict[str, Union[str, None]]] = []
+    from typing import Union
+    targets: list[dict[str, Union[str, None]]] = []
     with open(batch_file, "r") as f:
         for line in f:
             if line.strip():

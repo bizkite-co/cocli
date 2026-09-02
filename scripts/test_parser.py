@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Dict, Any
+from typing import Any
 from bs4 import BeautifulSoup
 
 # Ensure we can import from cocli
@@ -8,7 +8,7 @@ sys.path.append(os.getcwd())
 
 from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 
-TEST_CASES: List[Dict[str, Any]] = [
+TEST_CASES: list[dict[str, Any]] = [
     {
         "name": "Granite Snippet (Multi-Review)",
         "html": """<div jsaction="reviewChart.moreReviews"><span>3.7</span><span>3 reviews</span></div>""",
@@ -41,7 +41,7 @@ def run_tests() -> None:
         soup = BeautifulSoup(str(case["html"]), "html.parser")
         result = extract_rating_reviews_gm_details(soup, "", debug=False)
         
-        expected = cast(Dict[str, str], case["expected"])
+        expected = cast(dict[str, str], case["expected"])
         rating_match = result["Average_rating"] == expected["rating"]
         reviews_match = result["Reviews_count"] == expected["reviews"]
         

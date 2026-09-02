@@ -18,7 +18,7 @@ from __future__ import annotations
 import csv
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel
@@ -210,7 +210,7 @@ def export_enriched_emails(
 
     rows = con.execute(query).fetchall()
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     skipped_count = 0
 
     for i, row in enumerate(rows):

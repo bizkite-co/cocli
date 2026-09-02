@@ -1,5 +1,6 @@
+from __future__ import annotations
 import re
-from typing import Optional, Dict
+from typing import Optional
 
 def slugify(text: str, max_length: Optional[int] = None) -> str:
     """
@@ -22,12 +23,12 @@ def slugify(text: str, max_length: Optional[int] = None) -> str:
         s = s[:max_length]
     return s
 
-def parse_address_components(full_address: Optional[str]) -> Dict[str, Optional[str]]:
+def parse_address_components(full_address: Optional[str]) -> dict[str, Optional[str]]:
     """
     Conservatively extracts street, city, state, and zip from a full address string.
     Format: '123 Main St, City, ST 12345'
     """
-    components: Dict[str, Optional[str]] = {
+    components: dict[str, Optional[str]] = {
         "street_address": None,
         "city": None,
         "state": None,

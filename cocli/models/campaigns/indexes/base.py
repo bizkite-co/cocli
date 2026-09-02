@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pathlib import Path
-from typing import Any, List, Dict, Optional, ClassVar
+from typing import Any, Optional, ClassVar
 from ...base import BaseUsvModel
 from ....core.paths import paths
 from ....core.ordinant import IndexName, get_shard
@@ -45,7 +46,7 @@ class BaseIndexModel(BaseUsvModel):
         return f"campaigns/{campaign_name}/indexes/{self.INDEX_NAME}/wal/{shard_id}/{identity}.usv"
 
     @classmethod
-    def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
+    def get_datapackage_fields(cls) -> list[dict[str, Any]]:
         """Frictionless field defs. Delegates to BaseUsvModel so index models
         inherit its constraint export (minLength/maxLength/minimum/maximum) -
         this class used to reimplement the loop and silently drop constraints."""

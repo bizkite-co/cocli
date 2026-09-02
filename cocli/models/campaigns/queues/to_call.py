@@ -1,4 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, ClassVar

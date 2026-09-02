@@ -1,15 +1,15 @@
 import re
-from typing import Dict, Any
+from typing import Any
 from bs4 import BeautifulSoup
 import logging
 
 logger = logging.getLogger(__name__)
 
-def extract_categories(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, Any]:
+def extract_categories(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> dict[str, Any]:
     """
     Extracts category data from the BeautifulSoup object and inner text.
     """
-    categories: Dict[str, Any] = {
+    categories: dict[str, Any] = {
         "First_category": "",
         "Second_category": "",
     }

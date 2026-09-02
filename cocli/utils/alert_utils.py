@@ -1,15 +1,16 @@
+from __future__ import annotations
 import logging
 import requests
 import os
 import time
-from typing import Optional, Dict
+from typing import Optional
 from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
 
 # Simple in-memory cache to rate-limit alerts
 # alert_key -> timestamp
-_last_alert_times: Dict[str, float] = {}
+_last_alert_times: dict[str, float] = {}
 ALERT_COOLDOWN_SECONDS = 900 # 15 minutes
 
 def send_alert(

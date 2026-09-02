@@ -1,9 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 import logging
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Callable
+from typing import Any, Optional, Callable
 
 from ..core.config import load_campaign_config
 from ..models.campaigns.worker_config import (
@@ -21,7 +22,7 @@ console = Console()
 BUILD_DIR = "~/repos/cocli_build"
 
 
-def find_node_ownership_conflicts() -> Dict[str, List[str]]:
+def find_node_ownership_conflicts() -> dict[str, list[str]]:
     """Cross-campaign check: which hostnames are declared in more than one
     campaign's own [cluster.nodes]?
 
@@ -40,7 +41,7 @@ def find_node_ownership_conflicts() -> Dict[str, List[str]]:
     from ..core.config import get_all_campaign_dirs
     from ..core.paths import paths
 
-    declared_by: Dict[str, List[str]] = {}
+    declared_by: dict[str, list[str]] = {}
     for campaign_dir in get_all_campaign_dirs():
         campaign_name = str(campaign_dir.relative_to(paths.campaigns))
         try:
@@ -139,7 +140,7 @@ class ClusterService:
         )
         self.registry_url = f"{self.registry_ip}:5000"
 
-    def get_nodes(self) -> List[PiNodeConfig]:
+    def get_nodes(self) -> list[PiNodeConfig]:
         return self.cluster_config.nodes
 
     def _verify_local_build(self) -> bool:
@@ -151,7 +152,7 @@ class ClusterService:
             return False
         return True
 
-    async def deploy_hotfix_safe(self, user: str = "mstouffer", force: bool = False) -> Dict[str, bool]:
+    async def deploy_hotfix_safe(self, user: str = "mstouffer", force: bool = False) -> dict[str, bool]:
         """
         PERFORMS SAFE HOTFIX:
         1. Verify local build context.
@@ -540,7 +541,7 @@ class ClusterService:
             return stdout.decode()
         return stderr.decode()
 
-    async def get_top_stats(self) -> List[Dict[str, Any]]:
+    async def get_top_stats(self) -> list[dict[str, Any]]:
         """Collects load, temp, mem, and pids of all nodes."""
         results = []
         for node in self.get_nodes():
@@ -596,7 +597,7 @@ class ClusterService:
             cmd_rm = "docker rm $(docker ps -a -q --filter name=cocli-) 2>/dev/null || true"
             await self.run_remote_command(node, cmd_rm)
 
-    async def get_nodes_status(self) -> List[Dict[str, Any]]:
+    async def get_nodes_status(self) -> list[dict[str, Any]]:
         """Uptime/status checks on all cluster nodes.
 
         Also reports the CAMPAIGN_NAME actually baked into each node's
@@ -642,9 +643,9 @@ class ClusterService:
 
     async def prune_nodes(
         self,
-        validated_nodes: List[PiNodeConfig],
+        validated_nodes: list[PiNodeConfig],
         log_callback: Optional[Callable[[str], None]] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Prunes docker objects on nodes and returns space reclaimed."""
         results = []
         for node in validated_nodes:

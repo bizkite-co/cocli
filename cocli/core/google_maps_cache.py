@@ -1,8 +1,9 @@
+from __future__ import annotations
 
 import csv
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any, Iterable
+from typing import Optional, Any, Iterable
 from datetime import datetime, UTC
 
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
@@ -18,7 +19,7 @@ class GoogleMapsCache:
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file_usv = cache_dir / "google_maps_cache.usv"
         self.cache_file_csv = cache_dir / "google_maps_cache.csv"
-        self.data: Dict[str, GoogleMapsProspect] = {}
+        self.data: dict[str, GoogleMapsProspect] = {}
         self._load_data()
 
     def _load_data(self) -> None:
@@ -33,14 +34,14 @@ class GoogleMapsCache:
             return
 
         with open(active_file, "r", encoding="utf-8") as f:
-            reader: Iterable[Dict[str, Any]]
+            reader: Iterable[dict[str, Any]]
             if is_usv:
                 reader = USVDictReader(f)
             else:
                 reader = csv.DictReader(f)
 
             for row in reader:
-                processed_row: Dict[str, Any] = {}
+                processed_row: dict[str, Any] = {}
                 for k, v in row.items():
                     if v is None or v == '':
                         processed_row[k] = None

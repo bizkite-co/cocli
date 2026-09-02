@@ -51,10 +51,11 @@ SCHEMA VERSIONING:
     - cocli:generated_at timestamp
   This prevents schema conflicts when outputs are stored in different directories.
 """
+from __future__ import annotations
 
 import logging
 import csv
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 import toml
 
 from cocli.core.paths import paths
@@ -72,10 +73,10 @@ logger = logging.getLogger(__name__)
 
 def generate_tiles(
     campaign_name: str,
-    target_locations: Optional[List[Dict[str, Any]]] = None,
+    target_locations: Optional[list[dict[str, Any]]] = None,
     proximity_miles: float = 10.0,
     save_output: bool = False,
-) -> List[TileRecord]:
+) -> list[TileRecord]:
     """
     Stage 1: Generate geographic grid tiles from target locations.
 
@@ -136,7 +137,7 @@ def generate_tiles(
     return tile_records
 
 
-def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
+def _load_target_locations(campaign_name: str) -> list[dict[str, Any]]:
     """Load target locations from inputs/target_locations.usv or config."""
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
@@ -146,14 +147,14 @@ def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
     inputs_path = dg_queue.inputs / "target_locations.usv"
 
-    target_locations: List[Dict[str, Any]] = []
+    target_locations: list[dict[str, Any]] = []
 
     if inputs_path.exists():
         logger.info(f"  Loading target locations from: {inputs_path}")
         with open(inputs_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-        def _as_headerless_triple(line: str) -> Optional[Dict[str, Any]]:
+        def _as_headerless_triple(line: str) -> Optional[dict[str, Any]]:
             parts = line.strip().split("\x1f")
             if len(parts) != 3:
                 return None
@@ -234,9 +235,9 @@ def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
 
 def expand_phrases(
     campaign_name: str,
-    tiles: Optional[List[TileRecord]] = None,
+    tiles: Optional[list[TileRecord]] = None,
     save_output: bool = True,
-) -> List[MissionTask]:
+) -> list[MissionTask]:
     """
     Stage 2: Expand tiles × search phrases → mission tasks.
 
@@ -289,7 +290,7 @@ def expand_phrases(
     )
 
     # Create mission tasks
-    tasks: List[MissionTask] = []
+    tasks: list[MissionTask] = []
     for tile in tiles:
         for phrase in search_phrases:
             task = MissionTask(
@@ -317,10 +318,10 @@ def expand_phrases(
 
 def filter_frontier(
     campaign_name: str,
-    mission_tasks: Optional[List[MissionTask]] = None,
+    mission_tasks: Optional[list[MissionTask]] = None,
     ttl_days: int = 30,
     save_output: bool = True,
-) -> List[MissionTask]:
+) -> list[MissionTask]:
     """
     Stage 3: Filter mission tasks by ScrapeIndex to find unscraped frontier.
 
@@ -428,7 +429,7 @@ def filter_frontier(
 
 def populate_tile_queue(
     campaign_name: str,
-    mission_tasks: Optional[List[MissionTask]] = None,
+    mission_tasks: Optional[list[MissionTask]] = None,
     save_output: bool = True,
 ) -> int:
     """
@@ -476,7 +477,7 @@ def populate_tile_queue(
     pending_dir = tile_queue.pending
 
     # Group tasks by (tile_id, shard, lat, lon)
-    tile_files: Dict[str, List[TileQueueRecord]] = {}
+    tile_files: dict[str, list[TileQueueRecord]] = {}
 
     for task in mission_tasks:
         shard = get_geo_shard(float(task.latitude))

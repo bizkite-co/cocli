@@ -1,6 +1,7 @@
+from __future__ import annotations
 import re
 from pathlib import Path
-from typing import Optional, List, Any, Iterator, Dict
+from typing import Optional, Any, Iterator
 import logging
 from datetime import datetime, UTC
 
@@ -28,7 +29,7 @@ from ...core.config import get_campaign
 logger = logging.getLogger(__name__)
 
 
-def split_categories(v: Any) -> List[str]:
+def split_categories(v: Any) -> list[str]:
     if isinstance(v, str):
         return [cat.strip() for cat in v.split(";") if cat.strip()]
     if isinstance(v, list):
@@ -73,7 +74,7 @@ class Company(BaseModel):
 
     # New fields for enrichment
     # id: Optional[str] = None # Removed as per feedback
-    keywords: List[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     full_address: OptionalCompanyAddress = None
     street_address: OptionalCompanyAddress = None
     city: Optional[str] = None
@@ -87,11 +88,11 @@ class Company(BaseModel):
     phone_from_website: OptionalPhone = None
     email: Optional[EmailAddress] = None
     website_url: Optional[str] = None
-    all_emails: List[EmailAddress] = Field(default_factory=list)
-    email_contexts: Dict[str, str] = Field(default_factory=dict)
-    tech_stack: List[str] = Field(default_factory=list)
+    all_emails: list[EmailAddress] = Field(default_factory=list)
+    email_contexts: dict[str, str] = Field(default_factory=dict)
+    tech_stack: list[str] = Field(default_factory=list)
 
-    categories: Annotated[List[str], BeforeValidator(split_categories)] = Field(
+    categories: Annotated[list[str], BeforeValidator(split_categories)] = Field(
         default_factory=list
     )
 
@@ -110,8 +111,8 @@ class Company(BaseModel):
     about_us_url: Optional[str] = None
     contact_url: Optional[str] = None
 
-    services: List[str] = Field(default_factory=list)
-    products: List[str] = Field(default_factory=list)
+    services: list[str] = Field(default_factory=list)
+    products: list[str] = Field(default_factory=list)
 
     meta_description: Optional[str] = None
     meta_keywords: Optional[str] = None

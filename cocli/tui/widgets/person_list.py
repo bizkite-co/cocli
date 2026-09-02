@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import List, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast
 
 from textual.screen import Screen
 from textual.widgets import ListView, ListItem, Label, Input
@@ -31,8 +31,8 @@ class PersonList(Screen[None]):
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name, id, classes)
-        self.all_fz_items: List[SearchResult] = []
-        self.filtered_fz_items: List[SearchResult] = []
+        self.all_fz_items: list[SearchResult] = []
+        self.filtered_fz_items: list[SearchResult] = []
 
     def compose(self) -> ComposeResult:
         yield Label("People")

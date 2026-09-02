@@ -1,6 +1,7 @@
+from __future__ import annotations
 import json
 import logging
-from typing import List, Optional
+from typing import Optional
 from botocore.exceptions import ClientError
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
@@ -45,11 +46,11 @@ class ScrapeSQSQueue:
             logger.error(f"Error pushing to SQS: {e}")
             raise
 
-    def poll(self, batch_size: int = 1) -> List[ScrapeTask]:
+    def poll(self, batch_size: int = 1) -> list[ScrapeTask]:
         """
         Retrieve a batch of messages from SQS.
         """
-        messages: List[ScrapeTask] = []
+        messages: list[ScrapeTask] = []
         try:
             response = self.sqs.receive_message(
                 QueueUrl=self.queue_url,

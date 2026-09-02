@@ -1,4 +1,3 @@
-from typing import List
 from pydantic import Field, PrivateAttr
 from enum import Enum
 from .base import BaseUsvModel
@@ -18,7 +17,7 @@ class MissionTask(BaseUsvModel):
     """
     # ORDER MUST MATCH datapackage.json (Positional)
     slug: str = Field(..., description="Unique URL-friendly name")
-    dependencies: List[str] = Field(default_factory=list, description="List of required task slugs")
+    dependencies: list[str] = Field(default_factory=list, description="List of required task slugs")
 
     # Runtime-only fields (not stored in USV)
     _title: str = PrivateAttr("")

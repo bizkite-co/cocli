@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import os
 import boto3
 import hashlib
-from typing import List, Optional, Dict, Any
+from typing import Optional, Any
 from datetime import datetime, timezone
 from botocore.config import Config
 
@@ -53,7 +54,7 @@ class DomainIndexManager:
             self.manifests_prefix = "manifests/"
             self.latest_pointer_key = "LATEST"
 
-    def _init_s3_client(self, aws_config: Dict[str, Any]) -> None:
+    def _init_s3_client(self, aws_config: dict[str, Any]) -> None:
         try:
             from .reporting import get_boto3_session
             
@@ -173,7 +174,7 @@ class DomainIndexManager:
         usv_line = data.to_usv().replace("\x1e", "")
         self._write_object(s3_key, usv_line)
 
-    def query(self, sql_where: Optional[str] = None, include_shards: bool = True, include_inbox: bool = True, shard_paths: Optional[List[str]] = None) -> List[WebsiteDomainCsv]:
+    def query(self, sql_where: Optional[str] = None, include_shards: bool = True, include_inbox: bool = True, shard_paths: Optional[list[str]] = None) -> list[WebsiteDomainCsv]:
         """
         Queries the unified index using DuckDB.
         Performs a UNION ALL of shards and inbox, then deduplicates by domain.
@@ -421,7 +422,7 @@ class DomainIndexManager:
             return
 
         # 2. Group by shard ID (latest wins)
-        shard_groups: Dict[str, Dict[str, WebsiteDomainCsv]] = {}
+        shard_groups: dict[str, dict[str, WebsiteDomainCsv]] = {}
         for item in inbox_items:
             shard_id = self.get_shard_id(str(item.domain))
             if shard_id not in shard_groups:
@@ -439,7 +440,7 @@ class DomainIndexManager:
             logger.info(f"Processing shard {shard_id} with {len(new_items)} new/updated items...")
             
             # 4a. Load existing items from this shard if it exists
-            existing_items: Dict[str, WebsiteDomainCsv] = {}
+            existing_items: dict[str, WebsiteDomainCsv] = {}
             if shard_id in manifest.shards:
                 try:
                     shard_content = self._read_object(manifest.shards[shard_id].path)

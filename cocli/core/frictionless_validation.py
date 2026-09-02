@@ -3,11 +3,12 @@ Frictionless Data validation utilities for discovery-gen pipeline outputs.
 
 Validates USV files against their datapackage.json schemas and Pydantic models.
 """
+from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ def validate_usv_file(
     usv_path: Path,
     schema_path: Optional[Path] = None,
     model_class: Optional[Any] = None,
-) -> Tuple[bool, int, List[str]]:
+) -> tuple[bool, int, list[str]]:
     """
     Validate a USV file against its Frictionless Data schema.
 
@@ -29,7 +30,7 @@ def validate_usv_file(
     Returns:
         Tuple of (is_valid, record_count, error_messages)
     """
-    errors: List[str] = []
+    errors: list[str] = []
     record_count = 0
 
     if not usv_path.exists():
@@ -115,7 +116,7 @@ def validate_usv_file(
 
 def validate_stage_outputs(
     campaign_name: str, queue_paths: Any, stage: Optional[int] = None
-) -> Dict[int, Dict[str, Any]]:
+) -> dict[int, dict[str, Any]]:
     """
     Validate all outputs for discovery-gen pipeline stages.
 
@@ -130,7 +131,7 @@ def validate_stage_outputs(
     from cocli.models.campaigns.tiles import TileRecord
     from cocli.models.campaigns.mission import MissionTask
 
-    results: Dict[int, Dict[str, Any]] = {}
+    results: dict[int, dict[str, Any]] = {}
 
     # Stage 1: Tiles
     if stage is None or stage == 1:
@@ -185,7 +186,7 @@ def validate_stage_outputs(
 
 def validate_schema_hash(
     datapackage_path: Path, expected_hash: Optional[str] = None
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Validate that a datapackage.json has the correct schema_hash.
 

@@ -26,7 +26,7 @@ COPY pyproject.toml uv.lock* ./
 # Export requirements (including 'full' for pandas/numpy) and install them
 RUN uv export --frozen --no-dev --no-hashes --extra worker > requirements.txt && \
     uv pip install -r requirements.txt --system && \
-    uv pip install ruff awscli --system
+    uv pip install awscli --system
 
 # Copy the application code
 COPY . .
@@ -36,10 +36,6 @@ RUN uv pip install . --system --no-deps
 
 # Pre-download Playwright browsers to avoid runtime hangs on resource-constrained PIs
 RUN python3 -m playwright install chromium
-
-# Final static analysis check
-RUN ruff check cocli/ || true
-
 
 # Set COCLI_DATA_HOME to a persistent-ish location in the container
 ENV COCLI_DATA_HOME=/app/data

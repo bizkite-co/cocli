@@ -1,10 +1,9 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict
 
 
-def get_cuda_env() -> Dict[str, str]:
+def get_cuda_env() -> dict[str, str]:
     """Get the required LD_LIBRARY_PATH updates for NVIDIA libs."""
     venv_path = Path(sys.prefix)
 

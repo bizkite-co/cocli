@@ -1,4 +1,5 @@
-from typing import Optional, List, Any, cast, Dict
+from __future__ import annotations
+from typing import Optional, Any, cast
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
 import logging
 
@@ -278,11 +279,11 @@ class ServiceContainer(BaseModel):
         item_type: Optional[str] = None,
         campaign_name: Optional[str] = None,
         force_rebuild_cache: bool = False,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[dict[str, Any]] = None,
         sort_by: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         return self.search_service(
             search_query=search_query,
             item_type=item_type,
@@ -296,10 +297,10 @@ class ServiceContainer(BaseModel):
 
     def get_template_counts(
         self, campaign_name: Optional[str] = None
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         return self.template_counts_service(campaign_name)
 
-    def get_company_details(self, company_slug: str) -> Optional[Dict[str, Any]]:
+    def get_company_details(self, company_slug: str) -> Optional[dict[str, Any]]:
         return self.company_service(company_slug)
 
     @property

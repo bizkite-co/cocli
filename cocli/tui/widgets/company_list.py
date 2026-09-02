@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
+from typing import TYPE_CHECKING, cast, Any, Optional
 
 from textual.binding import Binding
 from textual.containers import Container
@@ -45,11 +46,11 @@ class CompanyList(Container):
         self, name: str | None = None, id: str | None = None, classes: str | None = None
     ):
         super().__init__(name=name, id=id, classes=classes)
-        self.filtered_fz_items: List[SearchResult] = []
+        self.filtered_fz_items: list[SearchResult] = []
         self.filter_contact: bool = True
         # DEFAULT TO MRU (Most Recently Updated)
         self.sort_recent: bool = True
-        self.current_filters: Dict[str, Any] = {}
+        self.current_filters: dict[str, Any] = {}
         self.current_sort: Optional[str] = "recent"
         self.search_offset: int = 0
         self.search_limit: int = 50

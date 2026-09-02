@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Generic, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Generic, Optional, Sequence, TypeVar
 
 from stations.backends import LocalPathBackend
 from stations.protocols import (
@@ -48,7 +48,7 @@ class SimpleStation(Generic[T]):
 
     name: str
     path_template: str
-    model: Type[T]
+    model: type[T]
     schema_version: str = "1"
     serialization: str = "json-file"
     datapackage_path: Optional[str] = None
@@ -102,7 +102,7 @@ class CampaignQueueAsQueueEdge(Generic[T]):
 
     def claim(
         self, *, worker_id: str, ttl_seconds: int
-    ) -> Optional[Tuple[T, Lease]]:
+    ) -> Optional[tuple[T, Lease]]:
         batch = self.queue.poll(batch_size=1)
         if not batch:
             return None
@@ -148,7 +148,7 @@ def as_queue_edge(
     queue: CampaignQueueProtocol[T],
     *,
     station_name: Optional[str] = None,
-    model: Type[T] = object,  # type: ignore[assignment]
+    model: type[T] = object,  # type: ignore[assignment]
 ) -> QueueEdge[T]:
     """Return a ``QueueEdge`` view of a cocli campaign queue (mypy gate)."""
     from cocli.station_defs.campaigns.queues import QUEUE_PENDING_TEMPLATE

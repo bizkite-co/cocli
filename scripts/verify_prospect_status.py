@@ -3,7 +3,7 @@ import sys
 import os
 import argparse
 from botocore.exceptions import ClientError
-from typing import Dict, Any
+from typing import Any
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -12,7 +12,7 @@ from cocli.core.sharding import get_shard_id
 from cocli.core.config import load_campaign_config
 from cocli.core.reporting import get_boto3_session
 
-def check_prospect(place_id: str, campaign: str, bucket: str, s3: Any) -> Dict[str, Any]:
+def check_prospect(place_id: str, campaign: str, bucket: str, s3: Any) -> dict[str, Any]:
     shard = get_shard_id(place_id)
     results = {"place_id": place_id}
     

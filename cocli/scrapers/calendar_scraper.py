@@ -2,7 +2,7 @@ import logging
 import asyncio
 import re
 from datetime import datetime
-from typing import List, cast
+from typing import cast
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 
@@ -15,7 +15,7 @@ class CalendarScraper:
     def __init__(self, debug: bool = False):
         self.debug = debug
 
-    async def scrape_fullerton_observer(self) -> List[Event]:
+    async def scrape_fullerton_observer(self) -> list[Event]:
         url = "https://fullertonobserver.com/events/"
         events = []
         
@@ -89,7 +89,7 @@ class CalendarScraper:
             await browser.close()
         return events
 
-    async def scrape_fullerton_library(self) -> List[Event]:
+    async def scrape_fullerton_library(self) -> list[Event]:
         url = "https://fullertonlibrary.org/calendar"
         events = []
         

@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
+from typing import Optional
 
 class WorkerDefinition(BaseModel):
     """Configuration for a specific worker instance on a node."""
@@ -19,9 +20,9 @@ class PiNodeConfig(BaseModel):
     label: Optional[str] = None
 
     enabled: bool = True
-    workers: List[WorkerDefinition] = Field(default_factory=list)
+    workers: list[WorkerDefinition] = Field(default_factory=list)
     
 class CampaignClusterConfig(BaseModel):
     """Global cluster configuration for a campaign."""
-    nodes: List[PiNodeConfig] = Field(default_factory=list)
+    nodes: list[PiNodeConfig] = Field(default_factory=list)
     default_iot_profile: str = "roadmap-iot"

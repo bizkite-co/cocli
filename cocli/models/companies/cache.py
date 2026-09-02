@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 from pydantic import Field
 
 from ..base import BaseUsvModel
@@ -21,7 +22,7 @@ class CompanyCacheItem(BaseUsvModel):
     phone_number: OptionalPhone = None
     average_rating: Optional[float] = None
     reviews_count: Optional[int] = None
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     display: str = Field(..., description="Pre-formatted fzf display string")
 
     @classmethod

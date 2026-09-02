@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -69,7 +68,7 @@ def test_get_rollout_diagnostics(tmp_path: Path) -> None:
 
 def test_get_pi_stats_parses_ssh(monkeypatch: pytest.MonkeyPatch) -> None:
     service = DeploymentService(campaign_name="road")
-    calls: List[str] = []
+    calls: list[str] = []
 
     def fake_ssh(hostname: str, command: str) -> tuple[int, str]:
         calls.append(hostname)
@@ -108,7 +107,7 @@ def test_broadcast_scaling_config_sends(tmp_path: Path) -> None:
     )
 
     mock_bridge = MagicMock()
-    steps: List[str] = []
+    steps: list[str] = []
     service = DeploymentService(campaign_name="road")
 
     with (
@@ -225,7 +224,7 @@ def test_sync_rollout_results(tmp_path: Path) -> None:
     # two unique place_ids; one duplicate
     (active / "a.usv").write_text("pid1\x1frest\npid2\x1frest\npid1\x1fagain\n")
 
-    steps: List[str] = []
+    steps: list[str] = []
     with (
         patch(
             "cocli.core.config.load_campaign_config",

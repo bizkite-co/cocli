@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typer
 import logging
 from rich.console import Console
@@ -6,7 +7,7 @@ from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.models.companies.company import Company
 from cocli.utils.usv_utils import USVDictWriter, USVDictReader
 from pathlib import Path
-from typing import Optional, List, Dict, Set
+from typing import Optional
 import shutil
 
 app = typer.Typer()
@@ -33,9 +34,9 @@ def propose(
             output = Path("proposed_company_merges.usv")
 
     # 1. Indexes for finding duplicates
-    by_domain: Dict[str, List[str]] = {}
-    by_place_id: Dict[str, List[str]] = {}
-    by_hash: Dict[str, List[str]] = {}
+    by_domain: dict[str, list[str]] = {}
+    by_place_id: dict[str, list[str]] = {}
+    by_hash: dict[str, list[str]] = {}
     
     all_companies = list(Company.get_all())
     console.print(f"Scanning {len(all_companies)} companies...")
@@ -52,9 +53,9 @@ def propose(
             by_hash.setdefault(company.company_hash, []).append(slug)
 
     # 2. Identify duplicate groups
-    dup_groups: List[Set[str]] = []
+    dup_groups: list[set[str]] = []
     
-    def add_group(slugs: List[str]) -> None:
+    def add_group(slugs: list[str]) -> None:
         if len(slugs) < 2:
             return
         slug_set = set(slugs)
@@ -77,7 +78,7 @@ def propose(
             continue
         
         # Group slugs by Place ID within this domain
-        p_groups: Dict[Optional[str], List[str]] = {}
+        p_groups: dict[Optional[str], list[str]] = {}
         for s in slugs:
             c = Company.get(s)
             pid = c.place_id if c else None

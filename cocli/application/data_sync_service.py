@@ -1,10 +1,11 @@
+from __future__ import annotations
 import csv
 import json
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence
 
 import duckdb
 from pydantic import BaseModel, Field
@@ -29,7 +30,7 @@ class DatapackageSummary(BaseModel):
 
     path: Path
     relative_path: str
-    resource_names: List[str] = Field(default_factory=list)
+    resource_names: list[str] = Field(default_factory=list)
 
 
 class SchemaField(BaseModel):
@@ -43,15 +44,15 @@ class SchemaDescribeResult(BaseModel):
 
     source_label: str
     datapackage_path: Optional[Path] = None
-    resources: List[Dict[str, Any]] = Field(default_factory=list)
+    resources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SampleResult(BaseModel):
     """First N rows from a USV / datapackage load."""
 
     title: str
-    columns: List[str] = Field(default_factory=list)
-    rows: List[List[Any]] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
 
 
 class MetricValue(BaseModel):
@@ -68,7 +69,7 @@ class MetricsResult(BaseModel):
     """Data-quality metrics for a USV dataset."""
 
     source_name: str
-    metrics: Dict[str, MetricValue] = Field(default_factory=dict)
+    metrics: dict[str, MetricValue] = Field(default_factory=dict)
     used_fallback: bool = False
     output_path: Optional[Path] = None
     message: str = ""
@@ -78,11 +79,11 @@ class SearchResult(BaseModel):
     """SQL search results over a USV file."""
 
     query: str
-    columns: List[str] = Field(default_factory=list)
-    rows: List[List[Any]] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
     row_count: int = 0
     schema_warning: Optional[str] = None
-    valid_columns_preview: List[str] = Field(default_factory=list)
+    valid_columns_preview: list[str] = Field(default_factory=list)
 
 
 class InspectRowResult(BaseModel):
@@ -90,7 +91,7 @@ class InspectRowResult(BaseModel):
 
     file_name: str
     row_number: int
-    fields: List[Tuple[int, str, str]] = Field(default_factory=list)
+    fields: list[tuple[int, str, str]] = Field(default_factory=list)
 
 
 class QueueCompactResult(BaseModel):
@@ -106,7 +107,7 @@ class QueueCompactResult(BaseModel):
 class UnknownColumnError(ValueError):
     """Raised when a search query references columns not in the datapackage schema."""
 
-    def __init__(self, invalid_cols: Any, valid_preview: List[str]):
+    def __init__(self, invalid_cols: Any, valid_preview: list[str]):
         self.invalid_cols = invalid_cols
         self.valid_preview = valid_preview
         super().__init__(f"Unknown column(s) in query: {invalid_cols}")
@@ -116,16 +117,16 @@ class DataSyncService:
     def __init__(self, campaign_name: Optional[str] = None):
         self.campaign_name = campaign_name or get_campaign() or "default"
 
-    def sync_prospects(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def sync_prospects(self, force: bool = False, full: bool = False) -> dict[str, Any]:
         return self._sync_target("prospects", force, full)
 
-    def sync_companies(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def sync_companies(self, force: bool = False, full: bool = False) -> dict[str, Any]:
         return self._sync_target("companies", force, full)
 
-    def sync_emails(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def sync_emails(self, force: bool = False, full: bool = False) -> dict[str, Any]:
         return self._sync_target("emails", force, full)
 
-    def sync_indexes(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def sync_indexes(self, force: bool = False, full: bool = False) -> dict[str, Any]:
         """Syncs all critical indexes (Prospects, Emails, Scraped Areas)."""
         results = {}
         results["prospects"] = self.sync_prospects(force, full)
@@ -133,7 +134,7 @@ class DataSyncService:
         # Add scraped-areas if needed
         return results
 
-    def sync_queues(self, queue_name: Optional[str] = None, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def sync_queues(self, queue_name: Optional[str] = None, force: bool = False, full: bool = False) -> dict[str, Any]:
         """Syncs one or all queues from S3."""
         config = load_campaign_config(self.campaign_name)
         aws_config = config.get("aws", {})
@@ -159,7 +160,7 @@ class DataSyncService:
         
         return {"status": "success", "queues": target_queues}
 
-    def sync_all(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def sync_all(self, force: bool = False, full: bool = False) -> dict[str, Any]:
         results = {}
         results["prospects"] = self.sync_prospects(force, full)
         results["companies"] = self.sync_companies(force, full)
@@ -167,7 +168,7 @@ class DataSyncService:
         results["queues"] = self.sync_queues(force=force, full=full)
         return results
 
-    def _sync_target(self, target: str, force: bool = False, full: bool = False) -> Dict[str, Any]:
+    def _sync_target(self, target: str, force: bool = False, full: bool = False) -> dict[str, Any]:
         config = load_campaign_config(self.campaign_name)
         aws_config = config.get("aws", {})
         bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{self.campaign_name}"
@@ -193,7 +194,7 @@ class DataSyncService:
             logger.error(f"Sync failed for {target}: {e}")
             return {"status": "error", "message": str(e), "target": target}
 
-    def compact_index(self) -> Dict[str, Any]:
+    def compact_index(self) -> dict[str, Any]:
         """Runs the email index compaction (Hot Inbox -> Shards)."""
         try:
             from ..core.email_index_manager import EmailIndexManager
@@ -204,7 +205,7 @@ class DataSyncService:
             logger.error(f"Email compaction failed: {e}")
             return {"status": "error", "message": str(e)}
 
-    def push_queue(self, queue_name: str = "enrichment") -> Dict[str, Any]:
+    def push_queue(self, queue_name: str = "enrichment") -> dict[str, Any]:
         """
         Pushes local queue items to S3.
         Corresponds to 'make push-queue' / 'scripts/push_queue.py'.
@@ -290,10 +291,10 @@ class DataSyncService:
 
         return file_path
 
-    def list_datapackages(self) -> List[DatapackageSummary]:
+    def list_datapackages(self) -> list[DatapackageSummary]:
         """List all datapackage.json files under the data root."""
         data_dir = paths.root
-        results: List[DatapackageSummary] = []
+        results: list[DatapackageSummary] = []
         for dp in sorted(data_dir.glob("**/datapackage.json")):
             try:
                 with open(dp, "r") as f:
@@ -335,7 +336,7 @@ class DataSyncService:
             if not resources:
                 raise ValueError("No resources in datapackage")
 
-            resource_payloads: List[Dict[str, Any]] = []
+            resource_payloads: list[dict[str, Any]] = []
             for res in resources:
                 fields = res.get("schema", {}).get("fields", [])
                 resource_payloads.append(
@@ -541,7 +542,7 @@ class DataSyncService:
             denom_row = con.execute(f"SELECT COUNT(*) FROM {metrics_table}").fetchone()
             denominator = denom_row[0] if denom_row is not None else 0
 
-            metrics: Dict[str, MetricValue] = {
+            metrics: dict[str, MetricValue] = {
                 denominator_label: MetricValue(count=denominator)
             }
             for field in schema_fields:
@@ -613,9 +614,9 @@ class DataSyncService:
         place_ids: set[str] = set()
         # Per-place-id-keyed dataset: which places have a non-empty value
         # for each field, on ANY of their (possibly duplicate) rows.
-        field_places_with_value: Dict[str, set[str]] = {f: set() for f in schema_fields}
+        field_places_with_value: dict[str, set[str]] = {f: set() for f in schema_fields}
         # No place_id column at all: nothing to dedupe on, count per row.
-        field_row_counts: Dict[str, int] = {f: 0 for f in schema_fields}
+        field_row_counts: dict[str, int] = {f: 0 for f in schema_fields}
 
         with open(usv_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f, delimiter="\x1f")
@@ -636,7 +637,7 @@ class DataSyncService:
                             if place_id_val is not None:
                                 field_places_with_value[field_name].add(place_id_val)
 
-        metrics: Dict[str, MetricValue]
+        metrics: dict[str, MetricValue]
         if place_idx is not None:
             denominator = len(place_ids)
             metrics = {"Distinct Places": MetricValue(count=denominator)}
@@ -676,13 +677,13 @@ class DataSyncService:
             raise FileNotFoundError(f"File not found: {file_path}")
 
         schema_warning: Optional[str] = None
-        valid_preview: List[str] = []
+        valid_preview: list[str] = []
         dp_path = find_datapackage(file_path)
         if not dp_path:
             schema_warning = (
                 "No datapackage.json found. Schema validation disabled."
             )
-            schema_fields: List[str] = []
+            schema_fields: list[str] = []
         else:
             schema_fields = get_schema_field_names(dp_path)
             invalid_cols = validate_query_columns(query, schema_fields)
@@ -755,7 +756,7 @@ class DataSyncService:
             if row is None:
                 raise ValueError(f"Row {row_number} not found in {file_path.name}")
 
-        field_values: List[Tuple[int, str, str]] = []
+        field_values: list[tuple[int, str, str]] = []
         for i, field in enumerate(fields):
             val = row[i] if i < len(row) else ""
             field_values.append((i, field["name"], str(val)))

@@ -82,8 +82,7 @@ def repair(campaign: str = "turboship") -> None:
         ]
     }
     # Set correct types for numeric fields in datapackage
-    from typing import List, Dict
-    fields: List[Dict[str, str]] = dp["resources"][0]["schema"]["fields"] # type: ignore
+    fields: list[dict[str, str]] = dp["resources"][0]["schema"]["fields"] # type: ignore
     for field in fields:
         if field["name"] in ["latitude", "longitude", "average_rating"]:
             field["type"] = "number"

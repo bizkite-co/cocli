@@ -3,7 +3,7 @@ import subprocess
 import logging
 import shutil
 from pathlib import Path
-from typing import List, Dict, Any, cast
+from typing import Any, cast
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -13,16 +13,16 @@ from cocli.core.paths import paths
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("cleanup_executor")
 
-def get_nodes() -> List[Dict[str, Any]]:
+def get_nodes() -> list[dict[str, Any]]:
     config_path = paths.root / "config" / "cocli_config.toml"
     if not config_path.exists():
         return []
     import tomli
     with open(config_path, "rb") as f:
         config = tomli.load(f)
-    return cast(List[Dict[str, Any]], config.get("cluster", {}).get("nodes", []))
+    return cast(list[dict[str, Any]], config.get("cluster", {}).get("nodes", []))
 
-def remove_from_s3(file_list: List[str], campaign: str) -> None:
+def remove_from_s3(file_list: list[str], campaign: str) -> None:
     """
     Removes the identified files from S3 using xargs for parallel execution.
     """
@@ -53,7 +53,7 @@ def remove_from_s3(file_list: List[str], campaign: str) -> None:
         if temp_list.exists():
             temp_list.unlink()
 
-def remove_from_cluster(file_list: List[str]) -> None:
+def remove_from_cluster(file_list: list[str]) -> None:
     """
     Removes the identified files or directories from each PI using combined SSH commands.
     """
@@ -88,7 +88,7 @@ def remove_from_cluster(file_list: List[str]) -> None:
             except Exception as e:
                 logger.error(f"Remote batch removal failed on {host}: {e}")
 
-def remove_local(file_list: List[str]) -> None:
+def remove_local(file_list: list[str]) -> None:
     """
     Removes files or directories from the local filesystem and cleans up empty parents.
     """

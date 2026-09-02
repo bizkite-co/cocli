@@ -1,7 +1,8 @@
+from __future__ import annotations
 import subprocess
 import toml
 import boto3
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Any, Callable
 from cocli.core.config import get_campaign_dir
 from cocli.core.reporting import get_campaign_stats, get_exclusions_data, get_queries_data, get_locations_data
 from cocli.application.lead_export_service import LeadExportResult
@@ -15,14 +16,14 @@ class WebService:
         profile: Optional[str] = None,
         bucket_name: Optional[str] = None,
         domain: Optional[str] = None,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Resolves AWS profile, domain, and bucket name based on campaign config."""
         campaign_dir = get_campaign_dir(self.campaign_name)
         if not campaign_dir:
             raise ValueError(f"Campaign directory not found for {self.campaign_name}")
 
         config_path = campaign_dir / "config.toml"
-        config: Dict[str, Any] = {}
+        config: dict[str, Any] = {}
         if config_path.exists():
             with open(config_path, "r") as f:
                 config = toml.load(f)
@@ -60,9 +61,9 @@ class WebService:
             "bucket_name": bucket_name,
         }
 
-    def fetch_cdk_outputs(self, profile: str) -> Dict[str, str]:
+    def fetch_cdk_outputs(self, profile: str) -> dict[str, str]:
         """Fetches identity pool/user pool details from CloudFormation stack."""
-        env_updates: Dict[str, str] = {}
+        env_updates: dict[str, str] = {}
         session = boto3.Session(profile_name=profile)
         cf = session.client("cloudformation")
         stack_name = f"CdkScraperDeploymentStack-{self.campaign_name}"
@@ -133,7 +134,7 @@ class WebService:
 
         return env_updates
 
-    def get_campaign_reports(self) -> Dict[str, Any]:
+    def get_campaign_reports(self) -> dict[str, Any]:
         """Generates all reports for the campaign."""
         stats = get_campaign_stats(self.campaign_name)
         exclusions = get_exclusions_data(self.campaign_name)

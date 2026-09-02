@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from pydantic import Field
 from pathlib import Path
 import yaml
@@ -95,7 +96,7 @@ class Event(BaseUsvModel):
     url: Optional[str] = None
     image_url: Optional[str] = None
     category: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     
     # Curation Flags
     is_excluded: bool = Field(default=False, description="Manually marked for exclusion")

@@ -2,7 +2,6 @@ import json
 import logging
 import shutil
 import time
-from typing import List
 from datetime import datetime, UTC
 
 from ...models.campaigns.queues.base import QueueMessage
@@ -39,7 +38,7 @@ class LocalFileQueue(QueueManager):
         logger.debug(f"Pushed message {message.id} to local queue {self.queue_name}")
         return message.id
 
-    def poll(self, batch_size: int = 1) -> List[QueueMessage]:
+    def poll(self, batch_size: int = 1) -> list[QueueMessage]:
         """
         Retrieves messages.
         1. Checks for expired messages in 'processing' and moves them back to 'pending'.

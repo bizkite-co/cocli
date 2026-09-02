@@ -1,7 +1,8 @@
+from __future__ import annotations
 import asyncio
 import logging
 import aiohttp
-from typing import Optional, Tuple
+from typing import Optional
 from selectolax.lexbor import LexborHTMLParser
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
@@ -16,7 +17,7 @@ class HeadScraper:
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         self.headers = {**ANTI_BOT_HEADERS, "User-Agent": USER_AGENT}
 
-    async def fetch_head(self, url: str) -> Tuple[Optional[str], Optional[str]]:
+    async def fetch_head(self, url: str) -> tuple[Optional[str], Optional[str]]:
         """
         Fetches the <head> section of the URL.
         Returns (head_html, title).

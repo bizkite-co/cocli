@@ -1,9 +1,10 @@
+from __future__ import annotations
 from google.genai import Client
 from pathlib import Path
 import logging
 import os
 import time
-from typing import Dict, Optional, Tuple, Union, cast, Any
+from typing import Optional, Union, cast, Any
 
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret
@@ -62,7 +63,7 @@ def fallback_resolve_model(client: Client, preferred_type: str = "flash") -> str
 
 
 class GeminiTranscriber:
-    def transcribe(self, video_path: Path, campaign: str) -> Dict[str, str]:
+    def transcribe(self, video_path: Path, campaign: str) -> dict[str, str]:
         config = load_campaign_config(campaign)
         transcription_config = config.get("video", {}).get("transcription", {})
 
@@ -114,7 +115,7 @@ class GeminiTranscriber:
 
 def _load_whisper_model(
     model_size: str,
-) -> Tuple[WhisperModel, str, str]:
+) -> tuple[WhisperModel, str, str]:
     """
     Load faster-whisper; prefer CUDA, fall back to CPU when GPU/CUDA is unusable.
 
@@ -139,7 +140,7 @@ class WhisperTranscriber:
     last_compute_type: Optional[str] = None
     last_model_size: Optional[str] = None
 
-    def transcribe(self, video_path: Path, campaign: str) -> Dict[str, str]:
+    def transcribe(self, video_path: Path, campaign: str) -> dict[str, str]:
         config = load_campaign_config(campaign)
         transcription_config = config.get("video", {}).get("transcription", {})
         model_size = transcription_config.get("whisper_model", "small")
@@ -187,8 +188,8 @@ class DualTranscriber:
         self.gemini = GeminiTranscriber()
         self.whisper = WhisperTranscriber()
 
-    def transcribe(self, video_path: Path, campaign: str) -> Dict[str, str]:
-        results: Dict[str, str] = {}
+    def transcribe(self, video_path: Path, campaign: str) -> dict[str, str]:
+        results: dict[str, str] = {}
         results.update(self.gemini.transcribe(video_path, campaign))
         results.update(self.whisper.transcribe(video_path, campaign))
         return results

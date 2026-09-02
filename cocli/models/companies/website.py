@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator, computed_field
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
 import yaml
@@ -46,7 +47,7 @@ _WEBSITE_LIST_FIELDS = {
 }
 
 
-def _personnel_identity_key(person: Dict[str, Any]) -> str:
+def _personnel_identity_key(person: dict[str, Any]) -> str:
     """Identity for deduping/matching personnel entries across a merge -
     name first, since it's the field most likely present on BOTH a sparse
     and a full record for the same person (a rescrape that only found a
@@ -63,7 +64,7 @@ def _personnel_identity_key(person: Dict[str, Any]) -> str:
     return f"raw:{sorted(person.items())}"
 
 
-def _union_merge_list(fresh: List[Any], existing: List[Any]) -> List[Any]:
+def _union_merge_list(fresh: list[Any], existing: list[Any]) -> list[Any]:
     """Existing entries first (order preserved), then fresh-only entries
     appended. Plain values dedupe by equality. Dict entries (personnel)
     dedupe by identity key - a matched pair merges field-by-field using
@@ -81,7 +82,7 @@ def _union_merge_list(fresh: List[Any], existing: List[Any]) -> List[Any]:
         fresh_by_key = {
             _personnel_identity_key(p): p for p in fresh if isinstance(p, dict)
         }
-        merged: Dict[str, Dict[str, Any]] = dict(existing_by_key)
+        merged: dict[str, dict[str, Any]] = dict(existing_by_key)
         for key, fresh_person in fresh_by_key.items():
             if key in merged:
                 existing_person = merged[key]
@@ -114,7 +115,7 @@ class Website(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def _populate_url_from_domain(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _populate_url_from_domain(cls, values: dict[str, Any]) -> dict[str, Any]:
         if 'domain' in values and 'url' not in values:
             values['url'] = values['domain']
         return values
@@ -134,25 +135,25 @@ class Website(BaseModel):
     twitter_url: Optional[str] = None
     youtube_url: Optional[str] = None
     address: Optional[str] = None
-    personnel: List[Dict[str, Any]] = []
+    personnel: list[dict[str, Any]] = []
     description: Optional[str] = None
     about_us_url: Optional[str] = None
     contact_url: Optional[str] = None
     services_url: Optional[str] = None
     products_url: Optional[str] = None
-    services: List[str] = []
-    products: List[str] = []
-    categories: List[str] = []
-    tags: List[str] = []
+    services: list[str] = []
+    products: list[str] = []
+    categories: list[str] = []
+    tags: list[str] = []
     scraper_version: Optional[int] = 1
     processed_by: Optional[str] = None
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False
-    all_emails: List[EmailAddress] = []
-    email_contexts: Dict[str, str] = {}
+    all_emails: list[EmailAddress] = []
+    email_contexts: dict[str, str] = {}
     ip_address: Optional[str] = None
-    tech_stack: List[str] = []
-    found_keywords: List[str] = []
+    tech_stack: list[str] = []
+    found_keywords: list[str] = []
     sitemap_xml: Optional[str] = None
     navbar_html: Optional[str] = None
     error: Optional[str] = None
@@ -166,7 +167,7 @@ class Website(BaseModel):
     # a good screenshot the same way it can't wipe any other field.
     screenshot_bytes: Optional[bytes] = Field(default=None, exclude=True)
 
-    def compute_merged_save_data(self, existing_data: Dict[str, Any]) -> Dict[str, Any]:
+    def compute_merged_save_data(self, existing_data: dict[str, Any]) -> dict[str, Any]:
         """Pure merge: fresh scrape values win unless hollow and the existing
         value isn't. Single source of truth for what "merge-safe save" means -
         every persistence target (local website.md, the S3 mirror) must call
@@ -196,7 +197,7 @@ class Website(BaseModel):
         return save_data
 
     @staticmethod
-    def read_existing_frontmatter(website_md_path: Path) -> Dict[str, Any]:
+    def read_existing_frontmatter(website_md_path: Path) -> dict[str, Any]:
         """Reads and parses an existing website.md's YAML frontmatter, if any.
         Returns {} on missing file or any parse failure (caller proceeds with
         fresh data only - never blocks a save on a corrupt existing file)."""

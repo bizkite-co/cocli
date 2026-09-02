@@ -9,7 +9,6 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
 
 from cocli.core.config import get_campaign
 from cocli.services.cluster_service import ClusterService
@@ -69,7 +68,7 @@ class PiSyncService:
 
         cluster_service = ClusterService(self.campaign)
         self.nodes = cluster_service.get_nodes()
-        self.results: List[SyncResult] = []
+        self.results: list[SyncResult] = []
 
     def sync_node(self, host: str) -> SyncResult:
         """
@@ -150,7 +149,7 @@ class PiSyncService:
             logger.warning(f"  {host}: Error - {e}")
             return SyncResult(host=host, success=False, files_synced=0, error=str(e))
 
-    def sync_all_nodes(self, blocking: bool = True) -> List[SyncResult]:
+    def sync_all_nodes(self, blocking: bool = True) -> list[SyncResult]:
         """
         Sync from all configured Pi nodes.
 
@@ -197,7 +196,7 @@ class PiSyncService:
             "total_files_synced": total_files,
         }
 
-    def sync_prospect_wal_to_s3(self, index_name: str = "google_maps_prospects") -> List[SyncResult]:
+    def sync_prospect_wal_to_s3(self, index_name: str = "google_maps_prospects") -> list[SyncResult]:
         """
         Pushes each Pi node's local index WAL (e.g. add_to_wal() output written
         directly by scrapers) up to S3, via a local staging hop: rsync Pi -> a
@@ -229,7 +228,7 @@ class PiSyncService:
 
         staging_root = paths.campaign(self.campaign).path / "_pi_wal_staging" / index_name
 
-        results: List[SyncResult] = []
+        results: list[SyncResult] = []
         for node in self.nodes:
             host = node.hostname
             target = node.ip_address if node.ip_address else host

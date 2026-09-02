@@ -17,10 +17,11 @@ Pattern:
   Then:   Move tile file from pending/ → completed/ (map-tile has no
           processing phase - batching is via --max, not a staging move)
 """
+from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, List, Dict, Optional
+from typing import Any, Optional
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
@@ -37,7 +38,7 @@ def process_tile_queue(
     max_tiles: Optional[int] = None,
     dry_run: bool = False,
     job_run_id: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Process tiles from map-tile/pending/ → discovery-gen/completed/.
 
@@ -92,11 +93,11 @@ def process_tile_queue(
     tiles_processed = 0
     scrape_tasks_created = 0
     errors = 0
-    identities: List[str] = []
+    identities: list[str] = []
 
     # Collect tile file paths up front (respecting max_tiles) so progress has a known total.
     import os
-    tile_paths: List[Path] = []
+    tile_paths: list[Path] = []
     for root, dirs, files in os.walk(pending_dir):
         for filename in sorted(files):
             if filename.endswith(".usv"):
@@ -122,7 +123,7 @@ def process_tile_queue(
 
             try:
                 # 1. Read tile file and parse TileQueueRecords
-                tile_records: List[TileQueueRecord] = []
+                tile_records: list[TileQueueRecord] = []
                 with open(tile_path, "r", encoding="utf-8") as f:
                     for line in f:
                         if line.strip():

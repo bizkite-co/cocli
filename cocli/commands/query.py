@@ -1,5 +1,6 @@
+from __future__ import annotations
 import typer
-from typing import Optional, List
+from typing import Optional
 from geopy.distance import geodesic # type: ignore
 import logging
 from rich.console import Console
@@ -14,7 +15,7 @@ console = Console()
 
 app = typer.Typer(no_args_is_help=True)
 
-def get_enriched_emails(domain_to_slug_map: dict[str, str], domain: str) -> List[str]:
+def get_enriched_emails(domain_to_slug_map: dict[str, str], domain: str) -> list[str]:
     """Looks up a company by domain and returns all associated emails."""
     slug = domain_to_slug_map.get(domain)
     if not slug:
@@ -72,10 +73,10 @@ def build_domain_to_slug_map() -> dict[str, str]:
                 continue # Skip malformed files
     return domain_map
 
-def get_tags_for_domain(domain_to_tags_map: dict[str, List[str]], domain: str) -> List[str]:
+def get_tags_for_domain(domain_to_tags_map: dict[str, list[str]], domain: str) -> list[str]:
     return domain_to_tags_map.get(domain, [])
 
-def build_domain_to_tags_map() -> dict[str, List[str]]:
+def build_domain_to_tags_map() -> dict[str, list[str]]:
     """Builds a lookup map from domain to a list of tags."""
     domain_map = {}
     companies_dir = get_companies_dir()

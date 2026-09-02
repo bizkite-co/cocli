@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 from datetime import datetime, UTC
-from typing import List, Any, Dict
+from typing import Any
 import yaml
 from rich.console import Console
 
@@ -17,7 +17,7 @@ console = Console()
 
 class WebsiteCompiler(BaseCompiler):
     def __init__(self) -> None:
-        self.errors: List[Dict[str, Any]] = []
+        self.errors: list[dict[str, Any]] = []
 
     def log_error(self, company_slug: str, error: str) -> None:
         self.errors.append({

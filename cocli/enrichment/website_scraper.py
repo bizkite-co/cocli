@@ -1,10 +1,11 @@
+from __future__ import annotations
 import re
 import httpx
 import asyncio
 import socket
 import os
 import xml.etree.ElementTree as ET
-from typing import Optional, List, Callable, Coroutine, Any, Dict, Union, Tuple
+from typing import Optional, Callable, Coroutine, Any, Union
 from playwright.async_api import Page, Browser, BrowserContext
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
@@ -421,7 +422,7 @@ class WebsiteScraper:
             except Exception as e:
                 logger.debug(f"Screenshot capture failed for {domain}: {e}")
 
-            target_keywords: List[str] = []
+            target_keywords: list[str] = []
             if campaign:
                 target_keywords = campaign.prospecting.queries + campaign.prospecting.keywords
 
@@ -478,7 +479,7 @@ class WebsiteScraper:
                         "Products": ["product"],
                     }
                     
-                    urls_to_scrape: Dict[str, Tuple[str, Callable[..., Coroutine[Any, Any, Website]]]] = {} # url -> (type, func)
+                    urls_to_scrape: dict[str, tuple[str, Callable[..., Coroutine[Any, Any, Website]]]] = {} # url -> (type, func)
                     
                     # Search for standard pages
                     for page_type, keywords in page_map.items():
@@ -611,7 +612,7 @@ class WebsiteScraper:
         website_data: Website,
         browser: BrowserContext,
         debug: bool,
-        target_keywords: List[str] = [],
+        target_keywords: list[str] = [],
     ) -> None:
         try:
             page = await browser.new_page()
@@ -621,7 +622,7 @@ class WebsiteScraper:
         except Exception:
             pass
 
-    async def _get_sitemap_urls(self, domain: str) -> Tuple[List[str], Optional[str]]:
+    async def _get_sitemap_urls(self, domain: str) -> tuple[list[str], Optional[str]]:
         all_urls = set()
         raw_xml = None
         async with httpx.AsyncClient(
@@ -660,7 +661,7 @@ class WebsiteScraper:
         page: Page,
         website_data: Website,
         browser: BrowserContext,
-        target_keywords: List[str] = [],
+        target_keywords: list[str] = [],
     ) -> Website:
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
@@ -680,7 +681,7 @@ class WebsiteScraper:
         page: Page,
         website_data: Website,
         browser: BrowserContext,
-        target_keywords: List[str] = [],
+        target_keywords: list[str] = [],
     ) -> Website:
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
@@ -699,13 +700,13 @@ class WebsiteScraper:
         self,
         page: Page,
         website_data: Website,
-        link_texts: List[str],
+        link_texts: list[str],
         page_type: str,
         scrape_func: Callable[..., Coroutine[Any, Any, Website]],
         browser: BrowserContext,
         debug: bool,
         timeout: int,
-        target_keywords: List[str] = [],
+        target_keywords: list[str] = [],
     ) -> Website:
         link = page.locator(
             ", ".join([f'a:text-matches("{t}", "i")' for t in link_texts])
@@ -742,7 +743,7 @@ class WebsiteScraper:
         page: Page,
         website_data: Website,
         browser: BrowserContext,
-        target_keywords: List[str] = [],
+        target_keywords: list[str] = [],
     ) -> Website:
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
@@ -847,7 +848,7 @@ class WebsiteScraper:
         page: Page,
         website_data: Website,
         browser: BrowserContext,
-        target_keywords: List[str] = [],
+        target_keywords: list[str] = [],
     ) -> Website:
         await self._scrape_page(page, website_data, browser, target_keywords)
         html = await page.content()
@@ -889,10 +890,10 @@ class WebsiteScraper:
 
     async def _scrape_personnel_details(
         self, page: Page, website_data: Website
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
-        person_data: Dict[str, Any] = {}
+        person_data: dict[str, Any] = {}
         name_element = soup.select_one("h1, .member__name, .person__name")
         if name_element:
             person_data["name"] = name_element.get_text(strip=True)
@@ -940,7 +941,7 @@ class WebsiteScraper:
 
         return " ".join(words)
 
-    def infer_name_from_dotted_mailbox(self, mailbox: str) -> Optional[Dict[str, Any]]:
+    def infer_name_from_dotted_mailbox(self, mailbox: str) -> Optional[dict[str, Any]]:
         """Given an email local-part shaped like firstname.lastname, infer a
         person's name. Returns a personnel-shaped dict ({"name", possibly
         "name_confidence": "heuristic"}) or None if the shape doesn't hold.
@@ -968,7 +969,7 @@ class WebsiteScraper:
         if not cleaned:
             return None
 
-        result: Dict[str, Any] = {"name": cleaned}
+        result: dict[str, Any] = {"name": cleaned}
         if first.lower() not in FIRST_NAMES:
             result["name_confidence"] = "heuristic"
         return result
@@ -988,7 +989,7 @@ class WebsiteScraper:
                 inferred = self.infer_name_from_dotted_mailbox(mailbox)
                 if inferred and inferred["name"].lower() not in seen_names:
                     seen_names.add(inferred["name"].lower())
-                    entry: Dict[str, Any] = {
+                    entry: dict[str, Any] = {
                         "name": inferred["name"],
                         "title": "Key Contact (Email)",
                         "email": f"{mailbox}@{domain}"
@@ -1034,7 +1035,7 @@ class WebsiteScraper:
                         if t.lower() in context_str.lower():
                             title = t
                             break
-                    personnel_entry: Dict[str, Any] = {
+                    personnel_entry: dict[str, Any] = {
                         "name": cleaned,
                         "title": title
                     }
@@ -1068,7 +1069,7 @@ class WebsiteScraper:
                         })
 
     def _search_keywords(
-        self, soup: BeautifulSoup, website_data: Website, target_keywords: List[str]
+        self, soup: BeautifulSoup, website_data: Website, target_keywords: list[str]
     ) -> None:
         text = soup.get_text(separator=" ", strip=True).lower()
         for k in target_keywords:
@@ -1078,7 +1079,7 @@ class WebsiteScraper:
 
     def _extract_all_emails(
         self, soup: BeautifulSoup, html: str = ""
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         email_to_label = {}
         for link in soup.find_all("a", href=re.compile(r"^mailto:", re.I)):
             href_attr = link.get("href")
@@ -1141,7 +1142,7 @@ class WebsiteScraper:
 
         return email_to_label
 
-    def _detect_tech(self, soup: BeautifulSoup) -> List[str]:
+    def _detect_tech(self, soup: BeautifulSoup) -> list[str]:
         tech = set()
         generator = soup.find("meta", attrs={"name": "generator"})
         if generator and (content := generator.get("content")):

@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -160,7 +160,7 @@ def test_upload_kml_layers(tmp_path: Path) -> None:
     mock_s3 = MagicMock()
     mock_session = MagicMock()
     mock_session.client.return_value = mock_s3
-    steps: List[str] = []
+    steps: list[str] = []
 
     service = ReportingService(campaign_name="ship")
     with patch(

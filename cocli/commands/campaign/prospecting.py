@@ -1,9 +1,10 @@
+from __future__ import annotations
 import typer
 import asyncio
 import logging
 import toml
 import json
-from typing import Optional, List, Dict, Any, cast, Annotated
+from typing import Optional, Any, cast, Annotated
 from pathlib import Path
 from rich.console import Console
 from rich.progress import (
@@ -45,7 +46,7 @@ async def pipeline(
     headed: bool,
     devtools: bool,
     campaign_name: str,
-    existing_companies_map: Dict[str, str],
+    existing_companies_map: dict[str, str],
     overlap_threshold_percent: float,
     zoom_out_button_selector: str,
     panning_distance_miles: int,
@@ -58,14 +59,14 @@ async def pipeline(
     browser_width: int,
     browser_height: int,
     location_prospects_index: LocationProspectsIndex,
-    target_locations: Optional[List[Dict[str, Any]]] = None,
+    target_locations: Optional[list[dict[str, Any]]] = None,
     aws_profile_name: Optional[str] = None,
     campaign_company_slug: Optional[str] = None,
     use_cloud_queue: bool = False,
     max_proximity_miles: float = 0.0,
     navigation_timeout_ms: Optional[int] = None,
     proxy_url: Optional[str] = None,
-    grid_tiles: Optional[List[Dict[str, Any]]] = None,
+    grid_tiles: Optional[list[dict[str, Any]]] = None,
     resource_discovery: bool = False,
     prospect_type: str = "prospect",
 ) -> None:
@@ -177,7 +178,7 @@ async def pipeline(
 
                 compiler.save_audit_report()
 
-            async def producer_task(existing_companies_map: Dict[str, str]) -> None:
+            async def producer_task(existing_companies_map: dict[str, str]) -> None:
                 from ...models.campaigns.queues.base import QueueMessage
                 from ...scrapers.resource_analyzer import is_likely_non_commercial
 
@@ -667,7 +668,7 @@ def create_batch(
 
     from ...models.campaigns.mission import MissionTask
 
-    tasks: List[MissionTask] = []
+    tasks: list[MissionTask] = []
 
     if query:
         # Manual Mode (Ignores offsets/state)
@@ -936,7 +937,7 @@ def monitor_batch(
     import json
 
     # 1. Load Batch
-    tasks: List[MissionTask] = []
+    tasks: list[MissionTask] = []
     with open(batch_file, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():

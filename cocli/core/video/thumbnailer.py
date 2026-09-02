@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 import yaml
@@ -24,8 +25,8 @@ _VALID_POSITIONS = frozenset({"top", "center", "bottom"})
 
 def parse_rgba_color(
     value: Any,
-    default: Tuple[int, int, int, int],
-) -> Tuple[int, int, int, int]:
+    default: tuple[int, int, int, int],
+) -> tuple[int, int, int, int]:
     """
     Parse ``#RGB``, ``#RRGGBB``, or ``#RRGGBBAA`` (optional leading #).
 
@@ -54,7 +55,7 @@ def parse_rgba_color(
     return (r, g, b, a)
 
 
-def parse_metadata(md_file: Path) -> Dict[str, Any]:
+def parse_metadata(md_file: Path) -> dict[str, Any]:
     """Parse YAML frontmatter from a markdown file."""
     if not md_file.exists():
         console.print(f"[red]Metadata file not found: {md_file}[/red]")
@@ -65,7 +66,7 @@ def parse_metadata(md_file: Path) -> Dict[str, Any]:
         parts = content.split("---", 2)
         if len(parts) >= 2:
             try:
-                data: Dict[str, Any] = yaml.safe_load(parts[1]) or {}
+                data: dict[str, Any] = yaml.safe_load(parts[1]) or {}
                 console.print(f"[dim]Parsed metadata: {data}[/dim]")
                 return data
             except yaml.YAMLError as e:
@@ -92,7 +93,7 @@ def _fit_font(
     max_size: int = 200,
     min_size: int = 12,
     spacing: int = 0,
-) -> Tuple[ImageFont.FreeTypeFont, int, int, int]:
+) -> tuple[ImageFont.FreeTypeFont, int, int, int]:
     """Return (font, size, text_w, text_h) that fits inside max box."""
     font = ImageFont.truetype(font_path, min_size)
     best = (font, min_size, 0, 0)
@@ -136,8 +137,8 @@ def overlay_text(
     subtext: Optional[str] = None,
     *,
     position: str = "center",
-    title_fill: Optional[Tuple[int, int, int, int]] = None,
-    subtext_fill: Optional[Tuple[int, int, int, int]] = None,
+    title_fill: Optional[tuple[int, int, int, int]] = None,
+    subtext_fill: Optional[tuple[int, int, int, int]] = None,
 ) -> Image.Image:
     """
     Overlay title (and optional subtext) onto a screenshot.

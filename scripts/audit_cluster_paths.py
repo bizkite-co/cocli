@@ -3,7 +3,6 @@ import subprocess
 import argparse
 import logging
 from pathlib import Path
-from typing import List
 from rich.console import Console
 from rich.table import Table
 
@@ -38,7 +37,7 @@ def check_s3(bucket: str, profile: str, path: str) -> bool:
     except Exception:
         return False
 
-def audit_paths(campaigns: List[str], target_paths: List[str]) -> None:
+def audit_paths(campaigns: list[str], target_paths: list[str]) -> None:
     from cocli.core.paths import paths
     import tomli
     

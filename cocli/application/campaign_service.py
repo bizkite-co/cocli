@@ -1,8 +1,9 @@
+from __future__ import annotations
 import csv
 import logging
 import toml
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +24,7 @@ class CampaignEditTargets(BaseModel):
     campaign_dir: Path
     config_path: Path
     readme_path: Path
-    files_to_edit: List[Path] = Field(default_factory=list)
+    files_to_edit: list[Path] = Field(default_factory=list)
     config_exists: bool = False
     readme_exists: bool = False
 
@@ -48,8 +49,8 @@ def _readme_first_paragraph(readme_path: Path, *, max_len: int = 160) -> str:
     except OSError:
         return ""
 
-    paragraphs: List[str] = []
-    buf: List[str] = []
+    paragraphs: list[str] = []
+    buf: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -127,7 +128,7 @@ class CampaignService:
         self.config_path = self.campaign_dir / "config.toml"
         self.exclusion_manager = ExclusionManager(campaign_name)
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Returns the raw configuration dictionary."""
         return load_campaign_config(self.campaign_name)
 
@@ -376,7 +377,7 @@ class CampaignService:
             # The Campaign model is flattened. We need to move campaign-specific 
             # fields back into a [campaign] section to match the established format.
             campaign_fields = ["name", "tag", "domain", "company-slug", "workflows", "queue_type", "timezone"]
-            structured_data: Dict[str, Any] = {"campaign": {}}
+            structured_data: dict[str, Any] = {"campaign": {}}
             
             for k, v in data.items():
                 if k in campaign_fields:
@@ -391,7 +392,7 @@ class CampaignService:
                 toml.dump(config, f)
         logger.info(f"Saved configuration to {self.config_path}")
 
-    def _save_config(self, config: Dict[str, Any]) -> None:
+    def _save_config(self, config: dict[str, Any]) -> None:
         self.save_config(config)
 
     def compile_lifecycle_index(self) -> Any:
@@ -470,12 +471,12 @@ class CampaignService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def list_campaign_names() -> List[str]:
+    def list_campaign_names() -> list[str]:
         """Return campaign slugs (relative to campaigns root) under the data root."""
         from ..core.config import get_all_campaign_dirs, get_campaigns_dir
 
         root = get_campaigns_dir()
-        names: List[str] = []
+        names: list[str] = []
         for d in get_all_campaign_dirs():
             try:
                 names.append(str(d.relative_to(root)))
@@ -484,7 +485,7 @@ class CampaignService:
         return names
 
     @staticmethod
-    def list_campaigns() -> List[CampaignListItem]:
+    def list_campaigns() -> list[CampaignListItem]:
         """
         List local campaigns with descriptions for interactive CLI use.
 
@@ -495,7 +496,7 @@ class CampaignService:
 
         root = get_campaigns_dir()
         active = get_campaign()
-        items: List[CampaignListItem] = []
+        items: list[CampaignListItem] = []
         for campaign_dir in get_all_campaign_dirs():
             try:
                 name = str(campaign_dir.relative_to(root))
@@ -543,7 +544,7 @@ class CampaignService:
 
         config_path = self.campaign_dir / "config.toml"
         readme_path = self.campaign_dir / "README.md"
-        files: List[Path] = []
+        files: list[Path] = []
         if config_path.exists():
             files.append(config_path)
         if readme_path.exists():

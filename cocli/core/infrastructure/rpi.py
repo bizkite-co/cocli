@@ -1,6 +1,5 @@
 import subprocess
 import logging
-from typing import Dict
 from rich.console import Console
 
 logger = logging.getLogger(__name__)
@@ -20,7 +19,7 @@ def start_rpi_worker(
     campaign_name: str, 
     role: str, 
     profile: str,
-    queues: Dict[str, str],
+    queues: dict[str, str],
     user: str = "mstouffer",
     workers: int = 1
 ) -> bool:

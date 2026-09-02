@@ -1,7 +1,8 @@
+from __future__ import annotations
 import typer
 import logging
 from rich.console import Console
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 from ..application.services import ServiceContainer
 from ..renderers import status_renderer
@@ -44,7 +45,7 @@ def status(
         time.sleep(1.0)
 
         # 2. Get stats (either from cache or fresh)
-        stats: Optional[Dict[str, Any]] = None
+        stats: Optional[dict[str, Any]] = None
         if refresh:
             stats = services.reporting_service.get_campaign_stats(effective_campaign)
         else:

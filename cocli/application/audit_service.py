@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 import json
 import re
@@ -5,7 +6,7 @@ import shutil
 import csv
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
 from ..models.campaigns.queues.gm_details import GmItemTask
@@ -29,12 +30,12 @@ _CLI_TREE_OPTION_LINE = re.compile(r"^\s*\S+\s*\(\w+\)")
 _CLI_TREE_BARE_NAME = re.compile(r"^(?P<indent> *)(?P<name>[A-Za-z][\w-]*)\s*$")
 
 
-def parse_cli_tree(tree_text: str) -> List[CliCommandMatch]:
+def parse_cli_tree(tree_text: str) -> list[CliCommandMatch]:
     """Parses dump_cli_tree()'s indented text (4 spaces/level) into one
     entry per command/subcommand, with its full "parent child grandchild"
     path and the option/arg lines nested under it."""
-    entries: List[CliCommandMatch] = []
-    stack: List[tuple[int, str]] = []
+    entries: list[CliCommandMatch] = []
+    stack: list[tuple[int, str]] = []
     current: Optional[CliCommandMatch] = None
 
     def push(indent: int, name: str, desc: str) -> None:
@@ -72,7 +73,7 @@ def parse_cli_tree(tree_text: str) -> List[CliCommandMatch]:
     return entries
 
 
-def search_cli_tree(tree_text: str, query: str, limit: int = 25) -> List[CliCommandMatch]:
+def search_cli_tree(tree_text: str, query: str, limit: int = 25) -> list[CliCommandMatch]:
     """Searches a dump_cli_tree() tree for a phrase against each command's
     path and description only - NOT its options. An early version scored
     fuzzy matches across path+description+options combined, but that let
@@ -157,7 +158,7 @@ def _classify_action(cls: type, action: str) -> str:
     return "cocli"
 
 
-def dump_tui_actions(classes: List[type], out: Any) -> None:
+def dump_tui_actions(classes: list[type], out: Any) -> None:
     """Dumps every action a TUI class exposes - the TUI equivalent of
     dump_cli_tree() - so the two can be diffed for a real coverage metric
     instead of "I guess it's because we haven't implemented all the CLI
@@ -186,7 +187,7 @@ def dump_tui_actions(classes: List[type], out: Any) -> None:
     now so we can see them and think about how to sort them"), just
     labeled so the two kinds are easy to tell apart at a glance."""
     for cls in sorted(classes, key=lambda c: c.__name__):
-        bound_actions: Dict[str, tuple[str, str, bool]] = {}
+        bound_actions: dict[str, tuple[str, str, bool]] = {}
         for entry in getattr(cls, "BINDINGS", []):
             if isinstance(entry, tuple):
                 key, action, description = (list(entry) + ["", ""])[:3]
@@ -260,7 +261,7 @@ class AuditService:
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
 
-    def audit_campaign_integrity(self, fix: bool = False) -> Dict[str, Any]:
+    def audit_campaign_integrity(self, fix: bool = False) -> dict[str, Any]:
         """
         Audits campaign for cross-contamination.
         Corresponds to 'make audit-campaign' / 'scripts/audit_campaign_integrity.py'.
@@ -271,8 +272,8 @@ class AuditService:
         
         manager = ProspectsIndexManager(self.campaign_name)
         report_data = []
-        prospects_to_remove: List[Path] = []
-        companies_to_untag: List[Company] = []
+        prospects_to_remove: list[Path] = []
+        companies_to_untag: list[Company] = []
 
         flooring_patterns = ["floor", "tile", "carpet", "epoxy", "vinyl", "hardwood", "laminate", "linoleum"]
         wealth_patterns = ["advisor", "wealth", "planner", "financial", "investment", "retirement", "tax analyzer"]
@@ -342,7 +343,7 @@ class AuditService:
             "report": report_data
         }
 
-    def audit_queue_completion(self, execute: bool = False) -> Dict[str, Any]:
+    def audit_queue_completion(self, execute: bool = False) -> dict[str, Any]:
         """
         Audits completion markers against models and index.
         Corresponds to 'make audit-queue' / 'scripts/audit_queue_completion.py'.
@@ -389,7 +390,7 @@ class AuditService:
 
         return stats
 
-    def audit_cluster_paths(self, target_paths: List[str], campaigns: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def audit_cluster_paths(self, target_paths: list[str], campaigns: Optional[list[str]] = None) -> list[dict[str, Any]]:
         """
         Audits specific paths across the cluster and S3.
         target_paths: List of path templates (can use {campaign} placeholder).
@@ -484,11 +485,11 @@ class AuditService:
 
     def search_cli_tree(
         self, click_command: Any, query: str, limit: int = 25
-    ) -> List[CliCommandMatch]:
+    ) -> list[CliCommandMatch]:
         """Searches the CLI command hierarchy for a phrase."""
         return search_cli_tree(self.get_cli_tree(click_command), query, limit=limit)
 
-    def get_tui_actions(self, classes: List[type]) -> str:
+    def get_tui_actions(self, classes: list[type]) -> str:
         """Dumps every action the given TUI classes expose, as a string."""
         from io import StringIO
 
@@ -510,7 +511,7 @@ class AuditService:
         campaign_name: Optional[str] = None,
         skip_companies: bool = True,
         gen_cleanup: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Audits the filesystem for OMAP compliance and Screaming Architecture."""
         from ..core.audit.fs_auditor import FsAuditor
         from datetime import datetime
@@ -541,7 +542,7 @@ class AuditService:
         campaign: Optional[str] = None,
         fix: bool = False,
         dry_run: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Audit datapackage.json files for schema compliance."""
         from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
         from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
@@ -639,7 +640,7 @@ class AuditService:
         workflow.start()
         return workflow.state
 
-    def audit_enrichment(self, campaign_name: str) -> Dict[str, Any]:
+    def audit_enrichment(self, campaign_name: str) -> dict[str, Any]:
         """Audit website enrichment metrics for a campaign."""
         import yaml
         from ..core.text_utils import parse_frontmatter
@@ -749,7 +750,7 @@ class AuditService:
 
     def get_enrichment_interactive_targets(
         self, campaign_name: str
-    ) -> List[tuple[Optional[str], str, str, bool, bool]]:
+    ) -> list[tuple[Optional[str], str, str, bool, bool]]:
         """Retrieves targets that do not have a contact name for interactive audit."""
         import yaml
         from ..core.text_utils import parse_frontmatter
@@ -835,8 +836,8 @@ class AuditService:
         return run_html_audit(campaign, limit=limit, output_name=output)
 
     def _sample_random_gm_list_records(
-        self, results_dir: Path, field_names: List[str], n: int
-    ) -> List[List[str]]:
+        self, results_dir: Path, field_names: list[str], n: int
+    ) -> list[list[str]]:
         """Reservoir-samples n records uniformly at random across every
         completed gm-list results/*.usv file, so `audit queue validate`
         with no tile/phrase/usv-path doesn't force the reviewer to guess
@@ -849,7 +850,7 @@ class AuditService:
             "compiled.usv", "compacted.usv", "results.usv",
             "corrupted-records.usv", "results.invalid.usv",
         }
-        reservoir: List[List[str]] = []
+        reservoir: list[list[str]] = []
         seen = 0
         for usv_file in sorted(results_dir.rglob("*.usv")):
             if usv_file.name in excluded_names:
@@ -879,7 +880,7 @@ class AuditService:
         usv_path: Optional[Path] = None,
         headed: bool = False,
         limit: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Prepares human-in-the-loop validation of scraped list items."""
         import csv
         from datetime import datetime, UTC
@@ -1116,7 +1117,7 @@ class AuditService:
         output: Optional[Path] = None,
         corrections_path: Optional[Path] = None,
         reviewed_path_opt: Optional[Path] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Replay audit corrections onto a USV results file."""
         from collections import defaultdict
         from ..models.campaigns.indexes.google_maps_list_item import (
@@ -1204,7 +1205,7 @@ class AuditService:
         campaign: str,
         tile: Optional[str] = None,
         phrase: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Export corrections as parametrized test cases."""
         import csv
 
@@ -1374,7 +1375,7 @@ class AuditService:
         force: bool = False,
         dry_run: bool = False,
         max_age_minutes: int = 30,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Purge stale or expired leases from a queue directory."""
         from cocli.services.lease_cleanup import (
             purge_expired_leases,

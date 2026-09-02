@@ -3,6 +3,7 @@
 This is used ONLY for OAuth access_token and refresh_token.
 All other secrets (client_id, client_secret, etc.) remain in 1Password.
 """
+from __future__ import annotations
 
 import keyring
 import logging

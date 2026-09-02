@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Dict, Any, Iterator
+from typing import Any, Iterator
 from datetime import datetime, UTC
 
 from .paths import paths
@@ -28,11 +28,11 @@ class LifecycleManager:
         Yields progress updates. Final yield is the total record count.
         """
         # place_id -> LifecycleItem
-        lifecycle_data: Dict[str, LifecycleItem] = {}
+        lifecycle_data: dict[str, LifecycleItem] = {}
         
         # Helper Map: slug -> place_id (built from company folders)
-        slug_to_pid: Dict[str, str] = {}
-        domain_to_pid: Dict[str, str] = {}
+        slug_to_pid: dict[str, str] = {}
+        domain_to_pid: dict[str, str] = {}
 
         # 1. Build slug_to_pid and domain_to_pid maps from both company folders and checkpoint index
         from .config import get_companies_dir
