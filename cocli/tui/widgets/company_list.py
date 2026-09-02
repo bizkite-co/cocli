@@ -40,6 +40,7 @@ class CompanyList(Container):
         Binding("l", "open_highlighted", "Open", show=False, priority=True),
         ("alt+s", "reset_view", "Return to List"),
         ("d", "remove_from_to_call", "Remove from To-Call"),
+        Binding("m", "open_mark_menu", "Mark"),
     ]
 
     def __init__(
@@ -660,3 +661,56 @@ class CompanyList(Container):
         except Exception as e:
             logger.error(f"Failed to remove from To-Call: {e}")
             self.app.notify(f"Failed to remove: {e}", severity="error")
+
+    def action_open_mark_menu(self) -> None:
+        """``m`` then a letter — same mark menu as company detail."""
+        item = self._highlighted_result()
+        if item is None or not item.slug:
+            self.app.notify("No company selected", severity="warning")
+            return
+        self.app.run_worker(self._mark_menu_worker(item), exclusive=True)
+
+    async def _mark_menu_worker(self, item: SearchResult) -> None:
+        from cocli.application.to_call_disposition_service import (
+            REASON_AD_INJECTION,
+            REASON_NONCONFORMING,
+            mark_to_call_invalid,
+        )
+        from cocli.core.config import get_campaign
+
+        from .mark_menu_screen import MarkMenuScreen
+
+        choice = await self.app.push_screen_wait(MarkMenuScreen())
+        if choice not in ("invalid", "illegitimate"):
+            return
+
+        campaign = get_campaign()
+        if not campaign:
+            self.app.notify("No campaign set", severity="error")
+            return
+
+        reason = (
+            REASON_AD_INJECTION if choice == "illegitimate" else REASON_NONCONFORMING
+        )
+        if choice == "illegitimate":
+            from .confirm_screen import ConfirmScreen
+
+            name = str(item.name) if item.name else item.slug
+            confirm = await self.app.push_screen_wait(
+                ConfirmScreen(
+                    f"Flag '{name}' as an illegitimate/ad-injected result and "
+                    "exclude it from this campaign?"
+                )
+            )
+            if not confirm:
+                return
+
+        mark_to_call_invalid(
+            campaign=campaign,
+            slug=item.slug,
+            domain=item.domain,
+            reason=reason,
+        )
+        self.app.notify(f"Marked {item.slug} ({reason})")
+        self.search_offset = 0
+        self.run_search("")

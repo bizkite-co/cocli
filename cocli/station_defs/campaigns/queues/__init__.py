@@ -77,6 +77,23 @@ MAP_TILE_QUEUE_STATION: StationDecl[object] = StationDecl(
 # Fixed layout segment name under pending (not a PhaseRef).
 MAP_TILE_PENDING_LAYOUT = "tiles"
 
+# to-call / to-call-invalid: one USV file per slug under pending/, no DFQ shard.
+_TO_CALL_PHASES = phases("pending", "completed")
+TO_CALL_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="to-call-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_TO_CALL_PHASES,),
+)
+TO_CALL_INVALID_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="to-call-invalid-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_TO_CALL_PHASES,),
+)
+
 # Backward-compatible name used by path_helpers pilot
 QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
     name="campaign-queue-pending",
@@ -95,6 +112,8 @@ QUEUE_STATIONS: dict[str, StationDecl[object]] = {
     "gm-list": GM_LIST_QUEUE_STATION,
     "enrichment": ENRICHMENT_QUEUE_STATION,
     "map-tile": MAP_TILE_QUEUE_STATION,
+    "to-call": TO_CALL_QUEUE_STATION,
+    "to-call-invalid": TO_CALL_INVALID_QUEUE_STATION,
 }
 
 

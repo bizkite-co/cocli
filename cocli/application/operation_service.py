@@ -696,6 +696,7 @@ class OperationService:
                     created = 0
                     skipped_already_pending = 0
                     skipped_do_not_call = 0
+                    skipped_excluded = 0
                     would_create = 0
                     would_update = 0
                     sample_slugs: list[str] = []
@@ -704,6 +705,7 @@ class OperationService:
                     from cocli.models.company_name import CompanyName
                     from cocli.models.campaigns.queues.to_call import ToCallTask
                     from cocli.core.do_not_call_manager import DoNotCallManager
+                    from cocli.core.exclusions import ExclusionManager
                     from cocli.core.paths import paths as _cc_paths
                     tasks_to_save = []
 
@@ -719,6 +721,7 @@ class OperationService:
                         / "pending"
                     )
                     dnc_manager = DoNotCallManager()
+                    exclusion_manager = ExclusionManager(self.campaign_name)
 
                     for p in top_prospects:
                         if limit and created >= limit:
@@ -735,6 +738,12 @@ class OperationService:
 
                         if p.phone_number and dnc_manager.is_do_not_call(str(p.phone_number)):
                             skipped_do_not_call += 1
+                            continue
+
+                        if exclusion_manager.is_excluded(
+                            slug=p.slug, domain=p.domain
+                        ):
+                            skipped_excluded += 1
                             continue
 
                         company = await asyncio.to_thread(Company.get, p.slug)
@@ -827,13 +836,15 @@ class OperationService:
                         report["would_enqueue_count"] = created
                         report["skipped_already_pending"] = skipped_already_pending
                         report["skipped_do_not_call"] = skipped_do_not_call
+                        report["skipped_excluded"] = skipped_excluded
                         report["sample_slugs"] = sample_slugs
                         log_step(
                             "tag_leads",
                             "success",
                             f"Dry run: would create {would_create}, update {would_update}, "
                             f"enqueue {created} to-call tasks (skipped {skipped_already_pending} "
-                            f"already pending, {skipped_do_not_call} do-not-call)",
+                            f"already pending, {skipped_do_not_call} do-not-call, "
+                            f"{skipped_excluded} excluded)",
                         )
                         log_step("tag_leads", "task-end")
                         log_step("job-end", "success")
@@ -859,11 +870,13 @@ class OperationService:
                     report["created_count"] = created
                     report["skipped_already_pending"] = skipped_already_pending
                     report["skipped_do_not_call"] = skipped_do_not_call
+                    report["skipped_excluded"] = skipped_excluded
                     log_step(
                         "tag_leads",
                         "success",
                         f"Enqueued {created} (skipped {skipped_already_pending} already "
-                        f"pending, {skipped_do_not_call} do-not-call)",
+                        f"pending, {skipped_do_not_call} do-not-call, "
+                        f"{skipped_excluded} excluded)",
                     )
                     log_step("tag_leads", "task-end")
                     log_step("job-end", "success")

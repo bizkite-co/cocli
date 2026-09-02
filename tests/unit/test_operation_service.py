@@ -231,6 +231,16 @@ async def test_op_compile_to_call_add_more_skips_pending_and_do_not_call(
         reviews_count=90,
         tags=[],
     )
+    excluded = SearchResult(
+        type="company",
+        unique_id="excluded-co",
+        display="Excluded Co",
+        slug="excluded-co",
+        domain="excludedco.com",
+        average_rating=4.7,
+        reviews_count=70,
+        tags=[],
+    )
     fresh = SearchResult(
         type="company",
         unique_id="fresh-co",
@@ -248,10 +258,15 @@ async def test_op_compile_to_call_add_more_skips_pending_and_do_not_call(
         (pending_dir / "already-pending-co.usv").write_text("stale content")
 
         DoNotCallManager().add("512-234-5678")
+        from cocli.core.exclusions import ExclusionManager
+
+        ExclusionManager("test-campaign").add_exclusion(
+            slug="excluded-co", domain="excludedco.com", reason="to-call-nonconforming"
+        )
 
         with patch(
             "cocli.application.search_service.get_fuzzy_search_results",
-            return_value=[already_pending, do_not_call, fresh],
+            return_value=[already_pending, do_not_call, excluded, fresh],
         ), patch(
             "cocli.core.email_index_manager.EmailIndexManager.compact"
         ), patch(
@@ -271,8 +286,9 @@ async def test_op_compile_to_call_add_more_skips_pending_and_do_not_call(
     assert op_result["created_count"] == 1
     assert op_result["skipped_already_pending"] == 1
     assert op_result["skipped_do_not_call"] == 1
+    assert op_result["skipped_excluded"] == 1
 
-    # Only fresh-co should ever have been looked up/created - the other two
+    # Only fresh-co should ever have been looked up/created - the others
     # were skipped before any company or queue write.
     mock_get.assert_called_once_with("fresh-co")
     mock_create.assert_called_once()

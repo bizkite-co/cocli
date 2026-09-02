@@ -427,8 +427,8 @@ class CocliApp(App[None]):
         Binding("ctrl+c", "navigate_up", "Back", show=False),
         ("alt+s", "navigate_up", "Navigate Up"),
         Binding("meta+s", "navigate_up", "Navigate Up", show=False),
-        ("[", "focus_sidebar", "Focus Sidebar"),
-        ("]", "focus_content", "Focus Content"),
+        Binding("[", "focus_sidebar", "Focus Sidebar", show=False),
+        Binding("]", "focus_content", "Focus Content", show=False),
         ("t", "focus_templates", "Templates"),
         Binding("ctrl+p", "command_palette", "Commands", show=True),
     ]

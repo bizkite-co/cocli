@@ -6,7 +6,7 @@ so the flag action lives directly on the detail screen (Mark, 2026-08-30).
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -42,20 +42,17 @@ async def test_flag_illegitimate_confirmed_adds_exclusion(mock_company_data):
         await pilot.pause()  # on_mount() focuses panel_info
 
         with patch(
-            "cocli.core.exclusions.ExclusionManager"
-        ) as mock_manager_cls, patch(
+            "cocli.application.to_call_disposition_service.mark_to_call_invalid"
+        ) as mock_mark, patch(
             "cocli.core.config.get_campaign", return_value="turboship"
         ):
-            mock_manager = MagicMock()
-            mock_manager_cls.return_value = mock_manager
-
             await pilot.press("x")
             await pilot.pause()
             await pilot.press("y")
             await pilot.pause()
 
-            mock_manager_cls.assert_called_once_with("turboship")
-            mock_manager.add_exclusion.assert_called_once_with(
+            mock_mark.assert_called_once_with(
+                campaign="turboship",
                 slug="nemeth-family-interiors",
                 domain="nemethfamilyinteriors.com",
                 reason="google-maps-ad-injection",
@@ -94,3 +91,29 @@ async def test_action_flag_illegitimate_notifies_when_no_slug(mock_company_data)
 
         mock_notify.assert_called_once()
         assert mock_notify.call_args.kwargs.get("severity") == "error"
+
+
+@pytest.mark.asyncio
+async def test_mark_menu_i_marks_invalid(mock_company_data):
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await pilot.pause()
+
+        with patch(
+            "cocli.application.to_call_disposition_service.mark_to_call_invalid"
+        ) as mock_mark, patch(
+            "cocli.core.config.get_campaign", return_value="roadmap"
+        ):
+            await pilot.press("m")
+            await pilot.pause()
+            await pilot.press("i")
+            await pilot.pause()
+
+            mock_mark.assert_called_once_with(
+                campaign="roadmap",
+                slug="nemeth-family-interiors",
+                domain="nemethfamilyinteriors.com",
+                reason="to-call-nonconforming",
+            )

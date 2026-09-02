@@ -29,10 +29,18 @@ def test_station_for_queue_mapping() -> None:
     assert station_for_queue("gm-list") is GM_LIST_QUEUE_STATION
     assert station_for_queue("enrichment") is ENRICHMENT_QUEUE_STATION
     assert station_for_queue("map-tile") is MAP_TILE_QUEUE_STATION
+    from cocli.station_defs.campaigns.queues import (
+        TO_CALL_INVALID_QUEUE_STATION,
+        TO_CALL_QUEUE_STATION,
+    )
+
+    assert station_for_queue("to-call") is TO_CALL_QUEUE_STATION
+    assert station_for_queue("to-call-invalid") is TO_CALL_INVALID_QUEUE_STATION
+    assert collect_shard(TO_CALL_QUEUE_STATION.segments) is None
     # unknown → place_id default
-    assert collect_shard(station_for_queue("to-call").segments) is not None
+    assert collect_shard(station_for_queue("unknown-queue").segments) is not None
     assert (
-        collect_shard(station_for_queue("to-call").segments).shard_for(  # type: ignore[union-attr]
+        collect_shard(station_for_queue("unknown-queue").segments).shard_for(  # type: ignore[union-attr]
             "ChIJ-5-rest"
         )
         == "5"

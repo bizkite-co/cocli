@@ -279,11 +279,10 @@ class CompanyDetail(Container):
         Binding("enter", "enter_quadrant", "Enter Quadrant"),
         Binding("a", "add_item", "Add Item"),
         Binding("d", "delete_item", "Delete Item"),
-        Binding("]", "next_panel", "Next Panel"),
-        Binding("[", "prev_panel", "Prev Panel"),
         Binding("w", "open_website", "Website"),
         Binding("g", "open_gmb", "Google Maps"),
         Binding("V", "view_enrichment", "Enrichment"),
+        Binding("m", "open_mark_menu", "Mark"),
         Binding("x", "flag_illegitimate", "Flag Illegitimate"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
@@ -581,6 +580,45 @@ class CompanyDetail(Container):
 
         self.run_worker(self._flag_illegitimate_worker(company, slug))
 
+    def action_open_mark_menu(self) -> None:
+        """``m`` then a letter: ``i`` invalid, ``x`` illegitimate."""
+        self.run_worker(self._mark_menu_worker())
+
+    async def _mark_menu_worker(self) -> None:
+        from .mark_menu_screen import MarkMenuScreen
+
+        choice = await self.app.push_screen_wait(MarkMenuScreen())
+        if choice == "invalid":
+            await self._mark_invalid_worker()
+        elif choice == "illegitimate":
+            company = self.company_data.get("company", {})
+            slug = company.get("slug")
+            if slug:
+                await self._flag_illegitimate_worker(company, slug)
+
+    async def _mark_invalid_worker(self) -> None:
+        company = self.company_data.get("company", {})
+        slug = company.get("slug")
+        if not slug:
+            self.app.notify("No slug found", severity="error")
+            return
+
+        from ...core.config import get_campaign
+        from ...application.to_call_disposition_service import (
+            REASON_NONCONFORMING,
+            mark_to_call_invalid,
+        )
+
+        campaign = get_campaign() or "default"
+        name = company.get("name") or slug
+        mark_to_call_invalid(
+            campaign=campaign,
+            slug=slug,
+            domain=company.get("domain"),
+            reason=REASON_NONCONFORMING,
+        )
+        self.app.notify(f"Marked '{name}' invalid — off to-call, in to-call-invalid")
+
     async def _flag_illegitimate_worker(self, company: dict[str, Any], slug: str) -> None:
         name = company.get("name") or slug
 
@@ -596,13 +634,17 @@ class CompanyDetail(Container):
             return
 
         from ...core.config import get_campaign
-        from ...core.exclusions import ExclusionManager
+        from ...application.to_call_disposition_service import (
+            REASON_AD_INJECTION,
+            mark_to_call_invalid,
+        )
 
         campaign = get_campaign() or "default"
-        ExclusionManager(campaign).add_exclusion(
+        mark_to_call_invalid(
+            campaign=campaign,
             slug=slug,
             domain=company.get("domain"),
-            reason="google-maps-ad-injection",
+            reason=REASON_AD_INJECTION,
         )
         self.app.notify(f"Excluded '{name}' from {campaign}")
 
