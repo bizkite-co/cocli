@@ -126,3 +126,80 @@ def test_ack_deletes_s3_mirror_of_pending_task(tmp_path):
 
         deleted_keys = {c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list}
         assert q._get_s3_pending_task_key(task_id) in deleted_keys
+
+
+def test_nack_below_threshold_leaves_pending_usv(tmp_path):
+    """Reproduction: gm-list nack must not look for task.json. Under the
+    threshold the flat .usv stays in pending/ and failed/ stays empty."""
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign = "test-campaign"
+        q = FilesystemGmListQueue(campaign, max_nack_attempts=3)
+
+        task_id = "2/29.5/-98.5/dentist.usv"
+        pending_file = q.pending_dir / task_id
+        pending_file.parent.mkdir(parents=True, exist_ok=True)
+        pending_file.write_text("29.5_-98.5\x1fdentist\x1f29.500000\x1f-98.500000")
+
+        tasks = q.poll(batch_size=1)
+        assert len(tasks) == 1
+
+        q.nack(tasks[0])
+        q.nack(tasks[0])
+
+        assert pending_file.exists()
+        assert not (q.failed_dir / task_id).exists()
+        assert list(q.failed_dir.rglob("*.usv")) == []
+        assert list(q.failed_dir.rglob("*.json")) == []
+
+
+def test_nack_at_threshold_dead_letters_flat_usv_with_reconcile_identity(tmp_path):
+    """Drive nack() past max_nack_attempts: the pending .usv moves to
+    failed/ at the same relative path (not {task_id}.json), and
+    identities_with_paths sees {lat}/{lon}/{phrase}."""
+    from cocli.core.queue.reconcile import identities_with_paths
+
+    mock_s3 = MagicMock()
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign = "test-campaign"
+        q = FilesystemGmListQueue(
+            campaign, s3_client=mock_s3, bucket_name="b", max_nack_attempts=3
+        )
+
+        task_id = "2/29.5/-98.5/dentist.usv"
+        pending_file = q.pending_dir / task_id
+        pending_file.parent.mkdir(parents=True, exist_ok=True)
+        body = "29.5_-98.5\x1fdentist\x1f29.500000\x1f-98.500000"
+        pending_file.write_text(body)
+
+        tasks = q.poll(batch_size=1)
+        task = tasks[0]
+
+        q.nack(task)
+        q.nack(task)
+        assert pending_file.exists()
+
+        q.nack(task)
+
+        failed_file = q.failed_dir / task_id
+        assert not pending_file.exists()
+        assert failed_file.is_file()
+        assert failed_file.read_text() == body
+        assert not (q.failed_dir / f"{task_id}.json").exists()
+        assert not q._get_task_dir(task_id).exists()
+
+        ids = identities_with_paths(q.failed_dir)
+        assert "29.5/-98.5/dentist" in ids
+        assert ids["29.5/-98.5/dentist"] == failed_file
+
+        mock_s3.upload_file.assert_any_call(
+            str(failed_file),
+            "b",
+            q._get_s3_gm_list_failed_key(task_id),
+        )
+        deleted = mock_s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        deleted_keys = {obj["Key"] for obj in deleted}
+        assert q._get_s3_pending_task_key(task_id) in deleted_keys
+        assert q._get_s3_lease_key(task_id) in deleted_keys
+
+        mock_s3.get_paginator.return_value.paginate.return_value = []
+        assert q.poll(batch_size=10) == []

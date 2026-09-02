@@ -1054,6 +1054,65 @@ class FilesystemGmListQueue(FilesystemQueue):
             f"{lat_shard}/{lat_t}/{lon_t}/{phrase_slug}.json"
         )
 
+    def _get_s3_gm_list_failed_key(self, task_id: str) -> str:
+        """Same relative path as pending, under failed/ — keep the .usv suffix.
+
+        Base ``_get_s3_failed_key`` appends ``.json`` to task_id, which for
+        gm-list (task_id already ends in ``.usv``) would produce a doubled
+        suffix that ``reconcile.identities_with_paths`` cannot strip to the
+        ``{lat}/{lon}/{phrase}`` identity.
+        """
+        failed = self.layout.phases.failed.name
+        return f"{self.layout.s3_prefix()}/{failed}/{task_id}"
+
+    def _dead_letter(self, task_id: str, attempts: int) -> None:
+        """Move the flat pending ``.usv`` to failed/ at the same relative path.
+
+        Base ``_dead_letter`` looks for ``{task_id}/task.json`` (DFQ dir
+        shape). gm-list pending items are files, so that rename is a silent
+        no-op and the poison ``.usv`` stays pollable forever.
+        """
+        import shutil
+
+        pending_file = self.pending_dir / task_id
+        failed_file = self.failed_dir / task_id
+        lease_dir = self._get_task_dir(task_id)
+
+        logger.error(
+            f"Task {task_id} in queue {self.queue_name} exceeded max nack attempts "
+            f"({attempts}/{self.max_nack_attempts}). Dead-lettering to failed/."
+        )
+
+        try:
+            if pending_file.is_file():
+                failed_file.parent.mkdir(parents=True, exist_ok=True)
+                pending_file.replace(failed_file)
+
+            if lease_dir.is_dir():
+                shutil.rmtree(lease_dir, ignore_errors=True)
+
+            if self.s3_client and self.bucket_name:
+                s3_pending_key = self._get_s3_pending_task_key(task_id)
+                s3_lease_key = self._get_s3_lease_key(task_id)
+                s3_failed_key = self._get_s3_gm_list_failed_key(task_id)
+
+                if failed_file.is_file():
+                    self.s3_client.upload_file(
+                        str(failed_file), self.bucket_name, s3_failed_key
+                    )
+
+                self.s3_client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={
+                        "Objects": [
+                            {"Key": s3_pending_key},
+                            {"Key": s3_lease_key},
+                        ]
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Error dead-lettering {task_id}: {e}")
+
 
 class FilesystemGmDetailsQueue(FilesystemQueue):
     """Queue for Google Maps Details (Place IDs)."""
