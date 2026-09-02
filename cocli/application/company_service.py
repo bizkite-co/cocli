@@ -442,8 +442,17 @@ def backfill_campaigns_from_tags(*, dry_run: bool = True) -> dict[str, Any]:
 
     known = {d.name for d in get_all_campaign_dirs()}
     moved = 0
+    scanned = 0
     slugs: list[str] = []
+    by_campaign: dict[str, int] = {name: 0 for name in known}
     for company in Company.get_all():
+        scanned += 1
+        if scanned % 500 == 0:
+            logger.info(
+                "backfill_campaigns_from_tags: scanned %s, matched %s",
+                scanned,
+                moved,
+            )
         if company is None:
             continue
         hit = [t for t in (company.tags or []) if t in known]
@@ -451,6 +460,7 @@ def backfill_campaigns_from_tags(*, dry_run: bool = True) -> dict[str, Any]:
             continue
         for name in hit:
             company.add_to_campaign(name)
+            by_campaign[name] = by_campaign.get(name, 0) + 1
         if not dry_run:
             company.save(rebuild_cache=False)
         moved += 1
@@ -458,6 +468,8 @@ def backfill_campaigns_from_tags(*, dry_run: bool = True) -> dict[str, Any]:
     return {
         "dry_run": dry_run,
         "known_campaigns": sorted(known),
+        "scanned": scanned,
         "companies_updated": moved,
+        "by_campaign": {k: v for k, v in sorted(by_campaign.items()) if v},
         "slugs": slugs,
     }

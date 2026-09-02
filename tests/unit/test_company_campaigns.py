@@ -46,7 +46,9 @@ def test_backfill_campaigns_from_tags_dry_run(tmp_path: Path) -> None:
     ):
         result = backfill_campaigns_from_tags(dry_run=True)
     assert result["dry_run"] is True
+    assert result["scanned"] == 1
     assert result["companies_updated"] == 1
+    assert result["by_campaign"].get("roadmap") == 1
     assert "acme" in result["slugs"]
     assert company.campaigns == ["roadmap"]
     assert "roadmap" not in company.tags
