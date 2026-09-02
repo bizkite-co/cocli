@@ -12,7 +12,8 @@ from typing import Optional
 
 
 REASON_NONCONFORMING = "to-call-nonconforming"
-REASON_AD_INJECTION = "google-maps-ad-injection"
+REASON_HIGH_VALUE = "high-value"
+TAG_HIGH_VALUE = "high-value"
 
 
 def mark_to_call_invalid(
@@ -48,3 +49,32 @@ def mark_to_call_invalid(
     )
     invalid.save()
     return invalid.get_local_path()
+
+
+def mark_to_call_high_value(
+    *,
+    campaign: str,
+    slug: str,
+    domain: Optional[str] = None,
+) -> Path:
+    """Tag the company and enqueue the high-value pile. Leaves to-call as-is."""
+    from cocli.models.campaigns.queues.to_call_high_value import ToCallHighValueTask
+    from cocli.models.companies.company import Company
+
+    company = Company.get(slug)
+    if company is not None:
+        tags = list(company.tags or [])
+        if TAG_HIGH_VALUE not in tags:
+            tags.append(TAG_HIGH_VALUE)
+            company.tags = tags
+            company.save(rebuild_cache=False)
+
+    task = ToCallHighValueTask(
+        company_slug=slug,
+        domain=domain or "unknown",
+        campaign_name=campaign,
+        reason=REASON_HIGH_VALUE,
+        ack_token=None,
+    )
+    task.save()
+    return task.get_local_path()

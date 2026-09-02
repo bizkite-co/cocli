@@ -47,3 +47,34 @@ def test_mark_to_call_invalid_excludes_removes_pending_and_enqueues_review(
         loaded = ToCallInvalidTask.from_usv(dest.read_text())
         assert loaded.reason == REASON_NONCONFORMING
         assert loaded.company_slug == slug
+
+
+def test_mark_to_call_high_value_keeps_pending_and_writes_queue(
+    tmp_path: Path,
+) -> None:
+    from cocli.application.to_call_disposition_service import mark_to_call_high_value
+    from cocli.models.campaigns.queues.to_call_high_value import ToCallHighValueTask
+
+    with patch.object(paths, "root", tmp_path):
+        campaign = "roadmap"
+        slug = "hot-lead-co"
+        domain = "hotlead.com"
+
+        pending = ToCallTask(
+            company_slug=slug,
+            domain=domain,
+            campaign_name=campaign,
+            ack_token=None,
+        )
+        pending.save()
+
+        dest = mark_to_call_high_value(
+            campaign=campaign, slug=slug, domain=domain
+        )
+
+        assert dest.exists()
+        assert pending.get_local_path().exists()
+        assert not ExclusionManager(campaign).is_excluded(slug=slug, domain=domain)
+        loaded = ToCallHighValueTask.from_usv(dest.read_text())
+        assert loaded.reason == "high-value"
+        assert loaded.company_slug == slug

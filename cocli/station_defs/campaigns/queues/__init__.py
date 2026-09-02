@@ -93,6 +93,13 @@ TO_CALL_INVALID_QUEUE_STATION: StationDecl[object] = StationDecl(
     serialization="json-file",
     segments=(_TO_CALL_PHASES,),
 )
+TO_CALL_HIGH_VALUE_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="to-call-high-value-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_TO_CALL_PHASES,),
+)
 
 # Backward-compatible name used by path_helpers pilot
 QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
@@ -114,6 +121,7 @@ QUEUE_STATIONS: dict[str, StationDecl[object]] = {
     "map-tile": MAP_TILE_QUEUE_STATION,
     "to-call": TO_CALL_QUEUE_STATION,
     "to-call-invalid": TO_CALL_INVALID_QUEUE_STATION,
+    "to-call-high-value": TO_CALL_HIGH_VALUE_QUEUE_STATION,
 }
 
 

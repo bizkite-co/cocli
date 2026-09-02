@@ -1,9 +1,4 @@
-"""CompanyDetail's 'x' action flags a company as an illegitimate/
-ad-injected Google Maps result via the existing ExclusionManager
-(cocli/core/exclusions.py). Moved here from a since-removed
-screenshot-viewer modal - the screenshot is now always visible inline,
-so the flag action lives directly on the detail screen (Mark, 2026-08-30).
-"""
+"""CompanyDetail mark prefix: ``m`` then ``i`` / ``h``, and ``x`` = invalid."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -34,12 +29,12 @@ def mock_company_data(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_flag_illegitimate_confirmed_adds_exclusion(mock_company_data):
+async def test_x_marks_invalid_immediately(mock_company_data):
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
         detail = CompanyDetail(mock_company_data)
         await app.query_one("#app_content").mount(detail)
-        await pilot.pause()  # on_mount() focuses panel_info
+        await pilot.pause()
 
         with patch(
             "cocli.application.to_call_disposition_service.mark_to_call_invalid"
@@ -48,36 +43,17 @@ async def test_flag_illegitimate_confirmed_adds_exclusion(mock_company_data):
         ):
             await pilot.press("x")
             await pilot.pause()
-            await pilot.press("y")
-            await pilot.pause()
 
             mock_mark.assert_called_once_with(
                 campaign="turboship",
                 slug="nemeth-family-interiors",
                 domain="nemethfamilyinteriors.com",
-                reason="google-maps-ad-injection",
+                reason="to-call-nonconforming",
             )
 
 
 @pytest.mark.asyncio
-async def test_flag_illegitimate_cancelled_does_not_add_exclusion(mock_company_data):
-    app = CocliApp(auto_show=False)
-    async with app.run_test() as pilot:
-        detail = CompanyDetail(mock_company_data)
-        await app.query_one("#app_content").mount(detail)
-        await pilot.pause()  # on_mount() focuses panel_info
-
-        with patch("cocli.core.exclusions.ExclusionManager") as mock_manager_cls:
-            await pilot.press("x")
-            await pilot.pause()
-            await pilot.press("n")
-            await pilot.pause()
-
-            mock_manager_cls.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_action_flag_illegitimate_notifies_when_no_slug(mock_company_data):
+async def test_action_mark_invalid_notifies_when_no_slug(mock_company_data):
     mock_company_data["company"]["slug"] = None
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
@@ -86,7 +62,7 @@ async def test_action_flag_illegitimate_notifies_when_no_slug(mock_company_data)
         await pilot.pause()
 
         with patch.object(app, "notify") as mock_notify:
-            detail.action_flag_illegitimate()
+            detail.action_mark_invalid()
             await pilot.pause()
 
         mock_notify.assert_called_once()
@@ -94,7 +70,7 @@ async def test_action_flag_illegitimate_notifies_when_no_slug(mock_company_data)
 
 
 @pytest.mark.asyncio
-async def test_mark_menu_i_marks_invalid(mock_company_data):
+async def test_mark_prefix_i_marks_invalid(mock_company_data):
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
         detail = CompanyDetail(mock_company_data)
@@ -108,6 +84,8 @@ async def test_mark_menu_i_marks_invalid(mock_company_data):
         ):
             await pilot.press("m")
             await pilot.pause()
+            bar = detail.query_one("#mark-prefix-bar")
+            assert "hidden" not in bar.classes
             await pilot.press("i")
             await pilot.pause()
 
@@ -116,4 +94,49 @@ async def test_mark_menu_i_marks_invalid(mock_company_data):
                 slug="nemeth-family-interiors",
                 domain="nemethfamilyinteriors.com",
                 reason="to-call-nonconforming",
+            )
+            assert "hidden" in bar.classes
+
+
+@pytest.mark.asyncio
+async def test_mark_prefix_alt_s_cancels(mock_company_data):
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await pilot.pause()
+
+        with patch(
+            "cocli.application.to_call_disposition_service.mark_to_call_invalid"
+        ) as mock_mark:
+            await pilot.press("m")
+            await pilot.pause()
+            await pilot.press("alt+s")
+            await pilot.pause()
+            mock_mark.assert_not_called()
+            assert "hidden" in detail.query_one("#mark-prefix-bar").classes
+
+
+@pytest.mark.asyncio
+async def test_mark_prefix_h_marks_high_value(mock_company_data):
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await pilot.pause()
+
+        with patch(
+            "cocli.application.to_call_disposition_service.mark_to_call_high_value"
+        ) as mock_mark, patch(
+            "cocli.core.config.get_campaign", return_value="roadmap"
+        ):
+            await pilot.press("m")
+            await pilot.pause()
+            await pilot.press("h")
+            await pilot.pause()
+
+            mock_mark.assert_called_once_with(
+                campaign="roadmap",
+                slug="nemeth-family-interiors",
+                domain="nemethfamilyinteriors.com",
             )

@@ -96,6 +96,15 @@ ListItem.-highlight {
     display: none !important;
 }
 
+.mark-prefix-bar {
+    dock: bottom;
+    height: 1;
+    width: 100%;
+    background: #ffff00;
+    color: #000000;
+    padding: 0 1;
+}
+
 .visible {
     display: block !important;
 }
@@ -224,9 +233,14 @@ DataTable > .datatable--cursor {
 }
 
 /* Company Detail Two-Column Layout */
-#company-detail-container {
+#company-detail-root {
     width: 100%;
     height: 100%;
+}
+
+#company-detail-container {
+    width: 100%;
+    height: 1fr;
     background: #000000;
 }
 

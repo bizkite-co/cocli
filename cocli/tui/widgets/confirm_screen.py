@@ -33,5 +33,7 @@ class ConfirmScreen(BaseModalScreen[bool]):
 
         if event.key == "y":
             self.dismiss(True)
-        elif event.key == "n" or event.key == "escape":
+            event.stop()
+        elif event.key in ("n", "escape", "alt+s", "meta+s"):
             self.dismiss(False)
+            event.stop()

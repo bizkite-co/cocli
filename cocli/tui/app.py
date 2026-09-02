@@ -681,10 +681,17 @@ class CocliApp(App[None]):
         # (SystemModalScreen -> ModalScreen), whose plain "escape" binding
         # ultimately calls .dismiss() - calling it directly here reuses
         # that same close path instead of guessing at a private API.
-        if event.key in ("alt+s", "meta+s") and isinstance(self.screen, CommandPalette):
+        if event.key in ("alt+s", "meta+s") and isinstance(self.screen, ModalScreen):
             event.stop()
             event.prevent_default()
-            self.screen.dismiss()
+            from .widgets.confirm_screen import ConfirmScreen
+
+            if isinstance(self.screen, ConfirmScreen):
+                self.screen.dismiss(False)
+            elif isinstance(self.screen, CommandPalette):
+                self.screen.dismiss()
+            else:
+                self.screen.dismiss(None)
             return
 
         # 1. HIGH PRIORITY: Leader mode must intercept keys before anyone else

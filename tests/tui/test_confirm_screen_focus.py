@@ -23,6 +23,17 @@ async def test_confirm_screen_captures_keys_when_focused():
 
 
 @pytest.mark.asyncio
+async def test_confirm_screen_alt_s_dismisses_false():
+    app = App()
+    async with app.run_test() as pilot:
+        screen = ConfirmScreen("Remove Company?")
+        await pilot.app.push_screen(screen)
+        screen.dismiss = MagicMock()
+        await pilot.press("alt+s")
+        screen.dismiss.assert_called_once_with(False)
+
+
+@pytest.mark.asyncio
 async def test_confirm_screen_focus_on_mount():
     """Test that ConfirmScreen gains focus when mounted."""
     app = App()

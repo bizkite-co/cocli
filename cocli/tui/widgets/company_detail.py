@@ -7,7 +7,7 @@ from typing import Optional, Any, Union, cast, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
 
-from textual.widgets import DataTable, Label, Input
+from textual.widgets import DataTable, Label, Input, Static
 from textual.containers import Container, Horizontal, Vertical
 from textual.app import ComposeResult
 from textual import events, on
@@ -23,6 +23,7 @@ from ...models.companies.meeting import Meeting
 from ...models.phone import PhoneNumber
 from ...core.paths import paths
 from ...core.config import get_editor_command
+from .mark_prefix import MarkPrefixMixin
 from ...utils.open_url import open_url
 from .confirm_screen import ConfirmScreen
 
@@ -265,7 +266,7 @@ class DetailPanel(Container):
         yield self.child
 
 
-class CompanyDetail(Container):
+class CompanyDetail(MarkPrefixMixin, Container):
     """
     Highly dense company detail view with Layered VIM-like navigation.
     """
@@ -283,7 +284,7 @@ class CompanyDetail(Container):
         Binding("g", "open_gmb", "Google Maps"),
         Binding("V", "view_enrichment", "Enrichment"),
         Binding("m", "open_mark_menu", "Mark"),
-        Binding("x", "flag_illegitimate", "Flag Illegitimate"),
+        Binding("x", "mark_invalid", "Invalid"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
@@ -341,14 +342,16 @@ class CompanyDetail(Container):
         ]
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="company-detail-container"):
-            with Vertical(id="info-column"):
-                yield self.panel_info
-                yield self.screenshot_widget
-            with Vertical(id="engagement-column"):
-                yield self.panel_contacts
-                yield self.panel_meetings
-                yield self.panel_notes
+        with Vertical(id="company-detail-root"):
+            with Horizontal(id="company-detail-container"):
+                with Vertical(id="info-column"):
+                    yield self.panel_info
+                    yield self.screenshot_widget
+                with Vertical(id="engagement-column"):
+                    yield self.panel_contacts
+                    yield self.panel_meetings
+                    yield self.panel_notes
+            yield Static("", id="mark-prefix-bar", classes="mark-prefix-bar hidden")
 
     def on_mount(self) -> None:
         self.panel_info.focus()
@@ -442,6 +445,9 @@ class CompanyDetail(Container):
     def on_key(self, event: events.Key) -> None:
         # IF we are in leader mode, do NOT handle any keys here, let them bubble to App
         if getattr(self.app, "leader_mode", False):
+            return
+
+        if self.handle_mark_prefix_key(event):
             return
 
         # Don't return early if it's NOT a nav key, allow bubbling
@@ -556,47 +562,13 @@ class CompanyDetail(Container):
         else:
             self.app.notify("Enrichment file not found", severity="warning")
 
-    def action_flag_illegitimate(self) -> None:
-        """Flags this company as an illegitimate/ad-injected Google Maps
-        result and excludes it from the campaign (cocli/core/exclusions.py)
-        - easier to judge now that the screenshot is always visible right
-        here (Mark, 2026-08-30), no separate viewer needed.
-
-        Runs the actual (async) work in an explicit worker: push_screen_wait
-        - the correctly-typed way to await a screen's dismiss result -
-        raises NoActiveWorker unless called from one; a plain BINDINGS-
-        triggered action doesn't get a worker context for free. Confirmed
-        empirically while testing this (not just assumed): the alternative,
-        `await self.app.push_screen(...)` without wait_for_dismiss, doesn't
-        raise, but also doesn't hand back the real dismiss value, so a
-        naive `if confirm:` check silently always takes the same branch
-        regardless of what the user actually pressed.
-        """
-        company = self.company_data.get("company", {})
-        slug = company.get("slug")
-        if not slug:
-            self.app.notify("No slug found", severity="error")
-            return
-
-        self.run_worker(self._flag_illegitimate_worker(company, slug))
-
     def action_open_mark_menu(self) -> None:
-        """``m`` then a letter: ``i`` invalid, ``x`` illegitimate."""
-        self.run_worker(self._mark_menu_worker())
+        """``m`` then ``i`` invalid or ``h`` high-value. Nav mode only."""
+        if isinstance(self.app.focused, Input):
+            return
+        self.enter_mark_prefix()
 
-    async def _mark_menu_worker(self) -> None:
-        from .mark_menu_screen import MarkMenuScreen
-
-        choice = await self.app.push_screen_wait(MarkMenuScreen())
-        if choice == "invalid":
-            await self._mark_invalid_worker()
-        elif choice == "illegitimate":
-            company = self.company_data.get("company", {})
-            slug = company.get("slug")
-            if slug:
-                await self._flag_illegitimate_worker(company, slug)
-
-    async def _mark_invalid_worker(self) -> None:
+    def action_mark_invalid(self) -> None:
         company = self.company_data.get("company", {})
         slug = company.get("slug")
         if not slug:
@@ -619,34 +591,24 @@ class CompanyDetail(Container):
         )
         self.app.notify(f"Marked '{name}' invalid — off to-call, in to-call-invalid")
 
-    async def _flag_illegitimate_worker(self, company: dict[str, Any], slug: str) -> None:
-        name = company.get("name") or slug
-
-        from .confirm_screen import ConfirmScreen
-
-        confirm = await self.app.push_screen_wait(
-            ConfirmScreen(
-                f"Flag '{name}' as an illegitimate/ad-injected result and "
-                "exclude it from this campaign?"
-            )
-        )
-        if not confirm:
+    def action_mark_high_value(self) -> None:
+        company = self.company_data.get("company", {})
+        slug = company.get("slug")
+        if not slug:
+            self.app.notify("No slug found", severity="error")
             return
 
         from ...core.config import get_campaign
-        from ...application.to_call_disposition_service import (
-            REASON_AD_INJECTION,
-            mark_to_call_invalid,
-        )
+        from ...application.to_call_disposition_service import mark_to_call_high_value
 
         campaign = get_campaign() or "default"
-        mark_to_call_invalid(
+        name = company.get("name") or slug
+        mark_to_call_high_value(
             campaign=campaign,
             slug=slug,
             domain=company.get("domain"),
-            reason=REASON_AD_INJECTION,
         )
-        self.app.notify(f"Excluded '{name}' from {campaign}")
+        self.app.notify(f"Marked '{name}' high-value")
 
     def action_call_company(self) -> None:
         """Sync dispatcher + run_worker - see action_delete_company's

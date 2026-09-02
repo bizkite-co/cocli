@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast, Any, Optional
 
 from textual.binding import Binding
 from textual.containers import Container
-from textual.widgets import Label, ListView, ListItem, LoadingIndicator, Input
+from textual.widgets import Label, ListView, ListItem, LoadingIndicator, Input, Static
 from textual.app import ComposeResult
 from textual.message import Message
 from textual import events, on, work
@@ -19,11 +19,12 @@ from cocli.models.email_address import EmailAddress
 from cocli.models.search import SearchResult
 
 from .inputs import CocliSearchInput
+from .mark_prefix import MarkPrefixMixin
 
 logger = logging.getLogger(__name__)
 
 
-class CompanyList(Container):
+class CompanyList(MarkPrefixMixin, Container):
     class CompanyHighlighted(Message):
         def __init__(self, company: Company) -> None:
             super().__init__()
@@ -65,6 +66,7 @@ class CompanyList(Container):
         with Container(id="list_container"):
             yield ListView(id="company_list_view")
             yield LoadingIndicator(id="search_loading")
+        yield Static("", id="mark-prefix-bar", classes="mark-prefix-bar hidden")
 
     def apply_template(self, tpl_id: str) -> None:
         """Handle template selection from external source."""
@@ -193,6 +195,9 @@ class CompanyList(Container):
         """Handle key events for the CompanyList widget."""
         # IF we are in leader mode, do NOT handle any keys here, let them bubble to App
         if getattr(self.app, "leader_mode", False):
+            return
+
+        if self.handle_mark_prefix_key(event):
             return
 
         list_views = self.query("#company_list_view")
@@ -663,54 +668,49 @@ class CompanyList(Container):
             self.app.notify(f"Failed to remove: {e}", severity="error")
 
     def action_open_mark_menu(self) -> None:
-        """``m`` then a letter — same mark menu as company detail."""
+        """``m`` then ``i`` / ``h``. No-op while typing in search."""
+        if isinstance(self.app.focused, Input):
+            return
         item = self._highlighted_result()
         if item is None or not item.slug:
             self.app.notify("No company selected", severity="warning")
             return
-        self.app.run_worker(self._mark_menu_worker(item), exclusive=True)
+        self.enter_mark_prefix()
 
-    async def _mark_menu_worker(self, item: SearchResult) -> None:
+    def action_mark_invalid(self) -> None:
+        self._apply_list_mark("invalid")
+
+    def action_mark_high_value(self) -> None:
+        self._apply_list_mark("high-value")
+
+    def _apply_list_mark(self, kind: str) -> None:
         from cocli.application.to_call_disposition_service import (
-            REASON_AD_INJECTION,
             REASON_NONCONFORMING,
+            mark_to_call_high_value,
             mark_to_call_invalid,
         )
         from cocli.core.config import get_campaign
 
-        from .mark_menu_screen import MarkMenuScreen
-
-        choice = await self.app.push_screen_wait(MarkMenuScreen())
-        if choice not in ("invalid", "illegitimate"):
+        item = self._highlighted_result()
+        if item is None or not item.slug:
+            self.app.notify("No company selected", severity="warning")
             return
-
         campaign = get_campaign()
         if not campaign:
             self.app.notify("No campaign set", severity="error")
             return
-
-        reason = (
-            REASON_AD_INJECTION if choice == "illegitimate" else REASON_NONCONFORMING
-        )
-        if choice == "illegitimate":
-            from .confirm_screen import ConfirmScreen
-
-            name = str(item.name) if item.name else item.slug
-            confirm = await self.app.push_screen_wait(
-                ConfirmScreen(
-                    f"Flag '{name}' as an illegitimate/ad-injected result and "
-                    "exclude it from this campaign?"
-                )
+        if kind == "high-value":
+            mark_to_call_high_value(
+                campaign=campaign, slug=item.slug, domain=item.domain
             )
-            if not confirm:
-                return
-
-        mark_to_call_invalid(
-            campaign=campaign,
-            slug=item.slug,
-            domain=item.domain,
-            reason=reason,
-        )
-        self.app.notify(f"Marked {item.slug} ({reason})")
+            self.app.notify(f"Marked {item.slug} high-value")
+        else:
+            mark_to_call_invalid(
+                campaign=campaign,
+                slug=item.slug,
+                domain=item.domain,
+                reason=REASON_NONCONFORMING,
+            )
+            self.app.notify(f"Marked {item.slug} invalid")
         self.search_offset = 0
         self.run_search("")
