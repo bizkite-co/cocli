@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from cocli.core.config import get_campaign_exports_dir, get_companies_dir
 from cocli.core.exclusions import ExclusionManager
+from cocli.utils.google_maps_url import google_maps_url
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.companies.website import Website
 from cocli.models.wal.record import US
@@ -248,7 +249,12 @@ def export_enriched_emails(
             "services": "",
             "products": "",
             "tags": "; ".join(filter(None, [keyword] + found_keywords)),
-            "gmb_url": f"https://www.google.com/maps/search/?api=1&query=google&query_place_id={place_id}" if place_id else "",
+            "gmb_url": google_maps_url(
+                place_id=place_id,
+                name=name,
+                city=city,
+            )
+            or "",
             "rating": rating,
             "reviews": reviews,
         })

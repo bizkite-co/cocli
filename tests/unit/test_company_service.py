@@ -5,9 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
-from cocli.application.company_service import backfill_missing_companies_from_prospects
+from cocli.application.company_service import (
+    backfill_missing_companies_from_prospects,
+    get_company_details_for_view,
+)
+from cocli.core.importing import apply_prospect_to_company_if_empty
 from cocli.core.paths import paths
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.companies.company import Company
 from cocli.models.company_name import CompanyName
 
 
@@ -159,3 +164,95 @@ def test_min_hours_since_last_run_ignored_for_dry_run(sandboxed_companies_dir: P
 
     assert result["skipped_stale_check"] is False
     assert result["missing_count"] == 1
+
+
+def test_view_overlays_domain_from_maps_enrichment(
+    sandboxed_companies_dir: Path,
+) -> None:
+    slug = "adams-insurance-agency"
+    company_dir = sandboxed_companies_dir / slug
+    enrich = company_dir / "enrichments"
+    enrich.mkdir(parents=True)
+    (company_dir / "_index.md").write_text(
+        "---\n"
+        "name: Adams Insurance Agency\n"
+        f"slug: {slug}\n"
+        "place_id: ChIJQ1A68rPbyYkR_dONAUWyrRo\n"
+        "street_address: 474 Prospect Blvd\n"
+        "city: Frederick\n"
+        "---\n"
+    )
+    from cocli.core.constants import UNIT_SEP
+
+    header = UNIT_SEP.join(
+        [
+            "place_id",
+            "slug",
+            "name",
+            "domain",
+            "website",
+            "gmb_url",
+            "average_rating",
+            "reviews_count",
+            "updated_at",
+        ]
+    )
+    row = UNIT_SEP.join(
+        [
+            "ChIJQ1A68rPbyYkR_dONAUWyrRo",
+            slug,
+            "Adams Insurance Agency",
+            "adamsinsuranceagency.net",
+            "http://www.adamsinsuranceagency.net/",
+            "https://www.google.com/maps/place/Adams+Insurance/",
+            "4.9",
+            "305",
+            "2026-09-02T18:25:49+00:00",
+        ]
+    )
+    (enrich / "google_maps.usv").write_text(header + "\n" + row + "\n")
+
+    with patch(
+        "cocli.application.company_service.WebsiteCache"
+    ) as mock_cache:
+        mock_cache.return_value.get_by_url.return_value = None
+        details = get_company_details_for_view(slug)
+    assert details is not None
+    assert details["company"]["domain"] == "adamsinsuranceagency.net"
+    assert "query=google" not in (details["company"].get("gmb_url") or "")
+    assert "maps/place" in (details["company"].get("gmb_url") or "")
+
+
+def test_hydrate_fills_empty_domain_without_overwriting(
+    sandboxed_companies_dir: Path,
+) -> None:
+    company = Company(name=CompanyName("Acme"), slug="acme")
+    company.save(rebuild_cache=False)
+    assert Company.get("acme") is not None
+    assert Company.get("acme").domain is None
+
+    prospect = GoogleMapsProspect(
+        place_id="ChIJ-test-place-id-acme-0000000000",
+        slug="acme",
+        name=CompanyName("Acme"),
+        domain="acme.com",
+        website="http://acme.com",
+    )
+    assert apply_prospect_to_company_if_empty(prospect) is True
+    loaded = Company.get("acme")
+    assert loaded is not None
+    assert loaded.domain == "acme.com"
+    assert loaded.website_url == "http://acme.com"
+
+    other = GoogleMapsProspect(
+        place_id="ChIJ-test-place-id-acme-0000000000",
+        slug="acme",
+        name=CompanyName("Acme"),
+        domain="other.com",
+        website="http://other.com",
+    )
+    apply_prospect_to_company_if_empty(other)
+    loaded = Company.get("acme")
+    assert loaded is not None
+    assert loaded.domain == "acme.com"
+    assert loaded.website_url == "http://acme.com"

@@ -78,3 +78,46 @@ def test_mark_to_call_high_value_keeps_pending_and_writes_queue(
         loaded = ToCallHighValueTask.from_usv(dest.read_text())
         assert loaded.reason == "high-value"
         assert loaded.company_slug == slug
+
+
+def test_toggle_to_call_high_value_on_then_off(tmp_path: Path) -> None:
+    from cocli.application.to_call_disposition_service import (
+        is_to_call_high_value,
+        toggle_to_call_high_value,
+    )
+    from cocli.models.campaigns.queues.to_call_high_value import ToCallHighValueTask
+
+    with patch.object(paths, "root", tmp_path):
+        campaign = "roadmap"
+        slug = "hot-lead-co"
+        domain = "hotlead.com"
+
+        pending = ToCallTask(
+            company_slug=slug,
+            domain=domain,
+            campaign_name=campaign,
+            ack_token=None,
+        )
+        pending.save()
+
+        now_on = toggle_to_call_high_value(
+            campaign=campaign, slug=slug, domain=domain
+        )
+        assert now_on is True
+        assert is_to_call_high_value(campaign=campaign, slug=slug, domain=domain)
+        hv_path = ToCallHighValueTask(
+            company_slug=slug,
+            domain=domain,
+            campaign_name=campaign,
+            ack_token=None,
+        ).get_local_path()
+        assert hv_path.exists()
+        assert pending.get_local_path().exists()
+
+        now_on = toggle_to_call_high_value(
+            campaign=campaign, slug=slug, domain=domain
+        )
+        assert now_on is False
+        assert not is_to_call_high_value(campaign=campaign, slug=slug, domain=domain)
+        assert not hv_path.exists()
+        assert pending.get_local_path().exists()

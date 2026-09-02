@@ -549,7 +549,21 @@ class CompanyDetail(MarkPrefixMixin, Container):
             self.app.notify("No domain found", severity="warning")
 
     def action_open_gmb(self) -> None:
-        gmb_url = self.company_data["company"].get("gmb_url")
+        company = self.company_data["company"]
+        gmb_url = company.get("gmb_url")
+        # Legacy computed URLs used query=google, which opens Maps at the
+        # user's current location instead of the place.
+        if gmb_url and "query=google" in gmb_url:
+            gmb_url = None
+        if not gmb_url:
+            from ...utils.google_maps_url import google_maps_url
+
+            gmb_url = google_maps_url(
+                place_id=company.get("place_id"),
+                name=company.get("name"),
+                street_address=company.get("street_address"),
+                city=company.get("city"),
+            )
         if gmb_url:
             self._open_desktop_browser(gmb_url, "Opening Google Maps...")
         else:
@@ -599,16 +613,19 @@ class CompanyDetail(MarkPrefixMixin, Container):
             return
 
         from ...core.config import get_campaign
-        from ...application.to_call_disposition_service import mark_to_call_high_value
+        from ...application.to_call_disposition_service import toggle_to_call_high_value
 
         campaign = get_campaign() or "default"
         name = company.get("name") or slug
-        mark_to_call_high_value(
+        now_on = toggle_to_call_high_value(
             campaign=campaign,
             slug=slug,
             domain=company.get("domain"),
         )
-        self.app.notify(f"Marked '{name}' high-value")
+        if now_on:
+            self.app.notify(f"Marked '{name}' high-value")
+        else:
+            self.app.notify(f"Cleared high-value on '{name}'")
 
     def action_call_company(self) -> None:
         """Sync dispatcher + run_worker - see action_delete_company's
@@ -740,7 +757,10 @@ class CompanyDetail(MarkPrefixMixin, Container):
             )
 
             if result.get("status") == "success":
-                self.app.notify("Scrape successful! Refreshing view...")
+                inner = result.get("result") or {}
+                domain = inner.get("domain") if isinstance(inner, dict) else None
+                suffix = f" — {domain}" if domain else ""
+                self.app.notify(f"Scrape successful{suffix}! Refreshing view...")
                 # The view needs to be re-hydrated to show the new data
                 if slug:
                     new_data = app.services.get_company_details(slug)

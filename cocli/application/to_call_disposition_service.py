@@ -51,6 +51,32 @@ def mark_to_call_invalid(
     return invalid.get_local_path()
 
 
+def _high_value_task_path(*, campaign: str, slug: str, domain: Optional[str]) -> Path:
+    from cocli.models.campaigns.queues.to_call_high_value import ToCallHighValueTask
+
+    return ToCallHighValueTask(
+        company_slug=slug,
+        domain=domain or "unknown",
+        campaign_name=campaign,
+        reason=REASON_HIGH_VALUE,
+        ack_token=None,
+    ).get_local_path()
+
+
+def is_to_call_high_value(
+    *,
+    campaign: str,
+    slug: str,
+    domain: Optional[str] = None,
+) -> bool:
+    from cocli.models.companies.company import Company
+
+    company = Company.get(slug)
+    if company is not None and TAG_HIGH_VALUE in (company.tags or []):
+        return True
+    return _high_value_task_path(campaign=campaign, slug=slug, domain=domain).exists()
+
+
 def mark_to_call_high_value(
     *,
     campaign: str,
@@ -78,3 +104,37 @@ def mark_to_call_high_value(
     )
     task.save()
     return task.get_local_path()
+
+
+def unmark_to_call_high_value(
+    *,
+    campaign: str,
+    slug: str,
+    domain: Optional[str] = None,
+) -> Path:
+    """Remove the high-value tag and pending queue file. Leaves to-call as-is."""
+    from cocli.models.companies.company import Company
+
+    company = Company.get(slug)
+    if company is not None and TAG_HIGH_VALUE in (company.tags or []):
+        company.tags = [t for t in company.tags if t != TAG_HIGH_VALUE]
+        company.save(rebuild_cache=False)
+
+    path = _high_value_task_path(campaign=campaign, slug=slug, domain=domain)
+    if path.exists():
+        path.unlink()
+    return path
+
+
+def toggle_to_call_high_value(
+    *,
+    campaign: str,
+    slug: str,
+    domain: Optional[str] = None,
+) -> bool:
+    """Flip high-value. Returns True when it is now marked high-value."""
+    if is_to_call_high_value(campaign=campaign, slug=slug, domain=domain):
+        unmark_to_call_high_value(campaign=campaign, slug=slug, domain=domain)
+        return False
+    mark_to_call_high_value(campaign=campaign, slug=slug, domain=domain)
+    return True

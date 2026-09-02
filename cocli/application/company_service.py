@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any, Optional
+from pathlib import Path
 import datetime
 
 from ..models.companies.company import Company
@@ -13,6 +14,25 @@ from ..core.s3_company_manager import S3CompanyManager
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _read_maps_enrichment_row(path: Path) -> Optional[dict[str, str]]:
+    """Parse companies/<slug>/enrichments/google_maps.usv (header or headerless)."""
+    from io import StringIO
+
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from cocli.utils.usv_utils import USVDictReader
+
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return None
+    first = text.splitlines()[0]
+    buf = StringIO(text)
+    if first.startswith("ChIJ"):
+        reader = USVDictReader(buf, fieldnames=list(GoogleMapsProspect.model_fields.keys()))
+    else:
+        reader = USVDictReader(buf)
+    return next(iter(reader), None)
 
 
 async def update_company_from_website_data(
@@ -94,8 +114,6 @@ async def update_company_from_website_data(
 
     return modified
 
-    return modified
-
 
 def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
     """
@@ -147,11 +165,19 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
             enrichment_path.stat().st_mtime, tz=datetime.timezone.utc
         )
 
+    maps_receipt = entry / "enrichments" / "google_maps.usv"
+    maps_row = (
+        _read_maps_enrichment_row(maps_receipt) if maps_receipt.exists() else None
+    )
+
     # Load website data using WebsiteCache (legacy fallback)
     website_data = None
-    if company.domain:
+    view_domain = company.domain or (
+        (maps_row.get("domain") or "").strip() if maps_row else None
+    )
+    if view_domain:
         website_cache = WebsiteCache()
-        website_data = website_cache.get_by_url(company.domain)
+        website_data = website_cache.get_by_url(view_domain)
 
     # Load lifecycle data for status display
     lifecycle_dates: dict[str, Any] = {
@@ -164,92 +190,81 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
     from ..core.config import get_campaign
 
     campaign = get_campaign()
+    if maps_row:
+        try:
+            rating_val = (maps_row.get("average_rating") or "").strip()
+            reviews_val = (maps_row.get("reviews_count") or "").strip()
+            if rating_val:
+                lifecycle_dates["average_rating"] = float(rating_val)
+            if reviews_val:
+                lifecycle_dates["reviews_count"] = int(float(reviews_val))
+            details_at = (maps_row.get("updated_at") or "").strip()
+            if details_at:
+                lifecycle_dates["details_found_at"] = details_at
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Error parsing maps receipt for {company_slug}: {e}")
+
     if campaign:
-        maps_receipt = entry / "enrichments" / "google_maps.usv"
-        if maps_receipt.exists():
-            try:
-                from cocli.core.constants import UNIT_SEP
+        try:
+            from cocli.core.constants import UNIT_SEP
 
-                with open(maps_receipt, "r", encoding="utf-8") as rf:
-                    # Check if the first line is a header (contains 'created_at' or 'Place_ID')
-                    # or if it's already the data (starts with 'ChIJ')
-                    first_line = rf.readline()
-                    data_line = None
-                    if first_line.startswith("ChIJ"):
-                        data_line = first_line
-                    else:
-                        data_line = rf.readline()
+            place_id = ""
+            if maps_row:
+                place_id = (maps_row.get("place_id") or "").strip()
+            if not place_id and company.place_id:
+                place_id = str(company.place_id)
 
-                    if data_line:
-                        parts = data_line.split(UNIT_SEP)
-                        if len(parts) > 25 and parts[0].startswith("ChIJ"):
-                            place_id = parts[0]
-                            # Rating is at index 25, reviews at 24
-                            rating_val = parts[25].strip()
-                            reviews_val = parts[24].strip()
+            lifecycle_path = paths.campaign(campaign).lifecycle
+            if place_id and lifecycle_path.exists():
+                with open(lifecycle_path, "r", encoding="utf-8") as lf:
+                    lf.readline()  # skip header
+                    for line in lf:
+                        l_parts = line.split(UNIT_SEP)
+                        if len(l_parts) >= 4 and l_parts[0] == place_id:
+                            lifecycle_dates["list_found_at"] = (
+                                l_parts[1].strip() or None
+                            )
+                            lifecycle_dates["details_found_at"] = (
+                                l_parts[2].strip() or None
+                            ) or lifecycle_dates["details_found_at"]
+                            lifecycle_dates["enqueued_at"] = (
+                                l_parts[3].strip() or None
+                            )
+                            break
 
-                            if rating_val:
-                                lifecycle_dates["average_rating"] = float(rating_val)
-                            if reviews_val:
-                                lifecycle_dates["reviews_count"] = int(reviews_val)
+            if (
+                place_id
+                and (
+                    lifecycle_dates["average_rating"] is None
+                    or lifecycle_dates["reviews_count"] is None
+                )
+            ):
+                try:
+                    from ..core.prospects_csv_manager import (
+                        ProspectsIndexManager,
+                    )
 
-                            # Extract details_at from index 5 (updated_at)
-                            if len(parts) > 5:
-                                details_at = parts[5].strip()
-                                if details_at:
-                                    lifecycle_dates["details_found_at"] = details_at
-
-                            # 1. Look up in lifecycle.usv
-                            lifecycle_path = paths.campaign(campaign).lifecycle
-                            if lifecycle_path.exists():
-                                with open(lifecycle_path, "r", encoding="utf-8") as lf:
-                                    # Header: place_id, scraped_at, details_at, enqueued_at, enriched_at
-                                    lf.readline()  # skip header
-                                    for line in lf:
-                                        l_parts = line.split(UNIT_SEP)
-                                        if len(l_parts) >= 4 and l_parts[0] == place_id:
-                                            lifecycle_dates["list_found_at"] = (
-                                                l_parts[1].strip() or None
-                                            )
-                                            lifecycle_dates["details_found_at"] = (
-                                                l_parts[2].strip() or None
-                                            )
-                                            lifecycle_dates["enqueued_at"] = (
-                                                l_parts[3].strip() or None
-                                            )
-                                            break
-
-                            # 2. Look up in prospects index if missing
-                            if (
-                                lifecycle_dates["average_rating"] is None
-                                or lifecycle_dates["reviews_count"] is None
-                            ):
-                                try:
-                                    from ..core.prospects_csv_manager import (
-                                        ProspectsIndexManager,
-                                    )
-
-                                    manager = ProspectsIndexManager(campaign)
-                                    prospect = manager.get_prospect(place_id)
-                                    if prospect:
-                                        if (
-                                            lifecycle_dates["average_rating"] is None
-                                            and prospect.average_rating is not None
-                                        ):
-                                            lifecycle_dates["average_rating"] = (
-                                                prospect.average_rating
-                                            )
-                                        if (
-                                            lifecycle_dates["reviews_count"] is None
-                                            and prospect.reviews_count is not None
-                                        ):
-                                            lifecycle_dates["reviews_count"] = (
-                                                prospect.reviews_count
-                                            )
-                                except Exception:
-                                    pass
-            except Exception as e:
-                logger.warning(f"Error reading maps receipt for {company_slug}: {e}")
+                    manager = ProspectsIndexManager(campaign)
+                    prospect = manager.get_prospect(place_id)
+                    if prospect:
+                        if (
+                            lifecycle_dates["average_rating"] is None
+                            and prospect.average_rating is not None
+                        ):
+                            lifecycle_dates["average_rating"] = (
+                                prospect.average_rating
+                            )
+                        if (
+                            lifecycle_dates["reviews_count"] is None
+                            and prospect.reviews_count is not None
+                        ):
+                            lifecycle_dates["reviews_count"] = (
+                                prospect.reviews_count
+                            )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Error reading maps receipt for {company_slug}: {e}")
 
     # Load contacts
     contacts = []
@@ -293,6 +308,28 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
     for key, val in lifecycle_dates.items():
         if val is not None:
             comp_dict[key] = val
+
+    if maps_row:
+        enrich_domain = (maps_row.get("domain") or "").strip()
+        if enrich_domain and not comp_dict.get("domain"):
+            comp_dict["domain"] = enrich_domain
+        enrich_website = (maps_row.get("website") or "").strip()
+        if enrich_website and not comp_dict.get("website_url"):
+            comp_dict["website_url"] = enrich_website
+        enrich_gmb = (maps_row.get("gmb_url") or "").strip()
+        if enrich_gmb and "google.com/maps" in enrich_gmb and "query=google" not in enrich_gmb:
+            comp_dict["gmb_url"] = enrich_gmb
+        elif comp_dict.get("gmb_url") and "query=google" in str(comp_dict["gmb_url"]):
+            from ..utils.google_maps_url import google_maps_url
+
+            rebuilt = google_maps_url(
+                place_id=comp_dict.get("place_id"),
+                name=comp_dict.get("name"),
+                street_address=comp_dict.get("street_address"),
+                city=comp_dict.get("city"),
+            )
+            if rebuilt:
+                comp_dict["gmb_url"] = rebuilt
 
     return {
         "company": comp_dict,

@@ -126,8 +126,9 @@ async def test_mark_prefix_h_marks_high_value(mock_company_data):
         await pilot.pause()
 
         with patch(
-            "cocli.application.to_call_disposition_service.mark_to_call_high_value"
-        ) as mock_mark, patch(
+            "cocli.application.to_call_disposition_service.toggle_to_call_high_value",
+            return_value=True,
+        ) as mock_toggle, patch(
             "cocli.core.config.get_campaign", return_value="roadmap"
         ):
             await pilot.press("m")
@@ -135,7 +136,7 @@ async def test_mark_prefix_h_marks_high_value(mock_company_data):
             await pilot.press("h")
             await pilot.pause()
 
-            mock_mark.assert_called_once_with(
+            mock_toggle.assert_called_once_with(
                 campaign="roadmap",
                 slug="nemeth-family-interiors",
                 domain="nemethfamilyinteriors.com",

@@ -108,3 +108,70 @@ def import_prospect(
         # Use new robust save method
         new_company.save()
         return new_company
+
+
+def apply_prospect_to_company_if_empty(prospect_data: GoogleMapsProspect) -> bool:
+    """Fill blank company identity from a details scrape. Never overwrites.
+
+    GoogleMapsDetailsProcessor writes WAL + google_maps.usv and is forbidden
+    from clobbering ``_index.md``. That left companies like Adams Insurance
+    with a scraped domain in enrichment and none on the company record, so
+    TUI re-enrich and compile-to-call stayed blocked. This is the missing
+    fill-empty step.
+    """
+    slug = prospect_data.slug or prospect_data.company_slug
+    if not slug:
+        logger.warning("Skipping company hydrate: prospect has no slug")
+        return False
+
+    company = Company.get(str(slug))
+    if company is None:
+        logger.debug("Skipping company hydrate: no company for slug %s", slug)
+        return False
+
+    modified = False
+
+    def fill(attr: str, value: object) -> None:
+        nonlocal modified
+        if value is None or value == "":
+            return
+        current = getattr(company, attr)
+        if current is None or current == "":
+            setattr(company, attr, value)
+            modified = True
+
+    fill("domain", prospect_data.domain)
+    fill("website_url", prospect_data.website)
+    fill("full_address", prospect_data.full_address)
+    fill("street_address", prospect_data.street_address)
+    fill("city", prospect_data.city)
+    fill("zip_code", prospect_data.zip)
+    fill("state", prospect_data.state)
+    fill("country", prospect_data.country)
+    fill("phone_1", prospect_data.phone)
+    fill("phone_number", prospect_data.phone)
+    fill("place_id", prospect_data.place_id)
+
+    if company.reviews_count is None and prospect_data.reviews_count is not None:
+        company.reviews_count = prospect_data.reviews_count
+        modified = True
+    if company.average_rating is None and prospect_data.average_rating is not None:
+        company.average_rating = prospect_data.average_rating
+        modified = True
+
+    if prospect_data.first_category:
+        incoming = [
+            cat.strip()
+            for cat in str(prospect_data.first_category).split(";")
+            if cat.strip()
+        ]
+        merged = list(dict.fromkeys((company.categories or []) + incoming))
+        if merged != (company.categories or []):
+            company.categories = merged
+            modified = True
+
+    if modified:
+        company.save(rebuild_cache=False)
+        logger.info("Hydrated empty company fields from details scrape: %s", slug)
+    return modified
+

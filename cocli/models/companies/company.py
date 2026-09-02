@@ -147,10 +147,15 @@ class Company(BaseModel):
 
     @computed_field
     def gmb_url(self) -> Optional[str]:
-        """Constructs a Google Maps search URL from the place_id."""
-        if self.place_id:
-            return f"https://www.google.com/maps/search/?api=1&query=google&query_place_id={self.place_id}"
-        return None
+        """Google Maps URL from place_id and/or name + street + city."""
+        from ...utils.google_maps_url import google_maps_url
+
+        return google_maps_url(
+            place_id=str(self.place_id) if self.place_id else None,
+            name=self.name,
+            street_address=self.street_address,
+            city=self.city,
+        )
 
     @model_validator(mode="after")
     def populate_identifiers(self) -> "Company":
@@ -459,6 +464,8 @@ class Company(BaseModel):
         # 2. Update YAML index (keeping tags in YAML for reporting speed)
         # We don't want to save the description twice (YAML and Markdown body)
         data = self.model_dump(mode="json", exclude_none=True)
+        for computed in type(self).model_computed_fields:
+            data.pop(computed, None)
         description = data.pop("description", "")
 
         with open(index_path, "w") as f:

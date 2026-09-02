@@ -28,7 +28,9 @@ class GoogleMapsDetailsProcessor:
         Executes the detail scrape and saves results to both the Hot Index (WAL) 
         and the Company Enrichment directory.
         
-        Mandate: This processor DOES NOT touch the company _index.md.
+        Mandate: do not clobber company _index.md. After WAL + enrichment,
+        fill empty identity fields (domain, etc.) via
+        apply_prospect_to_company_if_empty.
         """
         logger.info(f"Processing Details for: {task.place_id} ({task.company_slug})")
         
@@ -68,6 +70,12 @@ class GoogleMapsDetailsProcessor:
             # This ensures the business data is attached to the company for the TUI/Frontend
             enrichment_path = prospect.save_enrichment()
             logger.info(f"Saved company enrichment: {enrichment_path}")
+
+            # 6. Fill empty company fields (domain, etc.) without overwriting
+            # existing _index.md identity. Scrape still does not clobber.
+            from ...core.importing import apply_prospect_to_company_if_empty
+
+            apply_prospect_to_company_if_empty(prospect)
 
             return prospect
 

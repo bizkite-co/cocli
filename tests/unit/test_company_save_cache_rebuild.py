@@ -21,6 +21,22 @@ def test_save_spawns_a_cache_rebuild_thread_by_default(sandboxed_companies_dir: 
     mock_thread.assert_called_once()
 
 
+def test_save_does_not_persist_computed_gmb_url(sandboxed_companies_dir: Path) -> None:
+    company = Company(
+        name=CompanyName("Acme"),
+        slug="acme",
+        place_id="ChIJQ1A68rPbyYkR_dONAUWyrRo",
+        street_address="474 Prospect Blvd",
+        city="Frederick",
+    )
+    company.save(rebuild_cache=False)
+    text = (sandboxed_companies_dir / "acme" / "_index.md").read_text()
+    assert "gmb_url:" not in text
+    assert "query=google" not in text
+    assert "query_place_id" in (company.gmb_url or "")
+    assert "query=google" not in (company.gmb_url or "")
+
+
 def test_save_with_rebuild_cache_false_spawns_no_thread(sandboxed_companies_dir: Path) -> None:
     """Regression (Mark, 2026-08-31): a 4,000-item bulk backfill called
     Company.save() once per item with no way to opt out of the per-save
