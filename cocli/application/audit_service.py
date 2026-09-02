@@ -318,7 +318,7 @@ class AuditService:
         for company in Company.get_all():
             if company is None:
                 continue
-            if self.campaign_name in company.tags:
+            if company.belongs_to_campaign(self.campaign_name):
                 reason = None
                 for p in contamination_patterns:
                     company_name_lower = str(company.name).lower() if company.name else ""
@@ -334,6 +334,9 @@ class AuditService:
                 prospect_file.unlink()
             for company in companies_to_untag:
                 company.tags = [t for t in company.tags if t != self.campaign_name]
+                company.campaigns = [
+                    c for c in (company.campaigns or []) if c != self.campaign_name
+                ]
                 company.save()
 
         return {

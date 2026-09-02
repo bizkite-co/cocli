@@ -404,7 +404,8 @@ def backfill_missing_companies_from_prospects(
             state=prospect.state,
             zip_code=prospect.zip,
             domain=prospect.domain,
-            tags=[campaign_name, backfill_tag],
+            tags=[backfill_tag],
+            campaigns=[campaign_name],
         )
         if not dry_run:
             create_company_files(company, company.get_local_path(), rebuild_cache=False)
@@ -428,4 +429,35 @@ def backfill_missing_companies_from_prospects(
         "dry_run": dry_run,
         "tag": backfill_tag,
         "slugs": created_slugs,
+    }
+
+
+def backfill_campaigns_from_tags(*, dry_run: bool = True) -> dict[str, Any]:
+    """Move known campaign names out of company.tags into company.campaigns.
+
+    A company can belong to more than one campaign; tags stay for labels
+    like backfilled-from-prospects-*, not for campaign membership.
+    """
+    from ..core.config import get_all_campaign_dirs
+
+    known = {d.name for d in get_all_campaign_dirs()}
+    moved = 0
+    slugs: list[str] = []
+    for company in Company.get_all():
+        if company is None:
+            continue
+        hit = [t for t in (company.tags or []) if t in known]
+        if not hit:
+            continue
+        for name in hit:
+            company.add_to_campaign(name)
+        if not dry_run:
+            company.save(rebuild_cache=False)
+        moved += 1
+        slugs.append(company.slug)
+    return {
+        "dry_run": dry_run,
+        "known_campaigns": sorted(known),
+        "companies_updated": moved,
+        "slugs": slugs,
     }

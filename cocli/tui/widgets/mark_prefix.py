@@ -6,7 +6,11 @@ from typing import Any
 
 from textual.widgets import Input, Static
 
-MARK_PREFIX_HINT = "Mark: [i] invalid   [h] high-value   esc/alt+s cancel"
+# Bold the keys. Do not wrap letters in [i] — Rich treats that as italic.
+MARK_PREFIX_HINT = (
+    "Mark  [bold]i[/] invalid   [bold]h[/] high-value   "
+    "[dim]esc/alt+s cancel[/]"
+)
 
 
 class MarkPrefixMixin:

@@ -100,9 +100,10 @@ ListItem.-highlight {
     dock: bottom;
     height: 1;
     width: 100%;
-    background: #ffff00;
-    color: #000000;
+    background: #1c1c1c;
+    color: #8a8a8a;
     padding: 0 1;
+    border-top: solid #333333;
 }
 
 .visible {

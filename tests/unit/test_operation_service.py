@@ -129,7 +129,8 @@ async def test_op_compile_to_call_tags_new_companies_with_campaign_name(
 
     assert result["status"] == "success"
     created_company = captured_company["company"]
-    assert "test-campaign" in created_company.tags
+    assert "test-campaign" in created_company.campaigns
+    assert "test-campaign" not in created_company.tags
 
 
 @pytest.mark.asyncio

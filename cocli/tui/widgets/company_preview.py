@@ -116,5 +116,8 @@ class CompanyPreview(Container):
             Static(f"[b]Scraped:[/b] {scraped_at}"),
             Static(f"[b]Details:[/b] {details_at}"),
             Static(f"[b]Enriched:[/b] {enriched_str}"),
+            Static(
+                f"[b]Campaigns:[/b] {escape(', '.join(company.campaigns) or '—')}"
+            ),
             Static(f"[b]Tags:[/b] {escape(', '.join(company.tags))}"),
         )

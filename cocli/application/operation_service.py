@@ -774,6 +774,7 @@ class OperationService:
                                     if clean_name and clean_name != company.name:
                                         company.name = clean_name
 
+                                company.add_to_campaign(self.campaign_name)
                                 # Save updated metadata
                                 await asyncio.to_thread(company.save, rebuild_cache=False)
                                 logger.info(f"Updated {p.slug}")
@@ -804,9 +805,8 @@ class OperationService:
                                     state=p.state,
                                     zip_code=p.zip,
                                     domain=p.domain,
-                                    tags=list(
-                                        dict.fromkeys([*p.tags, self.campaign_name])
-                                    ),
+                                    tags=list(dict.fromkeys(p.tags)),
+                                    campaigns=[self.campaign_name],
                                 )
                                 company_dir = create_company_files(
                                     new_company,

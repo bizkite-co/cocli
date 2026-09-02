@@ -42,6 +42,7 @@ class Company(BaseModel):
     domain: Optional[str] = None
     type: str = "N/A"
     tags: list[str] = Field(default_factory=list)
+    campaigns: list[str] = Field(default_factory=list)
     slug: CompanySlug
     company_hash: Optional[str] = None
     description: Optional[str] = None
@@ -69,6 +70,25 @@ class Company(BaseModel):
     def get_shard_id(self) -> str:
         """Companies are currently flat within the global collection."""
         return ""
+
+    def belongs_to_campaign(self, name: str) -> bool:
+        """True if this company is in the campaign.
+
+        Prefers the ``campaigns`` field; falls back to a same-named tag so
+        records not yet backfilled still match.
+        """
+        if name in (self.campaigns or []):
+            return True
+        return name in (self.tags or [])
+
+    def add_to_campaign(self, name: str) -> None:
+        """Record campaign membership without stuffing it into tags."""
+        camps = list(self.campaigns or [])
+        if name not in camps:
+            camps.append(name)
+            self.campaigns = camps
+        if name in (self.tags or []):
+            self.tags = [t for t in self.tags if t != name]
 
     # ----------------------------------------
 
@@ -382,6 +402,7 @@ class Company(BaseModel):
         # List fields: merge unique values
         for field in [
             "tags",
+            "campaigns",
             "all_emails",
             "tech_stack",
             "categories",
