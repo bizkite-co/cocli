@@ -155,11 +155,31 @@ class WebsiteScraper:
             logger.debug(f"IP resolution failed for {domain}: {e}")
             return None
 
-    async def _resolve_canonical_url(self, domain: str) -> Optional[str]:
-        """Rapidly find the working URL for a domain, following redirects."""
-        protocols = ["http://", "https://"]
-        for protocol in protocols:
-            url = f"{protocol}{domain}"
+    async def _resolve_canonical_url(
+        self, domain: str, hint_url: Optional[str] = None
+    ) -> Optional[str]:
+        """Rapidly find the working URL for a domain, following redirects.
+
+        Tries the Maps ``website`` hint first (often ``http://www.…``), then
+        https/http on the bare host and ``www.``. Apex without www 404ing
+        while www works is common; stripping www from the domain and only
+        probing the apex misses that.
+        """
+        candidates: list[str] = []
+        if hint_url and str(hint_url).strip():
+            candidates.append(str(hint_url).strip())
+        hosts = [domain]
+        if domain and not domain.lower().startswith("www."):
+            hosts.append(f"www.{domain}")
+        for host in hosts:
+            candidates.append(f"https://{host}")
+            candidates.append(f"http://{host}")
+
+        seen: set[str] = set()
+        for url in candidates:
+            if url in seen:
+                continue
+            seen.add(url)
             try:
                 async with httpx.AsyncClient(
                     follow_redirects=True, verify=False,
@@ -184,6 +204,7 @@ class WebsiteScraper:
         navigation_timeout_ms: int = 30000,
         site_timeout_seconds: int = 120,
         processed_by: Optional[str] = None,
+        start_url: Optional[str] = None,
     ) -> Website:
         """
         Scrapes a website for company information.
@@ -210,6 +231,7 @@ class WebsiteScraper:
                     campaign,
                     navigation_timeout_ms,
                     company_slug,
+                    start_url,
                 ),
                 timeout=site_timeout_seconds,
             )
@@ -331,6 +353,7 @@ class WebsiteScraper:
         campaign: Optional[Campaign] = None,
         navigation_timeout_ms: int = 30000,
         company_slug: Optional[str] = None,
+        start_url: Optional[str] = None,
     ) -> Website:
         """
         Internal implementation of website scraping.
@@ -398,29 +421,36 @@ class WebsiteScraper:
 
         page = await context.new_page()
         try:
-            canonical_url = await self._resolve_canonical_url(domain)
+            canonical_url = await self._resolve_canonical_url(domain, hint_url=start_url)
             if not canonical_url:
-                canonical_url = f"https://{domain}"
+                canonical_url = (start_url or "").strip() or f"https://{domain}"
 
             try:
                 response = await page.goto(
                     canonical_url, wait_until="load", timeout=navigation_timeout_ms
                 )
-                if not response or not response.ok:
-                    status = response.status if response else "No Response"
-                    raise NavigationError(f"Navigation failed with status {status}")
-                website_data.url = page.url
+                website_data.url = page.url or canonical_url
+                if response is not None:
+                    try:
+                        website_data.http_status = int(response.status)
+                    except (TypeError, ValueError):
+                        website_data.http_status = None
             except Exception as e:
                 raise NavigationError(f"Could not navigate to {domain}. Error: {e}") from e
 
             try:
-                # Viewport only (full_page=False, the default) - a "front
-                # face" preview of the hero/above-fold section, not the
-                # entire scrollable page. A failed capture must not fail
-                # the whole scrape - it's a nice-to-have, not core data.
+                # Viewport of whatever loaded - including a 404/parked page.
+                # Adams Insurance (2026-09-02): Maps website redirected to a
+                # Relation location URL that 404s; we used to raise before
+                # screenshot, so E saved website.md with an error and no PNG,
+                # then the TUI still said "successful".
                 website_data.screenshot_bytes = await page.screenshot(type="png")
             except Exception as e:
                 logger.debug(f"Screenshot capture failed for {domain}: {e}")
+
+            if not response or not response.ok:
+                status = response.status if response else "No Response"
+                raise NavigationError(f"Navigation failed with status {status}")
 
             target_keywords: list[str] = []
             if campaign:
@@ -766,7 +796,35 @@ class WebsiteScraper:
                 website_data.navbar_html = str(nav)
 
         email_map = self._extract_all_emails(soup, html)
+        from ..core.config import get_campaign
+        from ..core.sharding import get_domain_shard
+        from ..core.suspicious_email import classify_scraped_email, snippet_around
+        from ..models.campaigns.queues.scraped_email_invalid import (
+            enqueue_scraped_email_invalid,
+        )
+
+        domain_str = str(website_data.url or "")
+        slug = website_data.associated_company_folder or ""
+        shard = get_domain_shard(domain_str) if domain_str else "_"
+        safe_domain = domain_str.replace("/", "_")
+        witness_relpath = (
+            f"raw/enrichment/{shard}/{safe_domain}/witness.html" if domain_str else ""
+        )
+        campaign_name = get_campaign()
         for e_str, label in email_map.items():
+            reason = classify_scraped_email(e_str)
+            if reason:
+                enqueue_scraped_email_invalid(
+                    campaign_name=campaign_name,
+                    company_slug=slug or "unknown",
+                    domain=domain_str or "unknown",
+                    email=e_str,
+                    reason=reason,
+                    witness_relpath=witness_relpath,
+                    context_snippet=snippet_around(html, e_str),
+                    extracted_from="html",
+                )
+                continue
             try:
                 addr = EmailAddress(e_str)
                 if addr not in website_data.all_emails:

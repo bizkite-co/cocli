@@ -57,7 +57,8 @@ async def enrich_company_website(
         ttl_days=ttl_days,
         debug=debug,
         navigation_timeout_ms=navigation_timeout_ms or 30000,
-        processed_by=processed_by
+        processed_by=processed_by,
+        start_url=str(company.website_url) if company.website_url else None,
     )
 
     return website_data

@@ -35,6 +35,78 @@ def _read_maps_enrichment_row(path: Path) -> Optional[dict[str, str]]:
     return next(iter(reader), None)
 
 
+def _load_website_md(path: Path) -> Optional[Website]:
+    data = Website.read_existing_frontmatter(path)
+    if not data:
+        return None
+    try:
+        return Website.model_validate(data)
+    except Exception as e:
+        logger.warning("Could not load website enrichment %s: %s", path, e)
+        return None
+
+
+def _website_emails_as_contacts(website: Website) -> list[dict[str, Any]]:
+    """Website scrape emails/personnel as contact rows (not Person records)."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    contexts = website.email_contexts or {}
+
+    from ..core.suspicious_email import classify_scraped_email
+
+    for person in website.personnel or []:
+        if not isinstance(person, dict):
+            continue
+        email = str(person.get("email") or "").strip()
+        key = email.lower()
+        if email and classify_scraped_email(email):
+            continue
+        if key:
+            seen.add(key)
+        rows.append(
+            {
+                "name": str(person.get("name") or "").strip(),
+                "role": str(
+                    person.get("title")
+                    or person.get("role")
+                    or contexts.get(email)
+                    or "website"
+                ).strip(),
+                "email": email,
+                "source": "website",
+            }
+        )
+
+    for raw in website.all_emails or []:
+        email = str(raw).strip()
+        key = email.lower()
+        if not email or key in seen or classify_scraped_email(email):
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "name": "",
+                "role": str(contexts.get(email) or contexts.get(key) or "website"),
+                "email": email,
+                "source": "website",
+            }
+        )
+
+    primary = str(website.email or "").strip()
+    if primary and classify_scraped_email(primary):
+        primary = ""
+    if primary and primary.lower() not in seen:
+        rows.append(
+            {
+                "name": "",
+                "role": str(contexts.get(primary) or "website"),
+                "email": primary,
+                "source": "website",
+            }
+        )
+    return rows
+
+
 async def update_company_from_website_data(
     company: Company, website_data: Website, campaign: Optional[Any] = None
 ) -> bool:
@@ -55,7 +127,13 @@ async def update_company_from_website_data(
         modified = True
 
     # 2. Handle Email
-    if website_data.email and company.email != website_data.email:
+    from ..core.suspicious_email import classify_scraped_email
+
+    if (
+        website_data.email
+        and company.email != website_data.email
+        and not classify_scraped_email(str(website_data.email))
+    ):
         logger.info(
             f"Updating email for {company.slug}: {company.email} -> {website_data.email}"
         )
@@ -64,7 +142,12 @@ async def update_company_from_website_data(
 
     # 3. Handle All Emails
     if website_data.all_emails:
-        new_emails = sorted(list(set(company.all_emails + website_data.all_emails)))
+        scraped = [
+            e
+            for e in website_data.all_emails
+            if not classify_scraped_email(str(e))
+        ]
+        new_emails = sorted(list(set(list(company.all_emails or []) + scraped)))
         if new_emails != company.all_emails:
             company.all_emails = new_emails
             modified = True
@@ -170,14 +253,17 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
         _read_maps_enrichment_row(maps_receipt) if maps_receipt.exists() else None
     )
 
-    # Load website data using WebsiteCache (legacy fallback)
-    website_data = None
-    view_domain = company.domain or (
-        (maps_row.get("domain") or "").strip() if maps_row else None
+    website_from_md = (
+        _load_website_md(enrichment_path) if enrichment_path.exists() else None
     )
-    if view_domain:
-        website_cache = WebsiteCache()
-        website_data = website_cache.get_by_url(view_domain)
+    website_data = website_from_md
+    if website_data is None:
+        view_domain = company.domain or (
+            (maps_row.get("domain") or "").strip() if maps_row else None
+        )
+        if view_domain:
+            website_cache = WebsiteCache()
+            website_data = website_cache.get_by_url(view_domain)
 
     # Load lifecycle data for status display
     lifecycle_dates: dict[str, Any] = {
@@ -278,6 +364,20 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
                         person.model_dump()
                     )  # Convert to dict for generic return
 
+    known_emails = {
+        str(c.get("email") or "").strip().lower()
+        for c in contacts
+        if c.get("email")
+    }
+    if website_from_md:
+        for row in _website_emails_as_contacts(website_from_md):
+            key = str(row.get("email") or "").strip().lower()
+            if key and key in known_emails:
+                continue
+            if key:
+                known_emails.add(key)
+            contacts.append(row)
+
     # Load meetings
     meetings = []
     if meetings_dir.exists():
@@ -330,6 +430,25 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
             )
             if rebuilt:
                 comp_dict["gmb_url"] = rebuilt
+
+    if website_from_md:
+        from ..core.suspicious_email import classify_scraped_email
+
+        if (
+            website_from_md.email
+            and not comp_dict.get("email")
+            and not classify_scraped_email(str(website_from_md.email))
+        ):
+            comp_dict["email"] = website_from_md.email
+        scraped = [
+            str(e)
+            for e in (website_from_md.all_emails or [])
+            if str(e).strip() and not classify_scraped_email(str(e))
+        ]
+        if scraped:
+            existing = [str(e) for e in (comp_dict.get("all_emails") or [])]
+            merged = list(dict.fromkeys(existing + scraped))
+            comp_dict["all_emails"] = merged
 
     return {
         "company": comp_dict,

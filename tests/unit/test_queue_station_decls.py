@@ -39,6 +39,14 @@ def test_station_for_queue_mapping() -> None:
     from cocli.station_defs.campaigns.queues import TO_CALL_HIGH_VALUE_QUEUE_STATION
 
     assert station_for_queue("to-call-high-value") is TO_CALL_HIGH_VALUE_QUEUE_STATION
+    from cocli.station_defs.campaigns.queues import (
+        SCRAPED_EMAIL_INVALID_QUEUE_STATION,
+    )
+
+    assert (
+        station_for_queue("scraped-email-invalid")
+        is SCRAPED_EMAIL_INVALID_QUEUE_STATION
+    )
     assert collect_shard(TO_CALL_QUEUE_STATION.segments) is None
     # unknown → place_id default
     assert collect_shard(station_for_queue("unknown-queue").segments) is not None

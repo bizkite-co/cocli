@@ -85,3 +85,26 @@ async def test_shows_missing_message_when_no_enrichment_path(mock_company_data):
 
         panel = detail.query_one("#screenshot-panel")
         assert len(list(panel.query(AutoImage))) == 0
+
+
+@pytest.mark.asyncio
+async def test_refresh_screenshot_widget_after_png_appears(mock_company_data):
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await pilot.pause()
+
+        from textual.widgets import Label
+        from textual_image.widget import AutoImage
+
+        panel = detail.query_one("#screenshot-panel")
+        assert len(list(panel.query(Label))) == 1
+
+        enrichment_dir = Path(mock_company_data["enrichment_path"]).parent
+        _write_real_png(enrichment_dir / "screenshot.png")
+        await detail._refresh_screenshot_widget()
+        await pilot.pause()
+
+        panel = detail.query_one("#screenshot-panel")
+        assert len(list(panel.query(AutoImage))) == 1

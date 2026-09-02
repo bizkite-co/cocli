@@ -1,8 +1,8 @@
-"""WebsiteScraper captures a viewport screenshot right after a successful
-page load, for the company-detail "front face" preview (see
-cocli/models/companies/website.py's screenshot_bytes field and save()).
-A failed capture must not fail the whole scrape - it's a nice-to-have,
-not core data.
+"""WebsiteScraper captures a viewport screenshot after page.goto, for the
+company-detail "front face" preview (see Website.screenshot_bytes / save()).
+A failed capture must not fail the whole scrape. An HTTP error page (404)
+must still be captured - otherwise E writes website.md with an error and
+no PNG, and the TUI used to call that success.
 """
 
 from __future__ import annotations
@@ -50,6 +50,38 @@ async def test_successful_navigation_captures_viewport_screenshot():
     mock_page.screenshot.assert_called_once_with(type="png")
     assert result.screenshot_bytes == _FAKE_PNG
     assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_http_error_still_captures_viewport_screenshot():
+    """A 404/parked landing (Adams Insurance → Relation location 404)
+    must still write a screenshot. Raising NavigationError before
+    page.screenshot() left website.md with an error and no PNG, and
+    the TUI reported success because execute() wraps any returned
+    Website dump as status=success."""
+    scraper = WebsiteScraper()
+    mock_context, mock_page, mock_response = _mocked_success_context()
+    mock_response.ok = False
+    mock_response.status = 404
+    mock_page.screenshot = AsyncMock(return_value=_FAKE_PNG)
+
+    with patch.object(scraper, "_resolve_canonical_url", AsyncMock(return_value="https://example.com")), \
+         patch.object(scraper, "_scrape_page", AsyncMock()), \
+         patch.object(scraper, "_get_sitemap_urls", AsyncMock(return_value=([], None))), \
+         patch.object(scraper, "_navigate_and_scrape", AsyncMock()), \
+         patch.object(scraper, "_finalize_enrichment", AsyncMock()), \
+         patch("cocli.enrichment.website_scraper.WebsiteDomainCsvManager") as mock_domain_mgr, \
+         patch("cocli.scrapers.head_scraper.HeadScraper") as mock_head_scraper:
+        mock_domain_mgr.return_value.get_by_domain.return_value = None
+        mock_head_scraper.return_value.fetch_head = AsyncMock(return_value=(None, None))
+
+        result = await scraper.run(browser=mock_context, domain="example.com", site_timeout_seconds=5)
+
+    mock_page.screenshot.assert_called_once_with(type="png")
+    assert result.screenshot_bytes == _FAKE_PNG
+    assert result.error is not None
+    assert "404" in result.error
+    assert result.http_status == 404
 
 
 @pytest.mark.asyncio

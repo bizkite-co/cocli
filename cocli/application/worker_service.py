@@ -20,7 +20,11 @@ from ..models.campaigns.queues.base import QueueMessage
 from ..models.campaigns.queues.enrichment import EnrichmentTask
 from ..core.config import load_campaign_config
 from ..core.paths import paths
-from ..utils.playwright_utils import setup_optimized_context
+from ..utils.playwright_utils import (
+    launch_browser,
+    new_details_context,
+    new_enrichment_context,
+)
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from ..utils.async_iteration import iterate_with_idle_timeout
 from ..core.text_utils import slugify
@@ -478,25 +482,7 @@ class WorkerService:
             return session.client("s3")
 
     async def _launch_browser(self, playwright: Any, headless: bool) -> Browser:
-        """Launches a browser, prioritizing msedge channel for stealth."""
-        from typing import cast
-        try:
-            browser = await playwright.chromium.launch(
-                headless=headless,
-                channel="msedge",
-                args=[
-                    "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
-                ]
-            )
-            return cast(Browser, browser)
-        except Exception:
-            browser = await playwright.chromium.launch(
-                headless=headless,
-                args=[
-                    "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
-                ]
-            )
-            return cast(Browser, browser)
+        return await launch_browser(playwright, headless=headless)
 
     async def _run_scrape_task_loop(
         self,
@@ -725,7 +711,11 @@ class WorkerService:
                     processed_by=self.processed_by
                 )
                 if website_data:
-                    website_data.save(task.company_slug)
+                    from .company_service import update_company_from_website_data
+
+                    await update_company_from_website_data(
+                        company, website_data, campaign_obj
+                    )
                 if website_data and website_data.error:
                     # WebsiteScraper.run() catches its own Timeout/Exception
                     # internally and always returns a Website (see
@@ -818,8 +808,7 @@ class WorkerService:
             try:
                 async with async_playwright() as p:
                     browser = await self._launch_browser(p, headless)
-                    context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
-                    await setup_optimized_context(context)
+                    context = await new_details_context(browser)
                     s3_client = self.get_s3_client()
                     details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
                     enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
@@ -860,9 +849,7 @@ class WorkerService:
             try:
                 async with async_playwright() as p:
                     browser = await self._launch_browser(p, headless)
-                    context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
-                    from ..utils.playwright_utils import setup_stealth_context
-                    await setup_stealth_context(context)
+                    context = await new_enrichment_context(browser)
                     s3_client = self.get_s3_client()
                     enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
                     coros = [self._run_enrichment_task_loop(context, enrich_q, debug, once, s3_client) for _ in range(workers)]

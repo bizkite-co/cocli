@@ -61,6 +61,7 @@ async def test_scrape_website_internal_preserves_navigation_error_through_outer_
     mock_response = MagicMock(ok=False, status=403)
     mock_page = AsyncMock()
     mock_page.goto = AsyncMock(return_value=mock_response)
+    mock_page.screenshot = AsyncMock(return_value=b"\x89PNG")
     mock_context = AsyncMock()
     mock_context.new_page = AsyncMock(return_value=mock_page)
 

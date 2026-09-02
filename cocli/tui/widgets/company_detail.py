@@ -356,15 +356,33 @@ class CompanyDetail(MarkPrefixMixin, Container):
     def on_mount(self) -> None:
         self.panel_info.focus()
 
+    def _screenshot_path(self) -> Optional[Path]:
+        enrichment_path = self.company_data.get("enrichment_path")
+        if enrichment_path:
+            return Path(enrichment_path).parent / "screenshot.png"
+        slug = self.company_data.get("company", {}).get("slug")
+        if slug:
+            return paths.companies.entry(slug).path / "enrichments" / "screenshot.png"
+        return None
+
+    async def _refresh_screenshot_widget(self) -> None:
+        """Recompose the screenshot panel after a scrape/enrich writes the PNG."""
+        try:
+            old = self.query_one("#screenshot-panel")
+        except Exception:
+            return
+        new = self._create_screenshot_widget()
+        await old.remove()
+        info_column = self.query_one("#info-column")
+        await info_column.mount(new, after=self.panel_info)
+        self.screenshot_widget = new
+
     def _create_screenshot_widget(self) -> Widget:
         """A small, always-visible preview of the company's website
         screenshot (see Website.screenshot_bytes / enrichments/screenshot.png)
         - "we've got a little room to just show it" (Mark, 2026-08-30), not
         a full-size viewer behind a keypress."""
-        enrichment_path = self.company_data.get("enrichment_path")
-        screenshot_path = (
-            Path(enrichment_path).parent / "screenshot.png" if enrichment_path else None
-        )
+        screenshot_path = self._screenshot_path()
 
         if screenshot_path and screenshot_path.exists():
             # `Image`, not `AutoImage`: when Sixel is the detected backend,
@@ -761,12 +779,18 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 domain = inner.get("domain") if isinstance(inner, dict) else None
                 suffix = f" — {domain}" if domain else ""
                 self.app.notify(f"Scrape successful{suffix}! Refreshing view...")
+                if domain:
+                    self.app.notify(
+                        "Press E to enrich the website (emails + screenshot)",
+                        severity="information",
+                    )
                 # The view needs to be re-hydrated to show the new data
                 if slug:
                     new_data = app.services.get_company_details(slug)
                     if new_data:
                         self.company_data = new_data
                         self._refresh_info_table()
+                        await self._refresh_screenshot_widget()
             else:
                 self.app.notify(
                     f"Scrape failed: {result.get('message')}", severity="error"
@@ -791,17 +815,18 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 "op_re_enrich", params={"domain": domain, "company_slug": slug}
             )
 
-            if result.get("status") == "success":
-                self.app.notify("Enrichment successful! Refreshing view...")
-                if slug:
-                    new_data = app.services.get_company_details(slug)
-                    if new_data:
-                        self.company_data = new_data
-                        self._refresh_info_table()
-            else:
-                self.app.notify(
-                    f"Enrichment failed: {result.get('message')}", severity="error"
-                )
+            from ...application.enrichment_outcome import notify_from_execute_result
+
+            message, severity = notify_from_execute_result(result)
+            self.app.notify(message, severity=severity, timeout=8)
+            if slug:
+                new_data = app.services.get_company_details(slug)
+                if new_data:
+                    self.company_data = new_data
+                    self._refresh_info_table()
+                    self._refresh_contacts_table()
+                    await self._refresh_screenshot_widget()
+                    self.refresh_notes_data()
 
         self.app.run_worker(run_enrichment())
 
@@ -1328,6 +1353,13 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
         self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
         self.info_table.add_row("Email", format_email_display(c.get("email")))
+        extras = [
+            str(e)
+            for e in (c.get("all_emails") or [])
+            if str(e).strip() and str(e) != str(c.get("email") or "")
+        ]
+        if extras:
+            self.info_table.add_row("Emails", ", ".join(extras))
         self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
 
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
@@ -1419,14 +1451,23 @@ class CompanyDetail(MarkPrefixMixin, Container):
         table.add_column("Name")
         table.add_column("Role")
         table.add_column("Email")
+        self.contacts_table = table
+        self._refresh_contacts_table()
+        return table
+
+    def _refresh_contacts_table(self) -> None:
+        self.contacts_table.clear()
         contacts = self.company_data.get("contacts", [])
         for c in contacts:
-            table.add_row(
-                escape(c.get("name", "Unknown")),
-                escape(c.get("role", "")),
-                str(c.get("email", "")),
+            name = c.get("name") or (
+                "Unknown" if c.get("source") != "website" else ""
             )
-        return table
+            table_name = escape(str(name)) if name else ""
+            self.contacts_table.add_row(
+                table_name,
+                escape(str(c.get("role") or "")),
+                str(c.get("email") or ""),
+            )
 
     def _create_meetings_table(self) -> MeetingsTable:
         table = MeetingsTable(id="meetings-table")

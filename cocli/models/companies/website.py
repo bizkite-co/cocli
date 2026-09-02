@@ -13,6 +13,35 @@ from ...core.error_classification import ErrorCategory
 logger = logging.getLogger(__name__)
 
 
+def _append_enrichment_failure_note(notes_dir: Path, website: "Website") -> None:
+    """Dated company note so a dead/parked site is visible on later calls."""
+    from .note import Note
+
+    when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    status = website.http_status
+    status_label = f"HTTP {status}" if status is not None else "no HTTP status"
+    category = (
+        website.error_category.value
+        if website.error_category is not None
+        else "unknown"
+    )
+    url = str(website.url) if website.url else "unknown URL"
+    title = f"Website {status_label}"
+    content = (
+        f"{when} — {status_label}\n"
+        f"URL: {url}\n"
+        f"Category: {category}\n"
+        f"{website.error}\n"
+        "\n"
+        "If the site stays down and a call does not go through, "
+        "this company may be a candidate to mark invalid."
+    )
+    try:
+        Note(title=title, content=content).to_file(notes_dir)
+    except Exception as e:
+        logger.warning("Could not write enrichment failure note: %s", e)
+
+
 def _is_hollow(value: Any) -> bool:
     """A value a fresh scrape produces when it found nothing for a field -
     None, an empty/whitespace string, or an empty list/dict. Deliberately
@@ -32,7 +61,14 @@ def _is_hollow(value: Any) -> bool:
 # handled separately), not accumulated knowledge about the company, so a
 # fresh empty/absent value is meaningful in its own right rather than a
 # sign the scrape just didn't find anything.
-_WEBSITE_NEVER_MERGE_FROM_EXISTING = {"url", "sitemap_xml", "navbar_html", "error", "error_category"}
+_WEBSITE_NEVER_MERGE_FROM_EXISTING = {
+    "url",
+    "sitemap_xml",
+    "navbar_html",
+    "error",
+    "error_category",
+    "http_status",
+}
 
 # List-typed fields get UNION-merged (existing + fresh, deduped) instead
 # of the hollow-check replace-if-nonempty rule everything else uses. A
@@ -158,6 +194,7 @@ class Website(BaseModel):
     navbar_html: Optional[str] = None
     error: Optional[str] = None
     error_category: Optional[ErrorCategory] = None
+    http_status: Optional[int] = None
     # In-memory carrier only, never serialized (exclude=True - bytes don't
     # belong in YAML frontmatter) - the scraper sets this right after page
     # load (cocli/enrichment/website_scraper.py), save() writes it to the
@@ -273,6 +310,9 @@ class Website(BaseModel):
             (enrichment_dir / "navbar.html").write_text(content)
         if self.screenshot_bytes:
             (enrichment_dir / "screenshot.png").write_bytes(self.screenshot_bytes)
+
+        if self.error:
+            _append_enrichment_failure_note(company_dir / "notes", self)
 
         logger.debug(f"Saved website enrichment locally for {company_slug}")
 

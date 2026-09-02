@@ -28,6 +28,7 @@ class QueueIdentity(str, Enum):
     TO_CALL = "to-call"
     TO_CALL_INVALID = "to-call-invalid"
     TO_CALL_HIGH_VALUE = "to-call-high-value"
+    SCRAPED_EMAIL_INVALID = "scraped-email-invalid"
     DISCOVERY_GEN = "discovery-gen"
     EVENTS = "events"
     MAP_TILE = "map-tile"

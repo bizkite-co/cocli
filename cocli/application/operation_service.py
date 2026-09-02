@@ -942,6 +942,7 @@ class OperationService:
 
                     from ..models.campaigns.queues.gm_details import GmItemTask
                     from .processors.google_maps import GoogleMapsDetailsProcessor
+                    from ..utils.playwright_utils import launch_browser, new_details_context
                     from playwright.async_api import async_playwright
 
                     task = GmItemTask(
@@ -953,8 +954,8 @@ class OperationService:
 
                     log_step("browser_init", "pending")
                     async with async_playwright() as p:
-                        browser = await p.chromium.launch(headless=True)
-                        context = await browser.new_context()
+                        browser = await launch_browser(p, headless=True)
+                        context = await new_details_context(browser)
                         page = await context.new_page()
                         log_step("browser_init", "success")
 
@@ -989,12 +990,16 @@ class OperationService:
                     from ..core.enrichment import enrich_company_website
                     from ..models.companies.company import Company
                     from ..models.campaigns.campaign import Campaign
+                    from ..utils.playwright_utils import (
+                        launch_browser,
+                        new_enrichment_context,
+                    )
                     from playwright.async_api import async_playwright
 
                     log_step("browser_init", "pending")
                     async with async_playwright() as p:
-                        browser = await p.chromium.launch(headless=True)
-                        context = await browser.new_context()
+                        browser = await launch_browser(p, headless=True)
+                        context = await new_enrichment_context(browser)
                         log_step("browser_init", "success")
 
                         try:
@@ -1018,12 +1023,25 @@ class OperationService:
                             )
 
                             if website_data:
-                                website_data.save(slug)
-                                log_step(
-                                    "enrich",
-                                    "success",
-                                    f"Captured {len(website_data.all_emails)} emails",
+                                from .company_service import (
+                                    update_company_from_website_data,
                                 )
+
+                                await update_company_from_website_data(
+                                    company, website_data, campaign_obj
+                                )
+                                if website_data.error:
+                                    log_step(
+                                        "enrich",
+                                        "error",
+                                        website_data.error,
+                                    )
+                                else:
+                                    log_step(
+                                        "enrich",
+                                        "success",
+                                        f"Captured {len(website_data.all_emails)} emails",
+                                    )
                                 return website_data.model_dump()
                             else:
                                 log_step("enrich", "error", "No data captured")

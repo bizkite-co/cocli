@@ -223,6 +223,52 @@ def test_view_overlays_domain_from_maps_enrichment(
     assert "maps/place" in (details["company"].get("gmb_url") or "")
 
 
+def test_view_lists_website_emails_in_contacts(
+    sandboxed_companies_dir: Path,
+) -> None:
+    slug = "hot-lead-co"
+    company_dir = sandboxed_companies_dir / slug
+    enrich = company_dir / "enrichments"
+    enrich.mkdir(parents=True)
+    (company_dir / "_index.md").write_text(
+        f"---\nname: Hot Lead Co\nslug: {slug}\n---\n"
+    )
+    (enrich / "website.md").write_text(
+        "---\n"
+        "url: hotlead.com\n"
+        "email: info@hotlead.com\n"
+        "all_emails:\n"
+        "- info@hotlead.com\n"
+        "- sales@hotlead.com\n"
+        "- email@example.com\n"
+        "- bssvpr@fhzzreftvyypcn.pbz\n"
+        "personnel:\n"
+        "- name: Jane Doe\n"
+        "  email: jane@hotlead.com\n"
+        "  title: Owner\n"
+        "email_contexts:\n"
+        "  sales@hotlead.com: Sales\n"
+        "---\n"
+    )
+
+    with patch(
+        "cocli.application.company_service.WebsiteCache"
+    ) as mock_cache:
+        mock_cache.return_value.get_by_url.return_value = None
+        details = get_company_details_for_view(slug)
+
+    assert details is not None
+    emails = {str(c.get("email")) for c in details["contacts"]}
+    assert emails == {"info@hotlead.com", "sales@hotlead.com", "jane@hotlead.com"}
+    assert "email@example.com" not in emails
+    assert "bssvpr@fhzzreftvyypcn.pbz" not in emails
+    jane = next(c for c in details["contacts"] if c["email"] == "jane@hotlead.com")
+    assert jane["name"] == "Jane Doe"
+    assert jane["role"] == "Owner"
+    assert details["company"]["email"] == "info@hotlead.com"
+    assert "sales@hotlead.com" in [str(e) for e in details["company"]["all_emails"]]
+
+
 def test_hydrate_fills_empty_domain_without_overwriting(
     sandboxed_companies_dir: Path,
 ) -> None:

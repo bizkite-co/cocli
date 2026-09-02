@@ -182,3 +182,21 @@ def test_missing_screenshot_on_rescrape_does_not_delete_existing_one() -> None:
     Website(url="acme-flooring.com", description="updated description").save(slug)
 
     assert _screenshot_path(slug).read_bytes() == fake_png
+
+
+def test_enrichment_error_writes_dated_http_note() -> None:
+    slug = "adams-insurance"
+    Website(
+        url="adamsinsuranceagency.net",
+        error="Navigation failed with status 404",
+        error_category="navigation_failed",
+        http_status=404,
+    ).save(slug)
+
+    notes_dir = paths.companies.ensure() / slug / "notes"
+    notes = list(notes_dir.glob("*website-http-404.md"))
+    assert len(notes) == 1
+    body = notes[0].read_text()
+    assert "HTTP 404" in body
+    assert "adamsinsuranceagency.net" in body
+    assert "mark invalid" in body.lower()
