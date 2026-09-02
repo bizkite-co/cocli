@@ -462,6 +462,32 @@ class ApplicationView(Container):
             except Exception as e:
                 logger.error(f"Failed to update recent runs: {e}")
 
+    def _apply_op_param_visibility(self, op_id: str) -> None:
+        params_area = self.query_one("#op_params_area", Vertical)
+        params_area.display = op_id in [
+            "op_compile_to_call",
+            "op_rollout_discovery",
+            "op_purge_to_call",
+        ]
+        self.query_one("#op_name_container").display = (
+            op_id == "op_rollout_discovery"
+        )
+        self.query_one("#op_limit_container").display = op_id in [
+            "op_compile_to_call",
+            "op_rollout_discovery",
+        ]
+        self.query_one("#op_purge_container").display = (
+            op_id == "op_compile_to_call"
+        )
+        # Dry run defaults to True and is shown for every operation
+        # that supports it - a destructive one (op_purge_to_call)
+        # needs the same preview-first safety net as compile_to_call
+        # (Mark, 2026-09-01: "Same for purge").
+        self.query_one("#op_dry_run_container").display = op_id in [
+            "op_compile_to_call",
+            "op_purge_to_call",
+        ]
+
     @on(ListView.Highlighted, "#sidebar_operations")
     @work(exclusive=True)
     async def handle_op_highlight(self, event: ListView.Highlighted) -> None:
@@ -472,6 +498,9 @@ class ApplicationView(Container):
 
         op_id = str(event.item.id)
         self.active_op_id = op_id
+        # Visibility depends only on op_id — apply before the debounce so a
+        # highlight is not racing a 250ms sleep (TUI tests and fast key-repeat).
+        self._apply_op_param_visibility(op_id)
 
         # Debounce
         app = cast("CocliApp", self.app)
@@ -488,30 +517,6 @@ class ApplicationView(Container):
             try:
                 self.query_one("#op_title", Label).update(op.title)
                 self.query_one("#op_description", Static).update(op.description)
-                params_area = self.query_one("#op_params_area", Vertical)
-                params_area.display = op_id in [
-                    "op_compile_to_call",
-                    "op_rollout_discovery",
-                    "op_purge_to_call",
-                ]
-                self.query_one("#op_name_container").display = (
-                    op_id == "op_rollout_discovery"
-                )
-                self.query_one("#op_limit_container").display = op_id in [
-                    "op_compile_to_call",
-                    "op_rollout_discovery",
-                ]
-                self.query_one("#op_purge_container").display = (
-                    op_id == "op_compile_to_call"
-                )
-                # Dry run defaults to True and is shown for every operation
-                # that supports it - a destructive one (op_purge_to_call)
-                # needs the same preview-first safety net as compile_to_call
-                # (Mark, 2026-09-01: "Same for purge").
-                self.query_one("#op_dry_run_container").display = op_id in [
-                    "op_compile_to_call",
-                    "op_purge_to_call",
-                ]
                 content_area = self.query_one("#op_content_area", Container)
                 content_area.remove_children()
                 self.query_one("#op_last_run", Label).update(

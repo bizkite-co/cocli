@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -470,8 +472,8 @@ def job_run_list(
 
     runs = sorted(_load_index(campaign), key=lambda r: r.created_at, reverse=True)[:limit]
 
-    table = Table(title=f"Job Runs: {campaign}")
-    table.add_column("ID")
+    table = Table(title=f"Job Runs: {campaign}", expand=False)
+    table.add_column("ID", no_wrap=True, min_width=36)
     table.add_column("Created")
     table.add_column("Discovery-Gen Done")
     table.add_column("Started")
@@ -491,7 +493,12 @@ def job_run_list(
             str(run.identity_count),
         )
 
-    console.print(table)
+    # Module-level Console captures width at import (80 under CliRunner).
+    # Run IDs are ~30 chars and must stay copyable; don't let six columns
+    # ellipsis them. 160 fits ID + timestamps on one line.
+    env_cols = os.environ.get("COLUMNS")
+    width = int(env_cols) if env_cols else shutil.get_terminal_size((160, 20)).columns
+    Console(width=max(width, 160)).print(table)
 
 
 @job_run_app.command(name="requeue")

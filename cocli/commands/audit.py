@@ -1216,9 +1216,9 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     now = datetime.now(timezone.utc)
 
     table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on dark_blue", pad_edge=False)
-    table.add_column("Node", style="cyan")
-    table.add_column("Campaign", style="green")
-    table.add_column("Designation", style="magenta")
+    table.add_column("Node", style="cyan", no_wrap=True)
+    table.add_column("Campaign", style="green", no_wrap=True)
+    table.add_column("Designation", style="magenta", no_wrap=True)
     table.add_column("CPU %", justify="right")
     table.add_column("MEM %", justify="right")
     table.add_column("Errors (30m)", justify="right")
