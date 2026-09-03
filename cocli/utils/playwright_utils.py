@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
-from playwright.async_api import Browser, BrowserContext
+from playwright.async_api import Browser, BrowserContext, Page
 
 from .headers import ANTI_BOT_HEADERS, USER_AGENT
 
@@ -75,3 +75,64 @@ async def setup_optimized_context(
     Efficiency considerations are strictly prohibited during this troubleshooting phase.
     """
     pass
+
+
+# SPA shells often survive the window `load` event as a white page plus a
+# progress donut. Screenshot after goto(wait_until="load") races that paint.
+_LOADER_GONE_AND_PAINTED = """() => {
+  if (document.readyState !== 'complete' || !document.body) return false;
+  if (document.fonts && document.fonts.status === 'loading') return false;
+
+  const visible = (el) => {
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0) {
+      return false;
+    }
+    const r = el.getBoundingClientRect();
+    return r.width > 8 && r.height > 8;
+  };
+
+  const loaders = document.querySelectorAll(
+    '[aria-busy="true"], [role="progressbar"], [class*="spinner"], [class*="Spinner"], [class*="loader"], [class*="Loader"], [class*="preloader"], [class*="Preloader"], [class*="loading"], [class*="Loading"]'
+  );
+  for (const el of loaders) {
+    if (visible(el)) return false;
+  }
+
+  const text = (document.body.innerText || '').replace(/\\s+/g, ' ').trim();
+  if (/loading|please wait|just a (sec|moment)/i.test(text) && text.length < 40) {
+    return false;
+  }
+  if (text.length >= 8) return true;
+
+  const imgs = Array.from(document.images || []);
+  return imgs.some((img) => img.complete && img.naturalWidth > 1 && visible(img));
+}"""
+
+_TWO_ANIMATION_FRAMES = """() => new Promise((resolve) => {
+  requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+})"""
+
+
+async def wait_until_page_painted(page: Page, *, timeout_ms: int = 8000) -> None:
+    """Hold until the viewport is more than a loading shell, then return.
+
+    Never raises: a timed-out wait still lets the caller screenshot whatever
+    is on screen. `networkidle` is capped because analytics/websockets often
+    never go idle (same reason gm_scraper avoids it).
+    """
+    networkidle_ms = min(4000, timeout_ms)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=networkidle_ms)
+    except Exception:
+        logger.debug("networkidle wait skipped or timed out before screenshot")
+
+    try:
+        await page.wait_for_function(_LOADER_GONE_AND_PAINTED, timeout=timeout_ms)
+    except Exception:
+        logger.debug("paint/loader wait timed out; screenshotting anyway")
+
+    try:
+        await page.evaluate(_TWO_ANIMATION_FRAMES)
+    except Exception:
+        logger.debug("animation-frame flush failed before screenshot")

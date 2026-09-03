@@ -27,7 +27,7 @@ from ..core.error_classification import ErrorCategory, classify_exception
 from ..core.email_index_manager import EmailIndexManager
 from ..models.campaigns.indexes.email import EmailEntry
 from ..models.email_address import EmailAddress
-from ..utils.playwright_utils import setup_stealth_context
+from ..utils.playwright_utils import setup_stealth_context, wait_until_page_painted
 from ..models.campaigns.raw_witness import RawWebsiteWitness
 from ..core.text_utils import is_valid_email
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
@@ -461,6 +461,9 @@ class WebsiteScraper:
                 # Relation location URL that 404s; we used to raise before
                 # screenshot, so E saved website.md with an error and no PNG,
                 # then the TUI still said "successful".
+                # wait_until="load" still races SPA shells (white + progress
+                # donut) that a human refresh paints a few hundred ms later.
+                await wait_until_page_painted(page)
                 website_data.screenshot_bytes = await page.screenshot(type="png")
             except Exception as e:
                 logger.debug(f"Screenshot capture failed for {domain}: {e}")

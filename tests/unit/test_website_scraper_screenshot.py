@@ -51,6 +51,10 @@ async def test_successful_navigation_captures_viewport_screenshot():
     mock_page.screenshot.assert_called_once_with(type="png")
     assert result.screenshot_bytes == _FAKE_PNG
     assert result.error is None
+    # wait_until_page_painted must run before screenshot, or we capture
+    # the SPA white+donut shell (2026-09-03 TUI E).
+    calls = [c[0] for c in mock_page.method_calls]
+    assert calls.index("wait_for_function") < calls.index("screenshot")
 
 
 @pytest.mark.asyncio
@@ -105,6 +109,34 @@ async def test_screenshot_capture_failure_does_not_fail_the_scrape():
 
     assert result.screenshot_bytes is None
     assert result.error is None, "a screenshot failure must not surface as a scrape error"
+
+
+@pytest.mark.asyncio
+async def test_screenshot_still_captured_when_paint_wait_times_out() -> None:
+    """A stuck spinner/analytics websocket must not skip the PNG. Wait
+    timeouts are swallowed; we screenshot whatever is on screen."""
+    scraper = WebsiteScraper()
+    mock_context, mock_page, _ = _mocked_success_context()
+    mock_page.wait_for_load_state = AsyncMock(side_effect=RuntimeError("networkidle timeout"))
+    mock_page.wait_for_function = AsyncMock(side_effect=RuntimeError("loader still visible"))
+    mock_page.evaluate = AsyncMock(side_effect=RuntimeError("no frame"))
+    mock_page.screenshot = AsyncMock(return_value=_FAKE_PNG)
+
+    with patch.object(scraper, "_resolve_canonical_url", AsyncMock(return_value="https://example.com")), \
+         patch.object(scraper, "_scrape_page", AsyncMock()), \
+         patch.object(scraper, "_get_sitemap_urls", AsyncMock(return_value=([], None))), \
+         patch.object(scraper, "_navigate_and_scrape", AsyncMock()), \
+         patch.object(scraper, "_finalize_enrichment", AsyncMock()), \
+         patch("cocli.enrichment.website_scraper.WebsiteDomainCsvManager") as mock_domain_mgr, \
+         patch("cocli.scrapers.head_scraper.HeadScraper") as mock_head_scraper:
+        mock_domain_mgr.return_value.get_by_domain.return_value = None
+        mock_head_scraper.return_value.fetch_head = AsyncMock(return_value=(None, None))
+
+        result = await scraper.run(browser=mock_context, domain="example.com", site_timeout_seconds=5)
+
+    mock_page.screenshot.assert_called_once_with(type="png")
+    assert result.screenshot_bytes == _FAKE_PNG
+    assert result.error is None
 
 
 @pytest.mark.asyncio
