@@ -266,7 +266,7 @@ DataTable > .datatable--cursor {
 }
 
 #preview-screenshot-panel {
-    height: 16;
+    height: 24;
     margin-top: 1;
     border-top: solid #222222;
     align: center middle;
