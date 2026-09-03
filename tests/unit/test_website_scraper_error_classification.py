@@ -76,3 +76,21 @@ async def test_scrape_website_internal_preserves_navigation_error_through_outer_
 
     assert result.error_category == ErrorCategory.NAVIGATION_FAILED
     assert "403" in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_finalize_skips_s3_for_local_tui() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from cocli.models.companies.website import Website
+
+    scraper = WebsiteScraper(processed_by="local-tui")
+    website = Website(url="example.com", associated_company_folder="example")
+    campaign = MagicMock()
+    campaign.name = "roadmap"
+    with patch("cocli.enrichment.website_scraper.S3CompanyManager") as mock_s3, patch(
+        "cocli.enrichment.website_scraper.DomainIndexManager"
+    ) as mock_idx:
+        mock_idx.return_value.add_or_update = MagicMock()
+        await scraper._finalize_enrichment(website, campaign)
+    mock_s3.assert_not_called()

@@ -1019,7 +1019,7 @@ class OperationService:
                                 campaign=campaign_obj,
                                 force=True,
                                 debug=True,
-                                processed_by=self.processed_by,
+                                processed_by="local-tui",
                             )
 
                             if website_data:
@@ -1027,8 +1027,10 @@ class OperationService:
                                     update_company_from_website_data,
                                 )
 
+                                # campaign=None skips S3CompanyManager (1Password
+                                # AWS profile). Local files are enough for E.
                                 await update_company_from_website_data(
-                                    company, website_data, campaign_obj
+                                    company, website_data, campaign=None
                                 )
                                 if website_data.error:
                                     log_step(

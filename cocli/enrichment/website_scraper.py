@@ -269,7 +269,9 @@ class WebsiteScraper:
             domain_index_manager = DomainIndexManager(campaign=default_campaign)
 
         s3_company_manager: Optional[S3CompanyManager] = None
-        if campaign:
+        # Local TUI re-enrich must not open AWS (that path uses 1Password
+        # for the laptop profile). Pi workers use IoT STS and still sync.
+        if campaign and self.processed_by != "local-tui":
             try:
                 s3_company_manager = S3CompanyManager(campaign=campaign)
             except Exception as e:
