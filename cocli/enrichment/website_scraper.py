@@ -372,10 +372,15 @@ class WebsiteScraper:
 
         indexed_item = domain_index_manager.get_by_domain(domain)
         if indexed_item:
-            is_stale = (datetime.now(UTC) - indexed_item.updated_at) >= fresh_delta
             is_old_version = (
                 indexed_item.scraper_version or 1
             ) < CURRENT_SCRAPER_VERSION
+            is_stale = True
+            if not force_refresh:
+                from ..models.types import validate_aware_datetime
+
+                updated = validate_aware_datetime(indexed_item.updated_at)
+                is_stale = (datetime.now(UTC) - updated) >= fresh_delta
             if not force_refresh and not is_stale and not is_old_version:
                 logger.info(f"Using indexed data for {domain}")
                 data = indexed_item.model_dump()

@@ -7,6 +7,7 @@ no PNG, and the TUI used to call that success.
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -104,3 +105,38 @@ async def test_screenshot_capture_failure_does_not_fail_the_scrape():
 
     assert result.screenshot_bytes is None
     assert result.error is None, "a screenshot failure must not surface as a scrape error"
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_survives_naive_domain_index_timestamp():
+    """TUI E always force_refresh, but we still loaded the domain index and
+    subtracted datetime.now(UTC) from a naive updated_at (CSV/DuckDB often
+    strips tz). That TypeError was classified as scraper_bug and written as
+    a 'site may be down' note — millvalley.bairdwealth.com, 2026-09-03."""
+    scraper = WebsiteScraper()
+    mock_context, mock_page, _ = _mocked_success_context()
+    mock_page.screenshot = AsyncMock(return_value=_FAKE_PNG)
+    indexed = MagicMock()
+    indexed.updated_at = datetime(2026, 9, 2, 12, 0, 0)  # naive
+    indexed.scraper_version = 6
+
+    with patch.object(scraper, "_resolve_canonical_url", AsyncMock(return_value="https://millvalley.bairdwealth.com")), \
+         patch.object(scraper, "_scrape_page", AsyncMock()), \
+         patch.object(scraper, "_get_sitemap_urls", AsyncMock(return_value=([], None))), \
+         patch.object(scraper, "_navigate_and_scrape", AsyncMock()), \
+         patch.object(scraper, "_finalize_enrichment", AsyncMock()), \
+         patch("cocli.enrichment.website_scraper.WebsiteDomainCsvManager") as mock_domain_mgr, \
+         patch("cocli.scrapers.head_scraper.HeadScraper") as mock_head_scraper:
+        mock_domain_mgr.return_value.get_by_domain.return_value = indexed
+        mock_head_scraper.return_value.fetch_head = AsyncMock(return_value=(None, None))
+
+        result = await scraper.run(
+            browser=mock_context,
+            domain="millvalley.bairdwealth.com",
+            force_refresh=True,
+            site_timeout_seconds=5,
+        )
+
+    assert result.error is None
+    assert result.error_category is None
+    mock_page.goto.assert_called()

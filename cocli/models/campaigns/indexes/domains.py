@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 from ...domain import Domain
 from ...email_address import EmailAddress
 from ...phone import OptionalPhone
+from ...types import AwareDatetime
 from .base import BaseIndexModel
 
 class WebsiteDomainCsv(BaseIndexModel):
@@ -30,8 +31,8 @@ class WebsiteDomainCsv(BaseIndexModel):
     scraper_version: Optional[int] = 1
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def get_header(cls) -> str:
