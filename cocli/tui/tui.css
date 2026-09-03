@@ -265,6 +265,19 @@ DataTable > .datatable--cursor {
     height: 32;
 }
 
+#preview-screenshot-panel {
+    height: 16;
+    margin-top: 1;
+    border-top: solid #222222;
+    align: center middle;
+    content-align: center middle;
+}
+
+#preview-screenshot-image {
+    width: auto;
+    height: auto;
+}
+
 #engagement-column {
     width: 65;
     background: #000000;

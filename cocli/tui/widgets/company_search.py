@@ -50,8 +50,10 @@ class CompanySearchView(Container):
         self.call_after_refresh(self.action_focus_companies)
 
     @on(CompanyList.CompanyHighlighted)
-    def on_company_highlighted(self, message: CompanyList.CompanyHighlighted) -> None:
-        self.company_preview.update_preview(message.company)
+    async def on_company_highlighted(
+        self, message: CompanyList.CompanyHighlighted
+    ) -> None:
+        await self.company_preview.update_preview(message.company)
 
     def action_focus_template(self) -> None:
         self.template_list.focus_list()

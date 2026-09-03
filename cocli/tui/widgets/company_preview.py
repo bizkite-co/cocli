@@ -43,11 +43,11 @@ class CompanyPreview(Container):
         else:
             self.app.notify("No domain found", severity="warning")
 
-    def update_preview(self, company: Company) -> None:
+    async def update_preview(self, company: Company) -> None:
         """Update the preview with the given company."""
         self.company = company
         content = self.query_one("#preview_content", VerticalScroll)
-        content.remove_children()
+        await content.remove_children()
 
         # Location info
         location = f"{company.city or 'N/A'}, {company.state or 'N/A'}"
@@ -97,7 +97,7 @@ class CompanyPreview(Container):
         else:
             enriched_str = "No"
 
-        content.mount(
+        preview_widgets = [
             Static(f"Name: [b]{escape(str(company.name) if company.name else '')}[/b]"),
             Static(f"[b]Domain:[/b] {escape(str(company.domain or 'N/A'))}"),
             Static(f"[b]Categories:[/b] {escape(', '.join(company.categories))}"),
@@ -120,4 +120,20 @@ class CompanyPreview(Container):
                 f"[b]Campaigns:[/b] {escape(', '.join(company.campaigns) or '—')}"
             ),
             Static(f"[b]Tags:[/b] {escape(', '.join(company.tags))}"),
-        )
+        ]
+
+        screenshot_path = company.get_local_path() / "enrichments" / "screenshot.png"
+        if screenshot_path.exists():
+            # Use Image rather than AutoImage so Sixel terminals render correctly.
+            from textual_image.widget import Image as ScreenshotImage
+
+            preview_widgets.append(
+                Container(
+                    ScreenshotImage(
+                        str(screenshot_path), id="preview-screenshot-image"
+                    ),
+                    id="preview-screenshot-panel",
+                )
+            )
+
+        await content.mount(*preview_widgets)

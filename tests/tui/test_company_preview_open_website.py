@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PIL import Image
 
 from cocli.application.services import ServiceContainer
 from cocli.models.companies.company import Company
@@ -18,6 +19,31 @@ def preview_company() -> Company:
 
 
 @pytest.mark.asyncio
+async def test_preview_replaces_screenshot_when_highlight_changes(
+    preview_company, tmp_path, monkeypatch
+):
+    screenshot_path = tmp_path / "enrichments" / "screenshot.png"
+    screenshot_path.parent.mkdir()
+    Image.new("RGB", (4, 4), color=(255, 0, 0)).save(screenshot_path, format="PNG")
+    monkeypatch.setattr(Company, "get_local_path", lambda _: tmp_path)
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        preview = CompanyPreview()
+        await app.query_one("#app_content").mount(preview)
+        await pilot.pause()
+
+        await preview.update_preview(preview_company)
+        await preview.update_preview(preview_company)
+        await pilot.pause()
+
+        from textual_image.widget import AutoImage
+
+        panel = preview.query_one("#preview-screenshot-panel")
+        assert len(list(panel.query(AutoImage))) == 1
+
+
+@pytest.mark.asyncio
 @patch("cocli.tui.widgets.company_preview.open_url", return_value=True)
 async def test_preview_open_website_uses_desktop_opener(
     mock_open_url, preview_company
@@ -27,7 +53,7 @@ async def test_preview_open_website_uses_desktop_opener(
         preview = CompanyPreview()
         await app.query_one("#app_content").mount(preview)
         await pilot.pause()
-        preview.update_preview(preview_company)
+        await preview.update_preview(preview_company)
 
         preview.action_open_website()
 
@@ -45,7 +71,7 @@ async def test_preview_open_website_skips_opener_without_domain(
         preview = CompanyPreview()
         await app.query_one("#app_content").mount(preview)
         await pilot.pause()
-        preview.update_preview(preview_company)
+        await preview.update_preview(preview_company)
 
         preview.action_open_website()
 
@@ -100,7 +126,7 @@ async def test_w_on_company_list_opens_previewed_website(
 
         preview = app.query_one(CompanyPreview)
         if preview.company is None:
-            preview.update_preview(preview_company)
+            await preview.update_preview(preview_company)
 
         await driver.press("w")
         await driver.pause()
