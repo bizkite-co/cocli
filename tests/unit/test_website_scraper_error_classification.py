@@ -94,3 +94,46 @@ async def test_finalize_skips_s3_for_local_tui() -> None:
         mock_idx.return_value.add_or_update = MagicMock()
         await scraper._finalize_enrichment(website, campaign)
     mock_s3.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_local_tui_does_not_open_boto3_for_witness() -> None:
+    """After a successful goto, scrape used to get_boto3_session because
+    campaign.aws is set. Laptop AWS_PROFILE is 1Password-backed, so E
+    prompted every time even though the scrape is local."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    scraper = WebsiteScraper(processed_by="local-tui")
+    mock_response = MagicMock(ok=True, status=200)
+    mock_page = AsyncMock()
+    mock_page.goto = AsyncMock(return_value=mock_response)
+    mock_page.url = "https://example.com"
+    mock_page.content = AsyncMock(return_value="<html></html>")
+    mock_page.screenshot = AsyncMock(return_value=b"\x89PNG")
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+    campaign = MagicMock()
+    campaign.name = "roadmap"
+    campaign.aws = MagicMock()
+    campaign.prospecting.queries = []
+    campaign.prospecting.keywords = []
+
+    with patch.object(scraper, "_resolve_canonical_url", AsyncMock(return_value="https://example.com")), \
+         patch.object(scraper, "_scrape_page", AsyncMock()), \
+         patch.object(scraper, "_get_sitemap_urls", AsyncMock(return_value=([], None))), \
+         patch.object(scraper, "_navigate_and_scrape", AsyncMock()), \
+         patch.object(scraper, "_finalize_enrichment", AsyncMock()), \
+         patch("cocli.enrichment.website_scraper.WebsiteDomainCsvManager") as mock_domain_mgr, \
+         patch("cocli.scrapers.head_scraper.HeadScraper") as mock_head_scraper, \
+         patch("cocli.models.campaigns.raw_witness.RawWebsiteWitness.save", return_value=None), \
+         patch("cocli.core.reporting.get_boto3_session") as mock_session:
+        mock_domain_mgr.return_value.get_by_domain.return_value = None
+        mock_head_scraper.return_value.fetch_head = AsyncMock(return_value=(None, None))
+        await scraper.run(
+            browser=mock_context,
+            domain="example.com",
+            campaign=campaign,
+            site_timeout_seconds=5,
+        )
+
+    mock_session.assert_not_called()

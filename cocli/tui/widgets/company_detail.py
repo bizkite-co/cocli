@@ -68,6 +68,12 @@ def format_email_display(value: Any) -> Union[Text, str]:
     return Text(str(value), style="cyan")
 
 
+def format_domain_display(value: Any) -> Union[Text, str]:
+    if not value:
+        return ""
+    return Text(str(value), style="cyan")
+
+
 class QuadrantTable(DataTable[Any]):
     """
     A specialized DataTable for quadrants that supports VIM keys
@@ -1351,7 +1357,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         )
         self.info_table.add_row("Rating", f"{rating_val} {reviews_val}")
 
-        self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
+        self.info_table.add_row("Domain", format_domain_display(c.get("domain")))
         self.info_table.add_row("Email", format_email_display(c.get("email")))
         extras = [
             str(e)

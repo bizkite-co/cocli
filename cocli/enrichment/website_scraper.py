@@ -104,6 +104,11 @@ class WebsiteScraper:
         self.user_agent = USER_AGENT
         self.processed_by = processed_by or socket.gethostname().split(".")[0]
 
+    def _uses_remote_aws(self) -> bool:
+        """Laptop TUI re-enrich must stay local. AWS_PROFILE here is a
+        1Password-backed profile; opening a boto3 session prompts op."""
+        return self.processed_by != "local-tui"
+
     def _index_emails(self, website_data: Website, campaign_name: str) -> None:
         """Helper to record all found emails in the centralized email index."""
         if not website_data.url:
@@ -271,7 +276,7 @@ class WebsiteScraper:
         s3_company_manager: Optional[S3CompanyManager] = None
         # Local TUI re-enrich must not open AWS (that path uses 1Password
         # for the laptop profile). Pi workers use IoT STS and still sync.
-        if campaign and self.processed_by != "local-tui":
+        if campaign and self._uses_remote_aws():
             try:
                 s3_company_manager = S3CompanyManager(campaign=campaign)
             except Exception as e:
@@ -361,8 +366,13 @@ class WebsiteScraper:
         Internal implementation of website scraping.
         """
         use_cloud_index = False
-        if campaign and campaign.aws and (os.getenv("COCLI_S3_BUCKET_NAME") or campaign.aws.hosted_zone_id):
-             use_cloud_index = True
+        if (
+            self._uses_remote_aws()
+            and campaign
+            and campaign.aws
+            and (os.getenv("COCLI_S3_BUCKET_NAME") or campaign.aws.hosted_zone_id)
+        ):
+            use_cloud_index = True
 
         domain_index_manager: Union[WebsiteDomainCsvManager, DomainIndexManager]
         if use_cloud_index and campaign:
@@ -483,10 +493,11 @@ class WebsiteScraper:
                         "captured_at": datetime.now(UTC).isoformat()
                     }
                 )
-                # Sync to S3 if campaign has AWS config
+                # Sync witness to S3 only on workers. Local TUI E would
+                # otherwise call get_boto3_session → AWS_PROFILE → 1Password.
                 s3_client = None
                 bucket = os.getenv("COCLI_S3_BUCKET_NAME")
-                if campaign and campaign.aws:
+                if self._uses_remote_aws() and campaign and campaign.aws:
                     from ..core.reporting import get_boto3_session
                     try:
                         session = get_boto3_session(campaign.model_dump())

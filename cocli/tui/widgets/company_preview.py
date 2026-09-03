@@ -99,7 +99,11 @@ class CompanyPreview(Container):
 
         preview_widgets = [
             Static(f"Name: [b]{escape(str(company.name) if company.name else '')}[/b]"),
-            Static(f"[b]Domain:[/b] {escape(str(company.domain or 'N/A'))}"),
+            Static(
+                f"[b]Domain:[/b] [cyan]{escape(str(company.domain))}[/cyan]"
+                if company.domain
+                else "[b]Domain:[/b] N/A"
+            ),
             Static(f"[b]Categories:[/b] {escape(', '.join(company.categories))}"),
             Static(f"[b]Type:[/b] {escape(company.type)}"),
             Static(f"[b]Location:[/b] {escape(location)}"),
