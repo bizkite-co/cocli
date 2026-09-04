@@ -90,7 +90,14 @@ def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[list[
     config = load_campaign_config(campaign_name)
     campaign_dir = get_campaign_dir(campaign_name)
     
-    proximity = config.get("prospecting", {}).get("proximity-miles", 10)
+    # Every other reader of this setting (reporting.py, audit.py,
+    # commands/campaign/planning.py, commands/campaign/prospecting.py) uses
+    # the key "proximity" - this was the sole outlier reading a
+    # "proximity-miles" key that no campaign config actually sets, so it
+    # silently fell back to the default here instead of the configured
+    # value (observed: turboship's 858 live tiles were all generated at the
+    # 10mi default while its config has said proximity=30 the whole time).
+    proximity = config.get("prospecting", {}).get("proximity", 10)
     
     if target_locations is None:
         target_locations = []

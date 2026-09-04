@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import logging
 import csv
+from pathlib import Path
 from typing import Any, Optional
 import toml
 
@@ -138,19 +139,79 @@ def generate_tiles(
 
 
 def _load_target_locations(campaign_name: str) -> list[dict[str, Any]]:
-    """Load target locations from inputs/target_locations.usv or config."""
+    """Load target locations, with config's target-locations-csv (when set)
+    as the sole hand-edited source of truth.
+
+    inputs/target_locations.usv is a *generated cache*, not a second source
+    someone hand-maintains: when a CSV is configured, it always wins and this
+    function overwrites the .usv from it before returning, so the two can
+    never diverge (previously the .usv, if present, silently shadowed the
+    CSV forever - editing the CSV had no effect once that file existed).
+    Falls back to reading an existing .usv directly only when no CSV is
+    configured, for campaigns that only ever had a hand-maintained .usv.
+    """
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         raise ValueError(f"Campaign directory not found: {campaign_name}")
 
-    # First try inputs directory
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
     inputs_path = dg_queue.inputs / "target_locations.usv"
 
     target_locations: list[dict[str, Any]] = []
 
-    if inputs_path.exists():
-        logger.info(f"  Loading target locations from: {inputs_path}")
+    config_path = campaign_dir / "config.toml"
+    target_locations_csv = None
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            config = toml.load(f)
+        prospecting_config = config.get("prospecting", {})
+        target_locations_csv = prospecting_config.get("target-locations-csv")
+
+    csv_path: Optional[Path] = None
+    if target_locations_csv:
+        candidate = campaign_dir / target_locations_csv
+        if not candidate.exists():
+            candidate = campaign_dir / "resources" / target_locations_csv
+        if candidate.exists():
+            csv_path = candidate
+
+    if csv_path is not None:
+        logger.info(f"  Loading target locations from config-declared CSV: {csv_path}")
+        with open(csv_path, "r", encoding="utf-8") as f:
+            if csv_path.suffix == ".usv":
+                from cocli.utils.usv_utils import USVDictReader
+
+                rows = list(USVDictReader(f))
+            else:
+                rows = list(csv.DictReader(f))
+
+        for row in rows:
+            lat, lon = row.get("lat"), row.get("lon")
+            if lat and lon:
+                target_locations.append(
+                    {
+                        "name": row.get("name") or row.get("city"),
+                        "lat": float(lat),
+                        "lon": float(lon),
+                    }
+                )
+
+        # Refresh the generated cache so the discovery-gen queue's own
+        # inputs/ directory reflects the CSV that was just read - keeps the
+        # two from ever being able to drift apart again.
+        if csv_path.suffix != ".usv":
+            from cocli.utils.usv_utils import csv_to_usv
+
+            inputs_path.parent.mkdir(parents=True, exist_ok=True)
+            csv_to_usv(str(csv_path), str(inputs_path))
+        elif csv_path != inputs_path:
+            import shutil
+
+            inputs_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(csv_path, inputs_path)
+
+    elif inputs_path.exists():
+        logger.info(f"  No CSV configured; loading target locations from cache: {inputs_path}")
         with open(inputs_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
@@ -168,9 +229,9 @@ def _load_target_locations(campaign_name: str) -> list[dict[str, Any]]:
             # Legacy headerless name\x1flat\x1flon format, one row per line.
             for line in lines:
                 if line.strip():
-                    row = _as_headerless_triple(line)
-                    if row:
-                        target_locations.append(row)
+                    triple = _as_headerless_triple(line)
+                    if triple:
+                        target_locations.append(triple)
         else:
             # Header + extra-column format (e.g. output of a geocoded CSV
             # import: name, beds, lat, lon, city, state, ...). USVDictReader
@@ -191,41 +252,6 @@ def _load_target_locations(campaign_name: str) -> list[dict[str, Any]]:
                             "lon": float(lon),
                         }
                     )
-    else:
-        # Fall back to config file
-        with open(campaign_dir / "config.toml", "r") as f:
-            config = toml.load(f)
-
-        prospecting_config = config.get("prospecting", {})
-        target_locations_csv = prospecting_config.get("target-locations-csv")
-
-        if target_locations_csv:
-            path = campaign_dir / target_locations_csv
-            if not path.exists():
-                path = campaign_dir / "resources" / target_locations_csv
-
-            if path.exists():
-                logger.info(f"  Loading target locations from config: {path}")
-                with open(path, "r", encoding="utf-8") as f:
-                    if path.suffix == ".usv":
-                        from cocli.utils.usv_utils import USVDictReader
-
-                        u_reader = USVDictReader(f)
-                        rows = list(u_reader)
-                    else:
-                        c_reader = csv.DictReader(f)
-                        rows = list(c_reader)
-
-                    for row in rows:
-                        lat, lon = row.get("lat"), row.get("lon")
-                        if lat and lon:
-                            target_locations.append(
-                                {
-                                    "name": row.get("name") or row.get("city"),
-                                    "lat": float(lat),
-                                    "lon": float(lon),
-                                }
-                            )
 
     if not target_locations:
         raise ValueError(f"No target locations found for {campaign_name}")

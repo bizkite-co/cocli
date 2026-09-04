@@ -423,3 +423,38 @@ class TestLoadTargetLocations:
 
             assert len(locations) == 2
             assert locations[0] == {"name": "New York, NY", "lat": 40.7127, "lon": -74.006}
+
+    def test_config_csv_wins_over_stale_cached_usv(self, tmp_path: Path) -> None:
+        # A configured target-locations-csv must be the source of truth even
+        # when a stale inputs/target_locations.usv already exists - the .usv
+        # is a generated cache, not a second place someone hand-edits.
+        # Regression test for the bug this fixes: the .usv, once present,
+        # used to shadow the CSV forever, so editing the CSV silently did
+        # nothing until someone manually deleted the .usv.
+        with patch("cocli.core.paths.paths.root", tmp_path):
+            self._write_inputs_file(
+                tmp_path,
+                "test_campaign",
+                "Stale Old City\x1f10.0\x1f-10.0\n",
+            )
+
+            campaign_dir = tmp_path / "campaigns" / "test_campaign"
+            (campaign_dir / "config.toml").write_text(
+                '[prospecting]\ntarget-locations-csv = "target_locations.csv"\n',
+                encoding="utf-8",
+            )
+            (campaign_dir / "target_locations.csv").write_text(
+                "name,lat,lon\nFresh New City,12.5,-34.5\n",
+                encoding="utf-8",
+            )
+
+            locations = _load_target_locations("test_campaign")
+
+            assert locations == [{"name": "Fresh New City", "lat": 12.5, "lon": -34.5}]
+
+            # The cache must have been overwritten to match the CSV, not left stale.
+            refreshed_cache = (
+                campaign_dir / "queues" / "discovery-gen" / "inputs" / "target_locations.usv"
+            ).read_text(encoding="utf-8")
+            assert "Fresh New City" in refreshed_cache
+            assert "Stale Old City" not in refreshed_cache
