@@ -106,18 +106,33 @@ def get_boto3_session(config: dict[str, Any], max_pool_connections: int = 10, pr
         except Exception:
             continue
 
-    # 3. Fallback to Environment or Config Profile (May trigger interactive prompts like 1Password)
+    # 3. Fallback to Config or Environment Profile (May trigger interactive prompts like 1Password)
+    # Campaign config takes priority over the ambient AWS_PROFILE env var: each
+    # campaign is tied to a specific AWS account (aws.profile in its config.toml),
+    # and a shell-level AWS_PROFILE left set for an unrelated client silently
+    # authenticates against the wrong account instead of erroring - it's a valid
+    # profile, just not this campaign's. That produced AccessDenied on this
+    # campaign's S3 bucket, which callers were silently treating as "no live
+    # heartbeats" and falling back to stale/broken local-disk counts. See
+    # memory turboship_export_to_call_fixes for the prior incident this caused.
     env_profile = os.environ.get("AWS_PROFILE")
-    if env_profile:
+    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+
+    if profile_name:
+        if env_profile and env_profile != profile_name:
+            logger.warning(
+                f"Shell AWS_PROFILE={env_profile!r} differs from campaign "
+                f"{campaign_name!r}'s configured profile {profile_name!r}; "
+                f"using the campaign's profile."
+            )
         try:
-            return boto3.Session(profile_name=env_profile)
+            return boto3.Session(profile_name=profile_name)
         except Exception:
             pass
 
-    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-    if profile_name:
+    if env_profile:
         try:
-            return boto3.Session(profile_name=profile_name)
+            return boto3.Session(profile_name=env_profile)
         except Exception:
             pass
 
