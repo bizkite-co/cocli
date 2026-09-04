@@ -5,6 +5,7 @@ import toml
 from pathlib import Path
 from functools import lru_cache
 from cocli.core.text_utils import slugify
+from cocli.models.mail import EmailSettings
 
 class CampaignImport(BaseModel):
     model_config = {"extra": "ignore"}
@@ -64,6 +65,7 @@ class Campaign(BaseModel):
     prospecting: Prospecting
     aws: Optional[AwsSettings] = None
     alerts: Optional[AlertSettings] = None
+    email: Optional[EmailSettings] = None
 
     @classmethod
     @lru_cache(maxsize=32)

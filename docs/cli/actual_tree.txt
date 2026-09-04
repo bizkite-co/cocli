@@ -405,6 +405,15 @@ cocli
         list - Lists every phone number on the shared do-not-call list.
         remove - Removes a phone number from the shared do-not-call list.
             phone (text) [required]
+    email - Send via SES and poll a configured IMAP inbox into company notes. Not a mail client.
+        poll - Poll configured IMAP folders and write notes for messages that match a company.
+            --limit (integer)
+        send - Send one email via SES and record a note on the matching company.
+            --to (text) [required]
+            --subject (text) [required]
+            --body (text) [required]
+            --company (text)
+            --from (text)
     enrich - Commands for enriching company data.
         contacts - Scrape contact information from a company's website and add/update them in the CRM.
             company_name (text) [required]
