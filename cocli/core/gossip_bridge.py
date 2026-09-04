@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import time
 import socket
 import logging
@@ -26,6 +27,93 @@ def get_gossip_port() -> int:
 GOSSIP_PORT = get_gossip_port()
 SERVICE_TYPE = f"_cocli-gossip-{get_environment().value}._udp.local." if get_environment() != Environment.PROD else "_cocli-gossip._udp.local."
 
+# Cluster Pis re-register on container start (hourly cron). Fargate tasks
+# die without deleting their registry JSON; those must expire.
+REGISTRY_TTL_CLUSTER_S = 2 * 3600
+REGISTRY_TTL_EPHEMERAL_S = 15 * 60
+SEND_FAIL_DROP_AFTER = 3
+_DOCKER_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+def campaign_peer_allowlist(config: dict[str, Any], self_node_id: str) -> set[str]:
+    """Hostnames this campaign actually runs: [cluster].nodes + scaling keys."""
+    names: set[str] = set()
+    cluster = config.get("cluster") or {}
+    registry_host = cluster.get("registry_host")
+    if isinstance(registry_host, str) and registry_host.strip():
+        names.add(registry_host.strip())
+    for node in cluster.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        host = node.get("hostname") or node.get("host")
+        if isinstance(host, str) and host.strip():
+            names.add(host.strip())
+    scaling = (config.get("prospecting") or {}).get("scaling") or {}
+    for host_key in scaling:
+        if host_key == "fargate" or not isinstance(host_key, str):
+            continue
+        names.add(host_key)
+    names.discard(self_node_id)
+    names.discard(self_node_id.split(".")[0])
+    return names
+
+
+def peer_id_allowed(peer_id: str, allowlist: set[str]) -> bool:
+    if peer_id in allowlist:
+        return True
+    short = peer_id.split(".")[0]
+    if short in allowlist:
+        return True
+    for name in allowlist:
+        if name.split(".")[0] == short:
+            return True
+    return False
+
+
+def is_ephemeral_peer_id(peer_id: str) -> bool:
+    if peer_id.startswith("discovered_"):
+        return True
+    if peer_id.startswith("ip-") and "ec2.internal" in peer_id:
+        return True
+    return bool(_DOCKER_ID_RE.fullmatch(peer_id))
+
+
+def is_ephemeral_ip(ip: str) -> bool:
+    if ip.startswith("172.17.") or ip.startswith("172.18."):
+        return True
+    return False
+
+
+def registry_entry_is_live(
+    peer_id: str,
+    ip: str,
+    peer_data: dict[str, Any],
+    *,
+    now: float,
+    allowlist: set[str],
+) -> bool:
+    """S3 registry JSON is a lease. Legacy files without expires_at are
+    live only for campaign-allowlisted names (and only if not ancient)."""
+    if not ip or ip == "0.0.0.0":
+        return False
+    if is_ephemeral_ip(ip) and not peer_id_allowed(peer_id, allowlist):
+        return False
+    expires = peer_data.get("expires_at")
+    if expires is not None:
+        try:
+            return float(expires) > now
+        except (TypeError, ValueError):
+            return False
+    if not peer_id_allowed(peer_id, allowlist):
+        return False
+    ts = peer_data.get("timestamp")
+    if ts is None:
+        return True
+    try:
+        return (now - float(ts)) < REGISTRY_TTL_CLUSTER_S
+    except (TypeError, ValueError):
+        return False
+
 class GossipListener(ServiceListener):
     def __init__(self, bridge: "GossipBridge") -> None:
         self.bridge = bridge
@@ -40,8 +128,7 @@ class GossipListener(ServiceListener):
             node_id_bytes = info.properties.get(b"node_id", b"unknown")
             node_id = node_id_bytes.decode("utf-8") if node_id_bytes else "unknown"
             if node_id != self.bridge.node_id:
-                logger.info(f"Discovered peer: {node_id} at {address}")
-                self.bridge.peers[node_id] = address
+                self.bridge.maybe_add_peer(node_id, address, source="mdns")
 
     def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         pass
@@ -70,6 +157,8 @@ class GossipBridge:
         self.zeroconf: Optional[Zeroconf] = None
         self.browser: Optional[ServiceBrowser] = None
         self.peers: dict[str, str] = {} # node_id -> ip_address
+        self._peer_allowlist: set[str] = set()
+        self._send_failures: dict[str, int] = {}
         self.running = False
         self.sock: Optional[socket.socket] = None
         self.observer = Observer()
@@ -175,12 +264,27 @@ class GossipBridge:
             return
 
         data = msg.encode('utf-8')
+        failures = getattr(self, "_send_failures", None)
+        if failures is None:
+            self._send_failures = {}
+            failures = self._send_failures
         for node_id, ip in list(self.peers.items()):
             try:
                 self.sock.sendto(data, (ip, GOSSIP_PORT))
+                failures.pop(node_id, None)
                 logger.info(f"Broadcasted gossip msg ({msg[0]}) to {node_id} ({ip})")
             except Exception as send_err:
                 logger.warning(f"Failed to send to {node_id} at {ip}: {send_err}")
+                failures[node_id] = failures.get(node_id, 0) + 1
+                if failures[node_id] >= SEND_FAIL_DROP_AFTER:
+                    logger.warning(
+                        "Dropping gossip peer %s (%s) after %s failed sends",
+                        node_id,
+                        ip,
+                        failures[node_id],
+                    )
+                    self.peers.pop(node_id, None)
+                    failures.pop(node_id, None)
 
     def _listen_loop(self) -> None:
         """Background thread to receive unicast gossip."""
@@ -206,15 +310,7 @@ class GossipBridge:
     def handle_gossip(self, msg: str, addr: tuple[str, int]) -> None:
         """Processes an incoming USV datagram and writes it locally via paths authority."""
         try:
-            sender_ip = addr[0]
             current_env = get_environment().value
-            
-            # 0. Self-Learning Discovery: Add unknown peers from our subnet
-            if sender_ip.startswith("10.0.0.") and sender_ip not in self.peers.values():
-                # We don't have a hostname, so we use a synthetic node_id
-                node_hint = f"discovered_{sender_ip.split('.')[-1]}"
-                self.peers[node_hint] = sender_ip
-                logger.info(f"Learned new gossip peer: {node_hint} at {sender_ip}")
 
             # 1. Handle Queue Synchronization
             if msg.startswith("Q"):
@@ -492,77 +588,100 @@ class GossipBridge:
             
         logger.info(f"Gossip Bridge (Unicast) started on node {self.node_id}")
 
+    def maybe_add_peer(
+        self,
+        node_id: str,
+        ip: str,
+        *,
+        source: str,
+        lease_live: bool = False,
+    ) -> bool:
+        if not node_id or not ip or node_id == self.node_id:
+            return False
+        allow = getattr(self, "_peer_allowlist", set()) or set()
+        allowed = peer_id_allowed(node_id, allow) if allow else False
+        if is_ephemeral_ip(ip) and not allowed:
+            logger.debug("Ignoring docker-bridge gossip peer %s (%s) from %s", node_id, ip, source)
+            return False
+        if allow and not allowed and not lease_live:
+            logger.debug(
+                "Ignoring gossip peer %s (%s) from %s (not in campaign cluster)",
+                node_id,
+                ip,
+                source,
+            )
+            return False
+        self.peers[node_id] = ip
+        logger.info("Gossip peer %s (%s) via %s", node_id, ip, source)
+        return True
+
+    def _resolve_peer_ip(self, host_key: str) -> Optional[str]:
+        if host_key == "laptop":
+            return "10.0.0.4"
+        for suffix in [".pi", ".local", ""]:
+            try:
+                ip = socket.gethostbyname(host_key + suffix)
+                if ip and ip != "127.0.0.1":
+                    return ip
+            except socket.gaierror:
+                continue
+        return None
+
     def discover_peers(self) -> None:
-        """Populates the peers list from S3 registry and campaign config."""
-        # 1. S3 Registry Discovery (Primary)
+        """Peers are the campaign cluster, plus unexpired Fargate leases."""
+        from .config import load_campaign_config, get_campaign
+
+        campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
+        config: dict[str, Any] = load_campaign_config(campaign_name) if campaign_name else {}
+        self._peer_allowlist = campaign_peer_allowlist(config, self.node_id)
+
+        for host_key in sorted(self._peer_allowlist):
+            if host_key in self.peers:
+                continue
+            ip = self._resolve_peer_ip(host_key)
+            if ip:
+                self.maybe_add_peer(host_key, ip, source="cluster-config")
+
         try:
-            from .config import load_campaign_config, get_campaign
             from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
-            campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
-            if campaign_name:
-                config = load_campaign_config(campaign_name)
-                bucket = get_data_bucket_name(config, campaign_name)
-                if bucket:
-                    # Use IoT profile if available, else default
-                    profile = f"{campaign_name}-iot"
-                    session = get_boto3_session(config, profile_name=profile)
-                    s3 = get_s3_client(session=session)
+            import json
 
-                    prefix = f"{paths.s3.status_root}registry/"
-                    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-
-                    for obj in response.get("Contents", []):
-                        key = obj["Key"]
-                        if not key.endswith(".json"):
-                            continue
-
-                        peer_id = key.replace(prefix, "").replace(".json", "")
-                        if peer_id == self.node_id:
-                            continue
-
-                        # Fetch IP from small JSON file
-                        data_resp = s3.get_object(Bucket=bucket, Key=key)
-                        import json
-                        peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
-                        ip = peer_data.get("ip")
-                        if ip:
-                            self.peers[peer_id] = ip
-                            logger.info(f"S3-discovered peer: {peer_id} at {ip}")
+            if not campaign_name:
+                return
+            bucket = get_data_bucket_name(config, campaign_name)
+            if not bucket:
+                return
+            profile = f"{campaign_name}-iot"
+            session = get_boto3_session(config, profile_name=profile)
+            s3 = get_s3_client(session=session)
+            prefix = f"{paths.s3.status_root}registry/"
+            response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            now = time.time()
+            for obj in response.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".json"):
+                    continue
+                peer_id = key.replace(prefix, "").replace(".json", "")
+                if peer_id == self.node_id or peer_id in self.peers:
+                    continue
+                data_resp = s3.get_object(Bucket=bucket, Key=key)
+                peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
+                ip = peer_data.get("ip")
+                if not isinstance(ip, str):
+                    continue
+                if not registry_entry_is_live(
+                    peer_id, ip, peer_data, now=now, allowlist=self._peer_allowlist
+                ):
+                    continue
+                lease_live = peer_data.get("expires_at") is not None
+                self.maybe_add_peer(
+                    peer_id, ip, source="s3-registry", lease_live=bool(lease_live)
+                )
         except Exception as e:
-            logger.debug(f"S3 peer discovery skipped: {e}")
-
-        # 2. Static Config Fallback
-        try:
-            from .config import load_campaign_config, get_campaign
-            campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
-            if campaign_name:
-                config = load_campaign_config(campaign_name)
-                scaling = config.get("prospecting", {}).get("scaling", {})
-                for host_key in scaling.keys():
-                    if host_key == "fargate" or host_key == self.node_id or host_key in self.peers:
-                        continue
-
-                    # Resolve IP
-                    peer_ips = []
-                    if host_key == "laptop":
-                        peer_ips = ["10.0.0.4"]
-                    else:
-                        for suffix in [".pi", ".local", ""]:
-                            try:
-                                ip = socket.gethostbyname(host_key + suffix)
-                                if ip and ip != "127.0.0.1":
-                                    peer_ips.append(ip)
-                            except socket.gaierror:
-                                continue
-
-                    if peer_ips:
-                        self.peers[host_key] = peer_ips[0]
-                        logger.info(f"Config-discovered peer: {host_key} at {peer_ips[0]}")
-        except Exception as e:
-            logger.debug(f"Static peer discovery failed: {e}")
+            logger.debug("S3 peer discovery skipped: %s", e)
 
     def register_self(self) -> None:
-        """Registers the local IP in the S3 cluster registry."""
+        """Registers a leased IP in the S3 cluster registry."""
         try:
             from .config import load_campaign_config, get_campaign
             from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
@@ -577,7 +696,6 @@ class GossipBridge:
             if not bucket:
                 return
 
-            # Determine local IP
             local_ip = "0.0.0.0"
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -590,15 +708,37 @@ class GossipBridge:
             if local_ip == "0.0.0.0":
                 return
 
-            # Use IoT profile if available, else default
+            allow = campaign_peer_allowlist(config, "")
+            ephemeral = (
+                is_ephemeral_peer_id(self.node_id)
+                or is_ephemeral_ip(local_ip)
+                or not peer_id_allowed(self.node_id, allow)
+            )
+            now = time.time()
+            ttl = REGISTRY_TTL_EPHEMERAL_S if ephemeral else REGISTRY_TTL_CLUSTER_S
             profile = f"{campaign_name}-iot"
             session = get_boto3_session(config, profile_name=profile)
             s3 = get_s3_client(session=session)
 
             key = f"{paths.s3.status_root}registry/{self.node_id}.json"
-            payload = json.dumps({"ip": local_ip, "timestamp": time.time()})
+            payload = json.dumps(
+                {
+                    "ip": local_ip,
+                    "timestamp": now,
+                    "expires_at": now + ttl,
+                    "campaign": campaign_name,
+                    "ephemeral": ephemeral,
+                }
+            )
             s3.put_object(Bucket=bucket, Key=key, Body=payload)
-            logger.info(f"Registered node {self.node_id} at {local_ip} in S3 registry ({bucket}).")
+            logger.info(
+                "Registered node %s at %s in S3 registry (%s) ttl=%ss ephemeral=%s",
+                self.node_id,
+                local_ip,
+                bucket,
+                ttl,
+                ephemeral,
+            )
         except Exception as e:
             logger.warning(f"Failed to register node in S3: {e}")
 

@@ -100,6 +100,98 @@ def test_handle_gossip_config_writes_campaign_tagged_payload(tmp_path, monkeypat
     }
 
 
+def test_handle_gossip_does_not_auto_learn_rfc1918_senders() -> None:
+    """10.0.0.0/16 is both the house LAN and AWS VPC. Auto-learning any
+    10.0.0.* sender permanently filled peers with Fargate leftovers."""
+    bridge, _mock_sock = _make_bridge()
+    bridge.node_id = "cocli5x0"
+    bridge._peer_allowlist = {"cocli5x1"}
+    monkey_env = _gossip_bridge_module.get_environment
+    _gossip_bridge_module.get_environment = lambda: Environment.DEV
+    try:
+        bridge.handle_gossip("not-a-valid-datagram", ("10.0.0.194", 9998))
+    finally:
+        _gossip_bridge_module.get_environment = monkey_env
+    assert "discovered_194" not in bridge.peers
+    assert bridge.peers == {"peer-1": "10.0.0.99"}
+
+
+def test_registry_entry_skips_expired_and_legacy_fargate() -> None:
+    now = 1_000_000.0
+    allow = {"cocli5x1"}
+    assert not _gossip_bridge_module.registry_entry_is_live(
+        "ip-10-0-1-77.ec2.internal",
+        "10.0.1.77",
+        {"ip": "10.0.1.77", "timestamp": now - 86400},
+        now=now,
+        allowlist=allow,
+    )
+    assert _gossip_bridge_module.registry_entry_is_live(
+        "ip-10-0-1-77.ec2.internal",
+        "10.0.1.77",
+        {"ip": "10.0.1.77", "expires_at": now + 60},
+        now=now,
+        allowlist=allow,
+    )
+    assert not _gossip_bridge_module.registry_entry_is_live(
+        "ip-10-0-1-77.ec2.internal",
+        "10.0.1.77",
+        {"ip": "10.0.1.77", "expires_at": now - 1},
+        now=now,
+        allowlist=allow,
+    )
+    assert _gossip_bridge_module.registry_entry_is_live(
+        "cocli5x1",
+        "10.0.0.17",
+        {"ip": "10.0.0.17", "timestamp": now - 60},
+        now=now,
+        allowlist=allow,
+    )
+    assert not _gossip_bridge_module.registry_entry_is_live(
+        "ab29a6cf6e98",
+        "172.17.0.2",
+        {"ip": "172.17.0.2", "expires_at": now + 60},
+        now=now,
+        allowlist=allow,
+    )
+
+
+def test_campaign_peer_allowlist_excludes_fargate_and_self() -> None:
+    config = {
+        "cluster": {
+            "registry_host": "cocli5x0",
+            "nodes": [{"host": "cocli5x0"}, {"hostname": "cocli5x1"}],
+        },
+        "prospecting": {"scaling": {"cocli5x0": {}, "fargate": {}, "laptop": {}}},
+    }
+    names = _gossip_bridge_module.campaign_peer_allowlist(config, "cocli5x0")
+    assert "cocli5x1" in names
+    assert "laptop" in names
+    assert "fargate" not in names
+    assert "cocli5x0" not in names
+
+
+def test_broadcast_msg_drops_peer_after_consecutive_send_failures() -> None:
+    bridge, mock_sock = _make_bridge()
+    bridge.peers = {"dead": "10.0.1.77", "live": "10.0.0.17"}
+    bridge._send_failures = {}
+    mock_sock.sendto.side_effect = [
+        OSError("timed out"),
+        None,
+        OSError("timed out"),
+        None,
+        OSError("timed out"),
+        None,
+    ]
+
+    bridge.broadcast_msg("Q1")
+    bridge.broadcast_msg("Q2")
+    assert "dead" in bridge.peers
+    bridge.broadcast_msg("Q3")
+    assert "dead" not in bridge.peers
+    assert bridge.peers == {"live": "10.0.0.17"}
+
+
 def test_listen_loop_sets_suppression_flag_before_processing() -> None:
     bridge, mock_sock = _make_bridge()
     bridge.running = True
