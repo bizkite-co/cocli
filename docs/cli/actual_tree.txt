@@ -406,6 +406,7 @@ cocli
         remove - Removes a phone number from the shared do-not-call list.
             phone (text) [required]
     email - Send via SES and poll a configured IMAP inbox into company notes. Not a mail client.
+        authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
         poll - Poll configured IMAP folders and write notes for messages that match a company.
             --limit (integer)
         send - Send one email via SES and record a note on the matching company.

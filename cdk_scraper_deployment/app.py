@@ -8,6 +8,7 @@ from pathlib import Path
 from constructs import IConstruct
 
 from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploymentStack
+from cdk_scraper_deployment.email_stack import CocliEmailStack
 
 @jsii.implements(cdk.IAspect)
 class LogRetentionAspect:
@@ -122,5 +123,23 @@ CdkScraperDeploymentStack(app, stack_name,
         "is_uat": is_uat,
     }
 )
+
+email_config = config.get("email") or {}
+from_address = email_config.get("from_address") or ""
+if from_address and "@" in from_address:
+    sending_domain = from_address.split("@", 1)[1]
+    ses_region = email_config.get("ses_region") or "us-west-1"
+    config_set_name = email_config.get("ses_configuration_set") or "prs-default"
+    mail_from = email_config.get("mail_from_domain") or f"bounce.{sending_domain}"
+    email_env = cdk.Environment(account=str(account) if account else os.getenv("CDK_DEFAULT_ACCOUNT"), region=ses_region)
+    CocliEmailStack(
+        app,
+        f"CocliEmailStack-{campaign_name}",
+        env=email_env,
+        campaign_name=campaign_name,
+        sending_domain=sending_domain,
+        mail_from_domain=mail_from,
+        configuration_set_name=config_set_name,
+    )
 
 app.synth()

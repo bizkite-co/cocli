@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from cocli.application.email_service import EmailService
+from cocli.application.mail_oauth import authorize_public_client, build_authorize_url
 from cocli.core.config import get_campaign, load_campaign_config
 from cocli.models.mail import EmailSettings, SendMailRequest
 
@@ -36,6 +37,21 @@ def _settings(campaign_name: str) -> tuple[EmailSettings, Optional[str]]:
     aws = raw.get("aws") or {}
     profile = aws.get("profile")
     return settings, profile if isinstance(profile, str) else None
+
+
+@app.command("authorize")
+def authorize_mail() -> None:
+    """Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup)."""
+    campaign_name = _require_campaign()
+    settings, _profile = _settings(campaign_name)
+    try:
+        console.print("Open this URL (GoDaddy 2FA may apply):")
+        console.print(build_authorize_url(settings))
+        path = authorize_public_client(settings)
+    except Exception as exc:
+        logger.error("Authorize failed: %s", exc)
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]Authorized[/green] {settings.imap_user} cache={path}")
 
 
 @app.command("send")

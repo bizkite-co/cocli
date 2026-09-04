@@ -6,15 +6,14 @@ import email
 import imaplib
 import json
 import logging
-import urllib.parse
-import urllib.request
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
 from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 from typing import Callable, Optional, Protocol
 
+from cocli.application.mail_oauth import FileOAuthTokenStore, resolve_token_cache_path
 from cocli.core.paths import paths
 from cocli.models.companies.note import Note
 from cocli.models.mail import (
@@ -36,72 +35,6 @@ class TokenProvider(Protocol):
 
 class SesSender(Protocol):
     def send_email(self, *, source: str, to_address: str, subject: str, body: str) -> str: ...
-
-
-class FileOAuthTokenStore:
-    """Reads mutt-setup's 0600 JSON cache; refreshes via the public-client token endpoint."""
-
-    def __init__(
-        self,
-        cache_path: Path,
-        client_id: str,
-        token_endpoint: str,
-    ) -> None:
-        self.cache_path = cache_path
-        self.client_id = client_id
-        self.token_endpoint = token_endpoint
-
-    def get_access_token(self) -> str:
-        data = self._load()
-        exp_raw = data.get("access_token_expiration")
-        token = data.get("access_token") or ""
-        if token and exp_raw:
-            try:
-                exp = datetime.fromisoformat(str(exp_raw))
-                if datetime.now() < exp:
-                    return token
-            except ValueError:
-                pass
-        refresh = data.get("refresh_token")
-        if not refresh:
-            raise RuntimeError(f"OAuth cache {self.cache_path} has no usable access or refresh token")
-        refreshed = self._refresh(str(refresh))
-        self._save(refreshed)
-        return refreshed["access_token"]
-
-    def _load(self) -> dict[str, str]:
-        if not self.cache_path.is_file():
-            raise FileNotFoundError(f"OAuth token cache not found: {self.cache_path}")
-        raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise RuntimeError(f"OAuth token cache is not an object: {self.cache_path}")
-        return {str(k): str(v) if v is not None else "" for k, v in raw.items()}
-
-    def _save(self, data: dict[str, str]) -> None:
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.write_text(json.dumps(data), encoding="utf-8")
-        self.cache_path.chmod(0o600)
-
-    def _refresh(self, refresh_token: str) -> dict[str, str]:
-        body = urllib.parse.urlencode(
-            {
-                "client_id": self.client_id,
-                "refresh_token": refresh_token,
-                "grant_type": "refresh_token",
-            }
-        ).encode()
-        req = urllib.request.Request(self.token_endpoint, body)
-        with urllib.request.urlopen(req) as response:
-            payload = json.loads(response.read())
-        access = str(payload["access_token"])
-        expires_in = int(payload.get("expires_in", 3600))
-        new_refresh = str(payload.get("refresh_token", refresh_token))
-        exp = (datetime.now() + timedelta(seconds=expires_in)).isoformat()
-        return {
-            "access_token": access,
-            "refresh_token": new_refresh,
-            "access_token_expiration": exp,
-        }
 
 
 class Boto3SesSender:
@@ -257,10 +190,10 @@ class EmailService:
     def _token(self) -> TokenProvider:
         if self._token_provider is not None:
             return self._token_provider
-        if not self.settings.token_cache or not self.settings.client_id:
-            raise ValueError("campaign [email] needs token_cache and client_id to poll IMAP")
+        if not self.settings.client_id:
+            raise ValueError("campaign [email].client_id is required to poll IMAP")
         return FileOAuthTokenStore(
-            Path(self.settings.token_cache).expanduser(),
+            resolve_token_cache_path(self.settings),
             self.settings.client_id,
             self.settings.token_endpoint,
         )

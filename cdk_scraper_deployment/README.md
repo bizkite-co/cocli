@@ -1,3 +1,31 @@
+# cocli CDK
+
+Scraper/IoT stack stays in the campaign AWS region (roadmap: us-east-1). SES
+send lives in a **second stack**, `CocliEmailStack-<campaign>`, in
+`[email].ses_region` (roadmap: us-west-1).
+
+That email stack is a **recipe for the next client**, not a wrap of today's
+live resources. `cdk deploy` on a *new* account/domain:
+
+1. Creates the SES domain identity, MAIL FROM, and configuration set.
+2. Outputs three DKIM CNAME name/value pairs and the bounce MX host.
+3. You add those records at the client's DNS (GoDaddy, etc.). Leave apex MX
+   on Exchange/Outlook if they already receive mail there. Merge
+   `include:amazonses.com` into existing SPF.
+
+Do **not** `cdk deploy` this stack onto roadmap's existing
+`getretirementtaxanalyzer.com` identity: CloudFormation would create a
+*new* identity or rotate Easy DKIM tokens and the current GoDaddy CNAMEs
+would stop matching. Importing those live resources into CloudFormation
+only attaches a lifecycle manager; it does not produce a replayable
+record. The Python stack *is* the record.
+
+```bash
+cd cdk_scraper_deployment
+cdk synth -c campaign=NEWCLIENT --profile THEIR_PROFILE
+# then, only for a domain that is not already an SES identity:
+cdk deploy CocliEmailStack-NEWCLIENT --profile THEIR_PROFILE -c campaign=NEWCLIENT
+```
 
 # Welcome to your CDK Python project!
 

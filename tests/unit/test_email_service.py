@@ -3,7 +3,8 @@ from __future__ import annotations
 from email.message import EmailMessage
 from pathlib import Path
 
-from cocli.application.email_service import EmailService, FileOAuthTokenStore
+from cocli.application.email_service import EmailService
+from cocli.application.mail_oauth import FileOAuthTokenStore, build_authorize_url
 from cocli.core.paths import paths
 from cocli.models.mail import EmailSettings, SendMailRequest
 
@@ -53,6 +54,14 @@ def test_send_writes_company_note(tmp_path: Path) -> None:
     text = notes[0].read_text()
     assert "We would like to talk." in text
     assert "bob@acme.test" in text
+
+
+def test_build_authorize_url_includes_client_and_login_hint() -> None:
+    settings = EmailSettings(client_id="abc-123", imap_user="mark@example.com")
+    url = build_authorize_url(settings)
+    assert "abc-123" in url
+    assert "mark%40example.com" in url or "mark@example.com" in url
+    assert "response_type=code" in url
 
 
 def test_file_token_store_uses_unexpired_cache(tmp_path: Path) -> None:
