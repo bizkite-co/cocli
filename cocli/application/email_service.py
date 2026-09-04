@@ -174,6 +174,16 @@ class EmailService:
             except Exception:
                 pass
         self._save_seen(seen)
+        if result.noted:
+            from cocli.utils.alert_utils import send_alert
+
+            send_alert(
+                f"{result.noted} new email(s) filed as company notes "
+                f"(unmatched={result.unmatched})",
+                title="cocli email",
+                tags=["email", "inbox"],
+                cooldown_key=f"email-poll-{self.campaign_name}",
+            )
         return result
 
     def _ses(self) -> SesSender:

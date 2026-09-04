@@ -101,7 +101,7 @@ def send_mail(
 def poll_mail(
     limit: int = typer.Option(50, "--limit", help="Max UNSEEN messages to fetch per folder."),
 ) -> None:
-    """Poll configured IMAP folders and write notes for messages that match a company."""
+    """Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match."""
     campaign_name = _require_campaign()
     settings, profile = _settings(campaign_name)
     service = EmailService(campaign_name, settings, aws_profile=profile)

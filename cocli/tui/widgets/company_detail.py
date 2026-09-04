@@ -199,7 +199,15 @@ class NotesTable(QuadrantTable):
         Binding("d", "delete_item", "Delete Note"),
         Binding("v", "view_item", "View Note"),
         Binding("P", "promote_item", "Promote"),
+        Binding("r", "reply_email", "Reply"),
     ]
+
+    def action_reply_email(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_reply_email()
 
     def action_edit_item(self) -> None:
         detail_view = next(
@@ -297,6 +305,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         Binding("E", "re_enrich", "Re-enrich"),
         Binding("D", "delete_company", "Delete Company"),
         Binding("e", "open_folder", "Explorer (NVim)"),
+        Binding("C", "compose_email", "Compose email"),
     ]
 
     def __init__(
@@ -899,6 +908,80 @@ class CompanyDetail(MarkPrefixMixin, Container):
             subprocess.Popen(["nvim", str(path)])
         else:
             self.app.notify("No slug found", severity="error")
+
+    def action_compose_email(self) -> None:
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            self.app.notify("No slug found", severity="error")
+            return
+        to_address = str(self.company_data["company"].get("email") or "")
+        if self.contacts_table.has_focus:
+            row = self.contacts_table.cursor_row
+            contacts = self.company_data.get("contacts") or []
+            if isinstance(row, int) and 0 <= row < len(contacts):
+                to_address = str(contacts[row].get("email") or to_address)
+        self._push_email_compose(slug, to_address=to_address)
+
+    def action_reply_email(self) -> None:
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+        notes = self.company_data.get("notes") or []
+        row = self.notes_table.cursor_row
+        if not isinstance(row, int) or row < 0 or row >= len(notes):
+            self.app.notify("No note selected", severity="warning")
+            return
+        note = notes[row]
+        content = str(note.get("content") or "")
+        title = str(note.get("title") or "")
+        to_address = ""
+        quoted_lines: list[str] = []
+        past_headers = False
+        for line in content.splitlines():
+            lower = line.lower()
+            if not past_headers:
+                if lower.startswith("- from:"):
+                    to_address = line.split(":", 1)[1].strip()
+                if line.strip() == "":
+                    past_headers = True
+                continue
+            quoted_lines.append(f"> {line}" if line else ">")
+        if not to_address:
+            self.app.notify("Selected note has no From: (not an email note)", severity="warning")
+            return
+        subject = title
+        prefix = "email received:"
+        if subject.lower().startswith(prefix):
+            subject = subject[len(prefix) :].strip()
+        if not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}"
+        quoted = "\n".join(quoted_lines).strip()
+        body = f"\n\n{quoted}" if quoted else ""
+        self._push_email_compose(slug, to_address=to_address, subject=subject, body=body)
+
+    def _push_email_compose(
+        self,
+        slug: str,
+        *,
+        to_address: str = "",
+        subject: str = "",
+        body: str = "",
+    ) -> None:
+        from .email_compose_modal import EmailComposeModal
+
+        def _after(sent: Optional[bool]) -> None:
+            if sent:
+                self.refresh_notes_data()
+
+        self.app.push_screen(
+            EmailComposeModal(
+                company_slug=slug,
+                to_address=to_address,
+                subject=subject,
+                body=body,
+            ),
+            _after,
+        )
 
     def action_add_note(self) -> None:
         """Create a new note using NVim."""

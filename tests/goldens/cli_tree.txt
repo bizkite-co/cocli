@@ -407,7 +407,7 @@ cocli
             phone (text) [required]
     email - Send via SES and poll a configured IMAP inbox into company notes. Not a mail client.
         authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
-        poll - Poll configured IMAP folders and write notes for messages that match a company.
+        poll - Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match.
             --limit (integer)
         send - Send one email via SES and record a note on the matching company.
             --to (text) [required]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 from pathlib import Path
+from unittest.mock import patch
 
 from cocli.application.email_service import EmailService
 from cocli.application.mail_oauth import FileOAuthTokenStore, build_authorize_url
@@ -127,15 +128,20 @@ def test_poll_notes_unseen_matching_from(tmp_path: Path, monkeypatch) -> None:  
         token_provider=FakeTokens(),
         company_lookup=lambda addr: "acme" if addr == "bob@acme.test" else None,
     )
-    result = service.poll(limit=10)
+    with patch("cocli.utils.alert_utils.send_alert", return_value=True) as alert:
+        result = service.poll(limit=10)
     assert result.fetched == 2
     assert result.noted == 1
     assert result.unmatched == 1
+    alert.assert_called_once()
+    assert "1 new email" in str(alert.call_args.args[0])
     notes = list((company_dir / "notes").glob("*.md"))
     assert len(notes) == 1
     assert "Quote" in notes[0].read_text()
 
     # Second poll: same Message-IDs are recorded as seen even if IMAP still returns UNSEEN
-    result2 = service.poll(limit=10)
+    with patch("cocli.utils.alert_utils.send_alert") as alert2:
+        result2 = service.poll(limit=10)
     assert result2.skipped_seen == 2
     assert result2.noted == 0
+    alert2.assert_not_called()

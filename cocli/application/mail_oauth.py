@@ -141,7 +141,7 @@ def authorize_public_client(settings: EmailSettings, *, open_browser: bool = Tru
     token_body = {
         "client_id": settings.client_id,
         "scope": DEFAULT_SCOPE,
-        "redirect_uri": redirect,
+        "redirect_uri": DEFAULT_REDIRECT,
         "grant_type": "authorization_code",
         "code": code,
     }
