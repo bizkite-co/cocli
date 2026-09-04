@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, cast
@@ -133,6 +134,17 @@ async def wait_until_page_painted(page: Page, *, timeout_ms: int = 8000) -> None
         logger.debug("paint/loader wait timed out; screenshotting anyway")
 
     try:
-        await page.evaluate(_TWO_ANIMATION_FRAMES)
+        # page.evaluate() has no `timeout` parameter (unlike
+        # wait_for_load_state/wait_for_function above) - it awaits the JS
+        # Promise with no bound of its own, so a page whose
+        # requestAnimationFrame never fires (observed: headless Chromium
+        # under load, e.g. --headless=old on a resource-constrained Pi)
+        # hangs this call forever. Confirmed as the root cause of the
+        # enrichment worker stalling indefinitely on such pages - no
+        # exception, so the caller's `except Exception` here never even
+        # triggers, and nothing upstream in the enrichment task loop has an
+        # absolute timeout to fall back on. asyncio.wait_for is the only
+        # way to actually bound it.
+        await asyncio.wait_for(page.evaluate(_TWO_ANIMATION_FRAMES), timeout=2.0)
     except Exception:
         logger.debug("animation-frame flush failed before screenshot")
