@@ -51,6 +51,7 @@ async def test_successful_navigation_captures_viewport_screenshot():
     mock_page.screenshot.assert_called_once_with(type="png")
     assert result.screenshot_bytes == _FAKE_PNG
     assert result.error is None
+    assert mock_page.goto.await_args.kwargs["wait_until"] == "domcontentloaded"
     # wait_until_page_painted must run before screenshot, or we capture
     # the SPA white+donut shell (2026-09-03 TUI E).
     calls = [c[0] for c in mock_page.method_calls]
@@ -172,3 +173,40 @@ async def test_force_refresh_survives_naive_domain_index_timestamp():
     assert result.error is None
     assert result.error_category is None
     mock_page.goto.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_goto_load_timeout_still_scrapes_if_page_navigated() -> None:
+    """TUI E on retirementtaxanalyzer.com (2026-09-04): goto wait_until=load
+    hit Timeout 30000ms while the document was already there. That became a
+    navigation_failed note and skipped screenshot/scrape."""
+    scraper = WebsiteScraper(processed_by="local-tui")
+    mock_context, mock_page, _ = _mocked_success_context()
+    mock_page.url = "https://retirementtaxanalyzer.com/"
+    mock_page.goto = AsyncMock(
+        side_effect=TimeoutError("Page.goto: Timeout 30000ms exceeded.")
+    )
+    mock_page.screenshot = AsyncMock(return_value=_FAKE_PNG)
+
+    with patch.object(scraper, "_resolve_canonical_url", AsyncMock(return_value="https://retirementtaxanalyzer.com/")), \
+         patch.object(scraper, "_scrape_page", AsyncMock()), \
+         patch.object(scraper, "_get_sitemap_urls", AsyncMock(return_value=([], None))), \
+         patch.object(scraper, "_navigate_and_scrape", AsyncMock()), \
+         patch.object(scraper, "_finalize_enrichment", AsyncMock()), \
+         patch("cocli.enrichment.website_scraper.WebsiteDomainCsvManager") as mock_domain_mgr, \
+         patch("cocli.scrapers.head_scraper.HeadScraper") as mock_head_scraper:
+        mock_domain_mgr.return_value.get_by_domain.return_value = None
+        mock_head_scraper.return_value.fetch_head = AsyncMock(return_value=(None, None))
+
+        result = await scraper.run(
+            browser=mock_context,
+            domain="retirementtaxanalyzer.com",
+            force_refresh=True,
+            site_timeout_seconds=5,
+            processed_by="local-tui",
+        )
+
+    mock_page.screenshot.assert_called_once_with(type="png")
+    assert result.screenshot_bytes == _FAKE_PNG
+    assert result.error is None
+    assert result.error_category is None

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from textual import events, on, work
 from textual.app import ComposeResult
@@ -18,7 +18,7 @@ from .inputs import CocliInput
 
 
 class EmailComposeModal(ModalScreen[bool]):
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS = [
         ("escape", "dismiss(False)", "Cancel"),
         ("ctrl+s", "send_mail", "Send"),
     ]

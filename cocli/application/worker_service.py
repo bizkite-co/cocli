@@ -512,7 +512,7 @@ class WorkerService:
             enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
 
             # Poll for next scrape task (includes automatic lease creation)
-            tasks = gm_list_queue.poll(batch_size=1)
+            tasks = await asyncio.to_thread(gm_list_queue.poll, batch_size=1)
 
             if not tasks:
                 if once:
@@ -585,7 +585,7 @@ class WorkerService:
 
                 task.result_count = len(discovered_items)
                 # Acknowledge successful task completion (removes lease)
-                gm_list_queue.ack(task)
+                await asyncio.to_thread(gm_list_queue.ack, task)
 
                 if once:
                     return
@@ -593,7 +593,7 @@ class WorkerService:
                 category = classify_exception(e)
                 logger.error(f"Task Failed [{category.value}]: {e}")
                 # Negative acknowledge on failure (removes lease, task stays available)
-                gm_list_queue.nack(task)
+                await asyncio.to_thread(gm_list_queue.nack, task)
 
                 if "Target page, context or browser has been closed" in str(e):
                     break
@@ -646,12 +646,12 @@ class WorkerService:
                             f"Detail Task produced no prospect data for {task.place_id} - "
                             "nacking for retry instead of acking an empty result."
                         )
-                        gm_list_item_queue.nack(task)
+                        await asyncio.to_thread(gm_list_item_queue.nack, task)
                     else:
                         if final_prospect_data.domain:
                             enrichment_queue.push(EnrichmentTask(domain=str(final_prospect_data.domain), company_slug=slugify(str(final_prospect_data.name) if final_prospect_data.name else ""), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None, job_run_id=task.job_run_id))
 
-                        gm_list_item_queue.ack(task)
+                        await asyncio.to_thread(gm_list_item_queue.ack, task)
                 finally:
                     await page.close()
                 if once:
@@ -659,7 +659,7 @@ class WorkerService:
             except Exception as e:
                 category = classify_exception(e)
                 logger.error(f"Detail Task Failed [{category.value}]: {e}")
-                gm_list_item_queue.nack(task)
+                await asyncio.to_thread(gm_list_item_queue.nack, task)
                 if once:
                     return
                 await asyncio.sleep(5)
@@ -732,15 +732,15 @@ class WorkerService:
                         f"[{website_data.error_category}]: {website_data.error} - "
                         "nacking for retry instead of acking a failed result."
                     )
-                    enrichment_queue.nack(task)
+                    await asyncio.to_thread(enrichment_queue.nack, task)
                 else:
-                    enrichment_queue.ack(task)
+                    await asyncio.to_thread(enrichment_queue.ack, task)
                 if once:
                     return
             except Exception as e:
                 category = classify_exception(e)
                 logger.error(f"Enrichment Task Failed [{category.value}]: {e}")
-                enrichment_queue.nack(task)
+                await asyncio.to_thread(enrichment_queue.nack, task)
                 if once:
                     return
                 await asyncio.sleep(5)

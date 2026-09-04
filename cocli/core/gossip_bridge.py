@@ -504,7 +504,7 @@ class GossipBridge:
                 bucket = get_data_bucket_name(config, campaign_name)
                 if bucket:
                     # Use IoT profile if available, else default
-                    profile = f"{campaign_name}-iot" if os.path.exists("/home/mstouffer/.cocli/iot/get_tokens.sh") else None
+                    profile = f"{campaign_name}-iot"
                     session = get_boto3_session(config, profile_name=profile)
                     s3 = get_s3_client(session=session)
 
@@ -591,7 +591,7 @@ class GossipBridge:
                 return
 
             # Use IoT profile if available, else default
-            profile = f"{campaign_name}-iot" if os.path.exists("/home/mstouffer/.cocli/iot/get_tokens.sh") else None
+            profile = f"{campaign_name}-iot"
             session = get_boto3_session(config, profile_name=profile)
             s3 = get_s3_client(session=session)
 

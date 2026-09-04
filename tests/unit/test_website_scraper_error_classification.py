@@ -79,6 +79,49 @@ async def test_scrape_website_internal_preserves_navigation_error_through_outer_
 
 
 @pytest.mark.asyncio
+async def test_index_cache_hit_skips_s3_company_manager() -> None:
+    """Pi workers used to construct S3CompanyManager on every run() finally,
+    including 30-day index hits that never opened a browser. That refetched
+    IoT STS per task and blocked the asyncio loop."""
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from cocli.core.website_domain_csv_manager import CURRENT_SCRAPER_VERSION
+    from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
+
+    scraper = WebsiteScraper(processed_by="cocli5x0")
+    campaign = MagicMock()
+    campaign.name = "turboship"
+    campaign.aws = None
+    indexed = WebsiteDomainCsv(
+        domain="edwardsflooringservices.com",
+        scraper_version=CURRENT_SCRAPER_VERSION,
+        associated_company_folder="edwards-flooring",
+        updated_at=datetime.now(UTC),
+    )
+    mock_page = AsyncMock()
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+
+    with patch("cocli.enrichment.website_scraper.WebsiteDomainCsvManager") as mock_csv, \
+         patch("cocli.enrichment.website_scraper.S3CompanyManager") as mock_s3, \
+         patch("cocli.enrichment.website_scraper.DomainIndexManager") as mock_idx:
+        mock_csv.return_value.get_by_domain.return_value = indexed
+        mock_idx.return_value.add_or_update = MagicMock()
+        result = await scraper.run(
+            browser=mock_context,
+            domain="edwardsflooringservices.com",
+            campaign=campaign,
+            site_timeout_seconds=5,
+        )
+
+    mock_s3.assert_not_called()
+    mock_page.goto.assert_not_called()
+    assert scraper._served_from_index is True
+    assert result.url is not None
+
+
+@pytest.mark.asyncio
 async def test_finalize_skips_s3_for_local_tui() -> None:
     from unittest.mock import MagicMock, patch
 

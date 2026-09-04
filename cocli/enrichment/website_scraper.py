@@ -103,11 +103,22 @@ class WebsiteScraper:
         self.headers = ANTI_BOT_HEADERS
         self.user_agent = USER_AGENT
         self.processed_by = processed_by or socket.gethostname().split(".")[0]
+        self._served_from_index = False
 
     def _uses_remote_aws(self) -> bool:
         """Laptop TUI re-enrich must stay local. AWS_PROFILE here is a
         1Password-backed profile; opening a boto3 session prompts op."""
         return self.processed_by != "local-tui"
+
+    @staticmethod
+    def _page_reached(page: Page) -> bool:
+        url = (getattr(page, "url", None) or "").strip()
+        if not url:
+            return False
+        lowered = url.lower()
+        if lowered in ("about:blank", "chrome://newtab/"):
+            return False
+        return not lowered.startswith("chrome-error://")
 
     def _index_emails(self, website_data: Website, campaign_name: str) -> None:
         """Helper to record all found emails in the centralized email index."""
@@ -276,7 +287,10 @@ class WebsiteScraper:
         s3_company_manager: Optional[S3CompanyManager] = None
         # Local TUI re-enrich must not open AWS (that path uses 1Password
         # for the laptop profile). Pi workers use IoT STS and still sync.
-        if campaign and self._uses_remote_aws():
+        # Index cache hits must not construct S3CompanyManager either:
+        # that calls get_boto3_session() without a profile and refetches
+        # IoT STS per task (incident-turboship-enrichment-queue-stalls).
+        if campaign and self._uses_remote_aws() and not self._served_from_index:
             try:
                 s3_company_manager = S3CompanyManager(campaign=campaign)
             except Exception as e:
@@ -365,6 +379,7 @@ class WebsiteScraper:
         """
         Internal implementation of website scraping.
         """
+        self._served_from_index = False
         use_cloud_index = False
         if (
             self._uses_remote_aws()
@@ -400,6 +415,7 @@ class WebsiteScraper:
                     data["personnel"] = [
                         p for p in data["personnel"] if isinstance(p, dict)
                     ]
+                self._served_from_index = True
                 return Website(**data)
 
         logger.info(f"Starting website scraping for {domain}")
@@ -442,18 +458,35 @@ class WebsiteScraper:
             if not canonical_url:
                 canonical_url = (start_url or "").strip() or f"https://{domain}"
 
+            # Inner contact/sitemap hops in this file already use
+            # domcontentloaded. wait_until="load" never fires on sites whose
+            # analytics/chat/video assets hang (retirementtaxanalyzer.com
+            # TUI E, 2026-09-04: 30s Timeout, no HTTP status, "site may be
+            # down" note). Paint wait after goto covers SPA shells.
+            response = None
             try:
                 response = await page.goto(
-                    canonical_url, wait_until="load", timeout=navigation_timeout_ms
+                    canonical_url,
+                    wait_until="domcontentloaded",
+                    timeout=navigation_timeout_ms,
                 )
-                website_data.url = page.url or canonical_url
-                if response is not None:
-                    try:
-                        website_data.http_status = int(response.status)
-                    except (TypeError, ValueError):
-                        website_data.http_status = None
             except Exception as e:
-                raise NavigationError(f"Could not navigate to {domain}. Error: {e}") from e
+                if not self._page_reached(page):
+                    raise NavigationError(
+                        f"Could not navigate to {domain}. Error: {e}"
+                    ) from e
+                logger.warning(
+                    "goto wait timed out for %s; continuing at %s (%s)",
+                    domain,
+                    page.url,
+                    e,
+                )
+            website_data.url = page.url or canonical_url
+            if response is not None:
+                try:
+                    website_data.http_status = int(response.status)
+                except (TypeError, ValueError):
+                    website_data.http_status = None
 
             try:
                 # Viewport of whatever loaded - including a 404/parked page.
@@ -461,16 +494,15 @@ class WebsiteScraper:
                 # Relation location URL that 404s; we used to raise before
                 # screenshot, so E saved website.md with an error and no PNG,
                 # then the TUI still said "successful".
-                # wait_until="load" still races SPA shells (white + progress
-                # donut) that a human refresh paints a few hundred ms later.
                 await wait_until_page_painted(page)
                 website_data.screenshot_bytes = await page.screenshot(type="png")
             except Exception as e:
                 logger.debug(f"Screenshot capture failed for {domain}: {e}")
 
-            if not response or not response.ok:
-                status = response.status if response else "No Response"
-                raise NavigationError(f"Navigation failed with status {status}")
+            if response is not None and not response.ok:
+                raise NavigationError(
+                    f"Navigation failed with status {response.status}"
+                )
 
             target_keywords: list[str] = []
             if campaign:
