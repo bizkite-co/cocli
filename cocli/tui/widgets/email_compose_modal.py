@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
@@ -11,12 +12,13 @@ from textual.widgets import Label, Static, TextArea
 
 from cocli.application.email_service import EmailService
 from cocli.core.config import get_campaign, load_campaign_config
-from cocli.models.mail import EmailSettings, SendMailRequest
+from cocli.models.mail import EmailSettings, SendMailRequest, SendMailResult
+
 from .inputs import CocliInput
 
 
 class EmailComposeModal(ModalScreen[bool]):
-    BINDINGS = [
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("escape", "dismiss(False)", "Cancel"),
         ("ctrl+s", "send_mail", "Send"),
     ]
@@ -65,17 +67,30 @@ class EmailComposeModal(ModalScreen[bool]):
         self._to = to_address
         self._subject = subject
         self._body = body
+        self._sending = False
+        self._campaign = get_campaign()
+        raw = load_campaign_config(self._campaign) if self._campaign else None
+        raw = raw or {}
+        self._settings = EmailSettings.model_validate(raw.get("email") or {})
+        aws = raw.get("aws") or {}
+        self._aws_profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
+        self._from_address = self._settings.from_address or ""
 
     def compose(self) -> ComposeResult:
+        from_line = self._from_address or "(set campaign [email].from_address)"
         with Container(id="email-compose-form"):
             yield Label(f"EMAIL: [bold cyan]{self.company_slug}[/]", id="email-compose-title")
+            yield Label(f"From: {from_line}", id="email-from")
             yield Label("To", classes="field-label")
-            yield CocliInput(value=self._to, id="email-to", placeholder="client@example.com")
+            yield CocliInput(value=self._to, id="email-to", placeholder="you@example.com")
             yield Label("Subject", classes="field-label")
             yield CocliInput(value=self._subject, id="email-subject")
             yield Label("Body  (Ctrl+S send)", classes="field-label")
             yield TextArea(self._body, id="email-body")
-            yield Static("[bold reverse] CTRL+S: SEND [/]  [dim] ESC: CANCEL [/]", id="email-compose-help")
+            yield Static(
+                "[bold reverse] CTRL+S: SEND [/]  [dim] ESC: CANCEL [/]",
+                id="email-compose-help",
+            )
 
     def on_mount(self) -> None:
         target = (
@@ -85,22 +100,40 @@ class EmailComposeModal(ModalScreen[bool]):
         )
         target.focus()
 
+    @on(events.Key)
+    def handle_keys(self, event: events.Key) -> None:
+        # TextArea swallows the screen binding; CallLogModal uses the same pattern.
+        if event.key == "ctrl+s":
+            event.stop()
+            event.prevent_default()
+            self.action_send_mail()
+
     def action_send_mail(self) -> None:
+        if self._sending:
+            return
         to_address = self.query_one("#email-to", CocliInput).value.strip()
         subject = self.query_one("#email-subject", CocliInput).value.strip()
         body = self.query_one("#email-body", TextArea).text.strip()
         if not to_address or not subject or not body:
             self.app.notify("To, subject, and body are required", severity="warning")
             return
-        campaign = get_campaign()
-        if not campaign:
+        if not self._campaign:
             self.app.notify("No campaign set", severity="error")
             return
-        raw = load_campaign_config(campaign) or {}
-        settings = EmailSettings.model_validate(raw.get("email") or {})
-        aws = raw.get("aws") or {}
-        profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
-        service = EmailService(campaign, settings, aws_profile=profile)
+        if not self._from_address:
+            self.app.notify("campaign [email].from_address is not set", severity="error")
+            return
+        self._sending = True
+        self.app.notify(f"Sending from {self._from_address}...")
+        self._send_mail_worker(to_address, subject, body)
+
+    @work(exclusive=True, thread=True)
+    def _send_mail_worker(self, to_address: str, subject: str, body: str) -> None:
+        if not self._campaign:
+            return
+        service = EmailService(
+            self._campaign, self._settings, aws_profile=self._aws_profile
+        )
         try:
             result = service.send(
                 SendMailRequest(
@@ -110,8 +143,15 @@ class EmailComposeModal(ModalScreen[bool]):
                     company_slug=self.company_slug,
                 )
             )
-        except Exception as exc:
-            self.app.notify(f"Send failed: {exc}", severity="error")
+        except Exception as exc:  # noqa: BLE001 — SES/boto3/auth failures are user-facing
+            self.app.call_from_thread(self._on_send_failed, str(exc))
             return
+        self.app.call_from_thread(self._on_send_ok, result)
+
+    def _on_send_failed(self, message: str) -> None:
+        self._sending = False
+        self.app.notify(f"Send failed: {message}", severity="error")
+
+    def _on_send_ok(self, result: SendMailResult) -> None:
         self.app.notify(f"Sent {result.to_address}")
         self.dismiss(True)

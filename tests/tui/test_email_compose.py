@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -22,7 +22,7 @@ def mock_company_data() -> dict[str, Any]:
         },
         "notes": [
             {
-                "timestamp": datetime(2026, 1, 2),
+                "timestamp": datetime(2026, 1, 2, tzinfo=UTC),
                 "title": "Email received: Hello",
                 "content": "- From: client@test.com\n- To: mark@example.com\n\nHi there",
                 "file_path": "/tmp/note1.md",
@@ -35,14 +35,25 @@ def mock_company_data() -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
+@patch("cocli.tui.widgets.email_compose_modal.load_campaign_config")
+@patch("cocli.tui.widgets.email_compose_modal.get_campaign", return_value="roadmap")
 @patch("cocli.application.company_service.get_company_details_for_view")
 async def test_compose_email_opens_modal(
-    mock_get_details: Any, mock_company_data: dict[str, Any], tmp_path: Any, monkeypatch: Any
+    mock_get_details: Any,
+    _mock_campaign: Any,
+    mock_config: Any,
+    mock_company_data: dict[str, Any],
+    tmp_path: Any,
+    monkeypatch: Any,
 ) -> None:
     from cocli.core.paths import paths
 
     monkeypatch.setattr(paths, "root", tmp_path)
     mock_get_details.return_value = mock_company_data
+    mock_config.return_value = {
+        "email": {"from_address": "mark@getretirementtaxanalyzer.com"},
+        "aws": {"profile": "westmonroe-support"},
+    }
     app = CocliApp(auto_show=False)
     async with app.run_test() as driver:
         detail = CompanyDetail(mock_company_data)
@@ -54,6 +65,9 @@ async def test_compose_email_opens_modal(
         assert isinstance(app.screen, EmailComposeModal)
         to_input = app.screen.query_one("#email-to")
         assert "client@test.com" in str(to_input.value)
+        from_label = app.screen.query_one("#email-from")
+        from_text = str(getattr(from_label, "content", getattr(from_label, "renderable", "")))
+        assert "mark@getretirementtaxanalyzer.com" in from_text
 
 
 @pytest.mark.asyncio
