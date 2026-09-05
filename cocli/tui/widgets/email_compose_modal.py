@@ -22,6 +22,8 @@ class EmailComposeModal(ModalScreen[bool]):
     BINDINGS = [
         ("escape", "dismiss(False)", "Cancel"),
         ("ctrl+s", "send_mail", "Send"),
+        ("ctrl+enter", "send_mail", "Send"),
+        ("ctrl+j", "send_mail", "Send"),
     ]
 
     DEFAULT_CSS = """
@@ -87,10 +89,10 @@ class EmailComposeModal(ModalScreen[bool]):
             yield CocliInput(value=self._to, id="email-to", placeholder="you@example.com")
             yield Label("Subject", classes="field-label")
             yield CocliInput(value=self._subject, id="email-subject")
-            yield Label("Body  (Ctrl+S send)", classes="field-label")
+            yield Label("Body  (Ctrl+S / Ctrl+Enter / Ctrl+J send)", classes="field-label")
             yield TextArea(self._body, id="email-body")
             yield Static(
-                "[bold reverse] CTRL+S: SEND [/]  [dim] ESC: CANCEL [/]",
+                "[bold reverse] CTRL+S / CTRL+ENTER / CTRL+J: SEND [/]  [dim] ESC: CANCEL [/]",
                 id="email-compose-help",
             )
 
@@ -128,7 +130,7 @@ class EmailComposeModal(ModalScreen[bool]):
     @on(events.Key)
     def handle_keys(self, event: events.Key) -> None:
         # TextArea swallows the screen binding; CallLogModal uses the same pattern.
-        if event.key == "ctrl+s":
+        if event.key in ("ctrl+s", "ctrl+enter", "ctrl+j"):
             event.stop()
             event.prevent_default()
             self.run_worker(self._send_mail())

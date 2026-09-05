@@ -11,11 +11,11 @@ from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
-from typing import Callable, Optional, Protocol
+from typing import Callable, Optional, Protocol, Literal
 
 from cocli.application.mail_oauth import FileOAuthTokenStore, resolve_token_cache_path
 from cocli.core.paths import paths
-from cocli.models.companies.note import Note
+from cocli.models.companies.email_note import EmailNote
 from cocli.models.mail import (
     EmailSettings,
     MailMessage,
@@ -257,24 +257,22 @@ class EmailService:
                 return slug
         return None
 
-    def _write_note(self, company_slug: str, message: MailMessage, *, direction: str) -> Path:
+    def _write_note(self, company_slug: str, message: MailMessage, *, direction: Literal["sent", "received"]) -> Path:
         notes_dir = paths.companies.entry(company_slug).path / "notes"
-        title = f"Email {direction}: {message.subject or '(no subject)'}"
-        when = message.date.isoformat() if message.date else ""
-        content = (
-            f"- Direction: {direction}\n"
-            f"- From: {message.from_address}\n"
-            f"- To: {', '.join(message.to_addresses)}\n"
-            f"- Date: {when}\n"
-            f"- Message-ID: {message.message_id}\n\n"
-            f"{message.body.strip()}\n"
+        dt = message.date if isinstance(message.date, datetime) else datetime.now(UTC)
+        note = EmailNote(
+            timestamp=dt,
+            title=message.subject or "(no subject)",
+            direction=direction,  # "sent" or "received"
+            from_address=message.from_address,
+            to_addresses=message.to_addresses if isinstance(message.to_addresses, list) else [message.to_addresses],
+            date=dt,
+            message_id=message.message_id,
+            content=message.body.strip(),
         )
-        note = Note(title=title[:120], content=content)
-        note.to_file(notes_dir)
+        saved_path = note.to_file(notes_dir)
         logger.info("Wrote %s mail note for %s (%s)", direction, company_slug, message.message_id)
-        ts = note.timestamp.strftime("%Y-%m-%dT%H-%M-%SZ")
-        slugified = note.title.lower().replace(" ", "-").replace("/", "-")
-        return notes_dir / f"{ts}-{slugified}.md"
+        return saved_path
 
     def _seen_path(self) -> Path:
         p = paths.campaign(self.campaign_name).path / "indexes" / "mail-monitor" / "seen.json"

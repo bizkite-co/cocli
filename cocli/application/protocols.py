@@ -1,11 +1,32 @@
 from __future__ import annotations
-from typing import Protocol, Any, Optional, Iterator, Callable
+from typing import Protocol, Any, Optional, Iterator, Callable, runtime_checkable
 from pathlib import Path
+from datetime import datetime
 from cocli.models.search import SearchResult
 from cocli.models.companies.meeting import CompanyMeeting
 from cocli.models import TileStatusResult, MissionReconciliationResult
 from cocli.models.tasks import MissionTask
 from cocli.models.cli_help import CliCommandMatch
+
+
+@runtime_checkable
+class NoteProtocol(Protocol):
+    timestamp: datetime
+    title: str
+    content: str
+
+    def to_file(self, notes_dir: Path) -> None:
+        ...
+
+
+@runtime_checkable
+class EmailNoteProtocol(NoteProtocol, Protocol):
+    type: str
+    direction: str
+    from_address: str
+    to_addresses: list[str]
+    date: Optional[datetime]
+    message_id: Optional[str]
 
 
 class SearchProvider(Protocol):
