@@ -12,6 +12,12 @@ if TYPE_CHECKING:
 class TemplateList(Container):
     """A list of search templates."""
 
+    def __init__(
+        self, name: str | None = None, id: str | None = None, classes: str | None = None
+    ) -> None:
+        super().__init__(name=name, id=id, classes=classes)
+        self.border_title = ""
+
     class TemplateSelected(Message):
         def __init__(self, template_id: str) -> None:
             super().__init__()

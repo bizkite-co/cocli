@@ -19,6 +19,7 @@ class CompanyPreview(Container):
         super().__init__(**kwargs)
         self.can_focus = False
         self.company: Optional[Company] = None
+        self.border_title = ""
 
     def compose(self) -> ComposeResult:
         yield Label("PREVIEW", id="preview_header", classes="pane-header")

@@ -48,6 +48,7 @@ class CompanyList(MarkPrefixMixin, Container):
         self, name: str | None = None, id: str | None = None, classes: str | None = None
     ):
         super().__init__(name=name, id=id, classes=classes)
+        self.border_title = ""
         self.filtered_fz_items: list[SearchResult] = []
         self.filter_contact: bool = True
         # DEFAULT TO MRU (Most Recently Updated)

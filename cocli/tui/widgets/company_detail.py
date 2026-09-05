@@ -286,11 +286,11 @@ class DetailPanel(Container):
     def __init__(self, title: str, child: Widget, id: str):
         super().__init__(id=id, classes="panel")
         self.can_focus = True
-        self.title = title
+        self.panel_title = title
         self.child = child
 
     def compose(self) -> ComposeResult:
-        yield Label(self.title, classes="panel-header")
+        yield Label(self.panel_title, classes="panel-header")
         yield self.child
 
 
