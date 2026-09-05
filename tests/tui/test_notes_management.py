@@ -55,7 +55,7 @@ async def test_notes_navigation_and_edit_key(mock_get_details, mock_get_editor, 
                 await driver.press("i")
                 await driver.pause(0.1)
                 spy_edit.assert_called_once()
-                mock_edit_nvim.assert_called_once_with(Path("/tmp/note1.md"))
+                mock_edit_nvim.assert_called_once_with(Path("/tmp/note2.md"))
 
 @pytest.mark.asyncio
 @patch('cocli.application.company_service.get_company_details_for_view')

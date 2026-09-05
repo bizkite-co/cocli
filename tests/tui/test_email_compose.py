@@ -94,3 +94,53 @@ async def test_reply_email_prefills_from_note(
         assert "client@test.com" in str(app.screen.query_one("#email-to").value)
         assert str(app.screen.query_one("#email-subject").value).startswith("Re:")
         assert "Hi there" in app.screen.query_one("#email-body").text
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.email_compose_modal.Boto3SesSender")
+@patch("cocli.tui.widgets.email_compose_modal.load_campaign_config")
+@patch("cocli.tui.widgets.email_compose_modal.get_campaign", return_value="roadmap")
+@patch("cocli.application.company_service.get_company_details_for_view")
+async def test_compose_send_dismisses_modal(
+    mock_get_details: Any,
+    _mock_campaign: Any,
+    mock_config: Any,
+    mock_ses: Any,
+    mock_company_data: dict[str, Any],
+    tmp_path: Any,
+    monkeypatch: Any,
+) -> None:
+    from cocli.core.paths import paths
+    from cocli.models.mail import SendMailResult
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    mock_get_details.return_value = mock_company_data
+    mock_config.return_value = {
+        "email": {"from_address": "mark@getretirementtaxanalyzer.com"},
+        "aws": {"profile": "westmonroe-support"},
+    }
+    sender = mock_ses.return_value
+    sender.send_email.return_value = "ses-1"
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await driver.pause()
+        await driver.press("C")
+        await driver.pause()
+        assert isinstance(app.screen, EmailComposeModal)
+        app.screen.query_one("#email-subject").value = "Hello"
+        app.screen.query_one("#email-body").text = "Body text"
+        with patch(
+            "cocli.application.email_service.EmailService.send",
+            return_value=SendMailResult(
+                message_id="ses-1",
+                to_address="client@test.com",
+                subject="Hello",
+                note_written=True,
+                company_slug="test-co",
+            ),
+        ):
+            await driver.press("ctrl+s")
+            await driver.pause()
+        assert not isinstance(app.screen, EmailComposeModal)

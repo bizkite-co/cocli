@@ -400,6 +400,15 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
                     n_data = note.model_dump()
                     n_data["file_path"] = str(note_file)
                     notes.append(n_data)  # Convert to dict for generic return
+        def _note_ts(note: dict[str, Any]) -> datetime.datetime:
+            ts = note.get("timestamp")
+            if not isinstance(ts, datetime.datetime):
+                return datetime.datetime.min.replace(tzinfo=datetime.UTC)
+            if ts.tzinfo is None:
+                return ts.replace(tzinfo=datetime.UTC)
+            return ts
+
+        notes.sort(key=_note_ts, reverse=True)
 
     comp_dict = company.model_dump()
 

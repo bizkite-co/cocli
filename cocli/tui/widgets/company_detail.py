@@ -4,7 +4,7 @@ import subprocess
 import re
 import textwrap
 from typing import Optional, Any, Union, cast, TYPE_CHECKING
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from textual.widgets import DataTable, Label, Input, Static
@@ -34,6 +34,20 @@ logger = logging.getLogger(__name__)
 
 PREVIEW_WIDTH = 40
 PREVIEW_MAX_LINES = 3
+
+
+def notes_newest_first(notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Newest timestamp first so the Notes quadrant reads like a mailbox."""
+
+    def _key(note: dict[str, Any]) -> datetime:
+        ts = note.get("timestamp")
+        if isinstance(ts, datetime):
+            if ts.tzinfo is None:
+                return ts.replace(tzinfo=UTC)
+            return ts
+        return datetime.min.replace(tzinfo=UTC)
+
+    return sorted(notes, key=_key, reverse=True)
 
 
 def wrap_content(
@@ -317,6 +331,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
     ):
         super().__init__(name=name, id=id, classes=classes)
         self.company_data = company_data
+        self.company_data["notes"] = notes_newest_first(
+            list(self.company_data.get("notes") or [])
+        )
 
         # Debugging the data discrepancy
         company_info = self.company_data.get("company", {})
@@ -1219,7 +1236,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
             reloaded = get_company_details_for_view(slug)
             if reloaded:
-                self.company_data["notes"] = reloaded["notes"]
+                self.company_data["notes"] = notes_newest_first(
+                    list(reloaded.get("notes") or [])
+                )
                 self.refresh_notes_table()
         except Exception as e:
             logger.error(f"Failed to refresh notes: {e}")
@@ -1227,7 +1246,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
     def refresh_notes_table(self) -> None:
         """Repopulate the existing table rather than replacing it for stability."""
         self.notes_table.clear()
-        notes = self.company_data.get("notes", [])
+        notes = notes_newest_first(list(self.company_data.get("notes", [])))
         for n in notes:
             ts = n.get("timestamp")
             if isinstance(ts, datetime):
@@ -1583,7 +1602,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         table = NotesTable(id="notes-table")
         table.add_column("Date", width=12)
         table.add_column("Preview", width=40)
-        notes = self.company_data.get("notes", [])
+        notes = notes_newest_first(list(self.company_data.get("notes", [])))
         for n in notes:
             ts = n.get("timestamp")
             if isinstance(ts, datetime):

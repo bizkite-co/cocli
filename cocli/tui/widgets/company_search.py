@@ -1,4 +1,5 @@
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Container
 from textual.widgets import Input
 from textual import on, events
@@ -18,7 +19,7 @@ class CompanySearchView(Container):
     BINDINGS = [
         ("t", "focus_template", "Focus Templates"),
         ("c", "focus_companies", "Focus Companies"),
-        ("s", "focus_search", "Search"),
+        Binding("s", "focus_search", "Search", show=False),
         ("w", "open_website", "Website"),
     ]
 

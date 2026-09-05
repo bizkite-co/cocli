@@ -39,3 +39,16 @@ async def test_search_input_not_hijacked_by_shortcuts():
         
         # 5. Verify the filter state hasn't changed
         assert company_list.filter_contact == initial_filter_state, "Shortcut 'f' was triggered while typing!"
+
+
+@pytest.mark.asyncio
+async def test_all_leads_search_has_one_search_header():
+    """All Leads + s must not stack a second SEARCH pane header."""
+    app = CocliApp()
+    async with app.run_test() as pilot:
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press("s")
+        await pilot.pause()
+        headers = list(app.query("#search_header"))
+        assert len(headers) == 1

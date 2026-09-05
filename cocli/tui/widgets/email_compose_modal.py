@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import Any, Optional
 
 from textual import events, on, work
 from textual.app import ComposeResult
@@ -10,7 +11,7 @@ from textual.containers import Container
 from textual.screen import ModalScreen
 from textual.widgets import Label, Static, TextArea
 
-from cocli.application.email_service import EmailService
+from cocli.application.email_service import Boto3SesSender, EmailService, SesSender
 from cocli.core.config import get_campaign, load_campaign_config
 from cocli.models.mail import EmailSettings, SendMailRequest, SendMailResult
 
@@ -75,6 +76,7 @@ class EmailComposeModal(ModalScreen[bool]):
         aws = raw.get("aws") or {}
         self._aws_profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
         self._from_address = self._settings.from_address or ""
+        self._ses_sender: Optional[SesSender] = None
 
     def compose(self) -> ComposeResult:
         from_line = self._from_address or "(set campaign [email].from_address)"
@@ -99,6 +101,29 @@ class EmailComposeModal(ModalScreen[bool]):
             else self.query_one("#email-to", CocliInput)
         )
         target.focus()
+        # 1Password/Hello for the SES profile happens here, not on Ctrl+S,
+        # so send can dismiss the modal without a second keypress.
+        self._warm_ses_sender()
+
+    @work(exclusive=True, thread=True)
+    def _warm_ses_sender(self) -> None:
+        if self._ses_sender is not None:
+            return
+        try:
+            sender = Boto3SesSender(
+                self._settings.ses_region,
+                profile=self._aws_profile,
+                configuration_set=self._settings.ses_configuration_set,
+            )
+            sender._reply_to = self._settings.reply_to
+            self._ses_sender = sender
+        except Exception as exc:  # noqa: BLE001
+            message = f"SES session: {exc}"
+
+            def _warn() -> None:
+                self.app.notify(message, severity="warning")
+
+            self.app.call_from_thread(_warn)
 
     @on(events.Key)
     def handle_keys(self, event: events.Key) -> None:
@@ -106,9 +131,12 @@ class EmailComposeModal(ModalScreen[bool]):
         if event.key == "ctrl+s":
             event.stop()
             event.prevent_default()
-            self.action_send_mail()
+            self.run_worker(self._send_mail())
 
     def action_send_mail(self) -> None:
+        self.run_worker(self._send_mail())
+
+    async def _send_mail(self) -> None:
         if self._sending:
             return
         to_address = self.query_one("#email-to", CocliInput).value.strip()
@@ -125,33 +153,31 @@ class EmailComposeModal(ModalScreen[bool]):
             return
         self._sending = True
         self.app.notify(f"Sending from {self._from_address}...")
-        self._send_mail_worker(to_address, subject, body)
-
-    @work(exclusive=True, thread=True)
-    def _send_mail_worker(self, to_address: str, subject: str, body: str) -> None:
-        if not self._campaign:
-            return
-        service = EmailService(
-            self._campaign, self._settings, aws_profile=self._aws_profile
-        )
         try:
-            result = service.send(
-                SendMailRequest(
-                    to_address=to_address,
-                    subject=subject,
-                    body=body,
-                    company_slug=self.company_slug,
-                )
+            result = await asyncio.to_thread(
+                self._do_send, to_address, subject, body
             )
-        except Exception as exc:  # noqa: BLE001 — SES/boto3/auth failures are user-facing
-            self.app.call_from_thread(self._on_send_failed, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            self._sending = False
+            self.app.notify(f"Send failed: {exc}", severity="error")
             return
-        self.app.call_from_thread(self._on_send_ok, result)
-
-    def _on_send_failed(self, message: str) -> None:
-        self._sending = False
-        self.app.notify(f"Send failed: {message}", severity="error")
-
-    def _on_send_ok(self, result: SendMailResult) -> None:
         self.app.notify(f"Sent {result.to_address}")
         self.dismiss(True)
+
+    def _do_send(self, to_address: str, subject: str, body: str) -> SendMailResult:
+        if not self._campaign:
+            raise ValueError("No campaign set")
+        service = EmailService(
+            self._campaign,
+            self._settings,
+            ses_sender=self._ses_sender,
+            aws_profile=self._aws_profile,
+        )
+        return service.send(
+            SendMailRequest(
+                to_address=to_address,
+                subject=subject,
+                body=body,
+                company_slug=self.company_slug,
+            )
+        )
