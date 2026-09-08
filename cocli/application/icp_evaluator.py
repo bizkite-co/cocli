@@ -29,7 +29,12 @@ class IcpEvaluator:
         Returns (quality_score, is_eligible).
         """
         email = str(prospect_data.get("email") or "").strip()
-        phone = str(prospect_data.get("phone") or "").strip()
+        phone = str(
+            prospect_data.get("phone")
+            or prospect_data.get("phone_number")
+            or prospect_data.get("phone_1")
+            or ""
+        ).strip()
         domain = str(prospect_data.get("domain") or "").strip()
 
         # 1. Reachability Checks

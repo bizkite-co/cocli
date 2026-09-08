@@ -42,6 +42,19 @@ class IcpEvaluatorProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class IcpRescoringProtocol(Protocol):
+    def calculate_feedback_multipliers(self) -> dict[str, float]:
+        ...
+
+    def rescore_prospect(self, prospect_data: dict[str, Any]) -> float:
+        ...
+
+    def rescore_and_promote(self, high_value_threshold: float = 75.0) -> dict[str, Any]:
+        ...
+
+
+
 class SearchProvider(Protocol):
     def __call__(
         self,

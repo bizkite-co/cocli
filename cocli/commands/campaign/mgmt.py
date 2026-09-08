@@ -408,8 +408,33 @@ def compile_lifecycle(
         raise typer.Exit(1)
 
 
+@app.command(name="rescore")
+def rescore_prospects(
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="The name of the campaign.")
+    ] = None,
+    threshold: float = typer.Option(75.0, "--threshold", "-t", help="High-value score promotion threshold."),
+) -> None:
+    """
+    Rescore campaign prospects using dynamic feedback signals and promote top leads to to-call-high-value queue.
+    """
+    name = _require_campaign(campaign_name)
+    try:
+        from cocli.application.icp_rescoring_service import IcpRescoringService
+        service = IcpRescoringService(name)
+        result = service.rescore_and_promote(high_value_threshold=threshold)
+        console.print(
+            f"[bold green]Evaluated {result['evaluated']} prospects for campaign '{name}'. "
+            f"Promoted {result['promoted_count']} high-value prospects to to-call-high-value queue.[/bold green]"
+        )
+    except Exception as e:
+        console.print(f"[bold red]Error rescoring prospects: {e}[/bold red]")
+        raise typer.Exit(1)
+
+
 @app.command(name="restore-names")
 def restore_names(
+
     campaign_name: Annotated[
         Optional[str], typer.Argument(help="The name of the campaign.")
     ] = None,
