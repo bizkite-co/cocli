@@ -29,6 +29,12 @@ class EmailNoteProtocol(NoteProtocol, Protocol):
     message_id: Optional[str]
 
 
+@runtime_checkable
+class IcpEvaluatorProtocol(Protocol):
+    def evaluate(self, prospect_data: dict[str, Any], icp_settings: Any) -> tuple[float, bool]:
+        ...
+
+
 class SearchProvider(Protocol):
     def __call__(
         self,

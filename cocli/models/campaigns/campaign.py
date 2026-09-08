@@ -25,6 +25,23 @@ class GoogleMaps(BaseModel):
     email: str
     one_password_path: str
 
+
+class IcpQualityWeights(BaseModel):
+    model_config = {"extra": "ignore", "populate_by_name": True}
+    google_maps_rating: float = Field(1.0, alias="google-maps-rating")
+    reviews_count: float = Field(0.5, alias="reviews-count")
+    search_phrase_relevance: float = Field(1.2, alias="search-phrase-relevance")
+
+
+class IcpSettings(BaseModel):
+    model_config = {"extra": "ignore", "populate_by_name": True}
+    min_quality_score: float = Field(0.0, alias="min-quality-score")
+    require_email: bool = Field(False, alias="require-email")
+    require_phone: bool = Field(False, alias="require-phone")
+    require_domain: bool = Field(False, alias="require-domain")
+    weights: IcpQualityWeights = Field(default_factory=lambda: IcpQualityWeights())  # type: ignore[call-arg]
+
+
 class Prospecting(BaseModel):
     model_config = {"extra": "ignore"}
     locations: Optional[list[str]] = Field(default_factory=list, alias="target-locations")
@@ -37,6 +54,7 @@ class Prospecting(BaseModel):
     initial_zoom_out_level: int = Field(3, alias="initial-zoom-out-level")
     omit_zoom_feature: bool = Field(False, alias="omit-zoom-feature")
     strict_keyword_filter: bool = Field(False, alias="strict-keyword-filter")
+    icp: IcpSettings = Field(default_factory=lambda: IcpSettings())  # type: ignore[call-arg]
 
     @model_validator(mode='before')
     @classmethod
