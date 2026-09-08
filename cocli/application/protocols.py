@@ -30,6 +30,13 @@ class EmailNoteProtocol(NoteProtocol, Protocol):
 
 
 @runtime_checkable
+class CallNoteProtocol(NoteProtocol, Protocol):
+    type: str
+    disposition: str
+    phone: str
+
+
+@runtime_checkable
 class IcpEvaluatorProtocol(Protocol):
     def evaluate(self, prospect_data: dict[str, Any], icp_settings: Any) -> tuple[float, bool]:
         ...

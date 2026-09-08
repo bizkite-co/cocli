@@ -14,6 +14,7 @@ from textual.widgets import Label, Static, TextArea
 from cocli.application.email_service import Boto3SesSender, EmailService, SesSender
 from cocli.core.config import get_campaign, load_campaign_config
 from cocli.models.mail import EmailSettings, SendMailRequest, SendMailResult
+from cocli.utils.utm import append_utm_params
 
 from .inputs import CocliInput
 
@@ -69,7 +70,6 @@ class EmailComposeModal(ModalScreen[bool]):
         self.company_slug = company_slug
         self._to = to_address
         self._subject = subject
-        self._body = body
         self._sending = False
         self._campaign = get_campaign()
         raw = load_campaign_config(self._campaign) if self._campaign else None
@@ -79,6 +79,13 @@ class EmailComposeModal(ModalScreen[bool]):
         self._aws_profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
         self._from_address = self._settings.from_address or ""
         self._ses_sender: Optional[SesSender] = None
+        self._body = append_utm_params(
+            body,
+            campaign=self._campaign,
+            company_slug=self.company_slug,
+            source="email_sequence",
+            medium="email",
+        )
 
     def compose(self) -> ComposeResult:
         from_line = self._from_address or "(set campaign [email].from_address)"
@@ -143,7 +150,15 @@ class EmailComposeModal(ModalScreen[bool]):
             return
         to_address = self.query_one("#email-to", CocliInput).value.strip()
         subject = self.query_one("#email-subject", CocliInput).value.strip()
-        body = self.query_one("#email-body", TextArea).text.strip()
+        raw_body = self.query_one("#email-body", TextArea).text.strip()
+        body = append_utm_params(
+            raw_body,
+            campaign=self._campaign,
+            company_slug=self.company_slug,
+            source="email_sequence",
+            medium="email",
+        )
+
         if not to_address or not subject or not body:
             self.app.notify("To, subject, and body are required", severity="warning")
             return
