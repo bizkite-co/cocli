@@ -272,7 +272,23 @@ class EmailService:
         )
         saved_path = note.to_file(notes_dir)
         logger.info("Wrote %s mail note for %s (%s)", direction, company_slug, message.message_id)
+
+        if direction == "received":
+            from cocli.application.engagement_service import EngagementService
+            from cocli.models.engagement import EngagementEvent
+
+            EngagementService(self.campaign_name).record_event(
+                EngagementEvent(
+                    campaign_name=self.campaign_name,
+                    company_slug=company_slug,
+                    event_type="email_reply",
+                    source="imap",
+                    details={"subject": message.subject, "from": message.from_address},
+                )
+            )
+
         return saved_path
+
 
     def _seen_path(self) -> Path:
         p = paths.campaign(self.campaign_name).path / "indexes" / "mail-monitor" / "seen.json"
