@@ -167,3 +167,27 @@ def list_suppressed(
     for item in items:
         console.print(f"[cyan]{item['email']}[/cyan] ({item['reason']}) - updated: {item['last_updated']}")
 
+
+@app.command("prepare-batch")
+def prepare_batch(
+    limit: int = typer.Option(10, "--limit", "-l", help="Number of prospects with contact first names to select."),
+) -> None:
+    """Generate personalized outreach email drafts for testing (filters prospects with contact first names)."""
+    campaign_name = _require_campaign()
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    service = PersonalizedOutreachService(campaign_name)
+    matches = service.find_eligible_prospects(limit=limit)
+
+    if not matches:
+        console.print(f"[yellow]No eligible prospects with contact first names found in campaign '{campaign_name}'.[/yellow]")
+        return
+
+    console.print(f"[bold green]Prepared {len(matches)} personalized email drafts for '{campaign_name}':[/bold green]\n")
+    for idx, match in enumerate(matches, 1):
+        console.print(f"[bold cyan][{idx}] {match.company_name}[/bold cyan] ({match.company_slug})")
+        console.print(f"    Recipient: {match.contact_name} <{match.recipient_email}> (First Name: [bold]{match.first_name}[/bold])")
+        console.print(f"    Subject: {match.subject}")
+        console.print(f"    Body Preview:\n{match.body[:200]}...\n")
+
+
