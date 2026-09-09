@@ -121,3 +121,49 @@ def poll_mail(
         f"[green]Poll[/green] fetched={result.fetched} noted={result.noted} "
         f"skipped_seen={result.skipped_seen} unmatched={result.unmatched}"
     )
+
+
+@app.command("unsubscribe")
+def unsubscribe(
+    address: str = typer.Option(..., "--address", "-a", help="Email address to unsubscribe and suppress."),
+    reason: str = typer.Option("COMPLAINT", "--reason", "-r", help="Reason: COMPLAINT or BOUNCE."),
+) -> None:
+    """Unsubscribe an email address, adding to AWS SES suppression list and local exclusions."""
+    campaign_name = _require_campaign()
+    _, profile = _settings(campaign_name)
+
+    from cocli.core.exclusions import ExclusionManager
+    from cocli.application.ses_suppression_service import SesSuppressionService
+
+    ex_mgr = ExclusionManager(campaign_name)
+    ex_mgr.add_exclusion(domain=address, reason=f"unsubscribe:{reason}")
+
+    ses_suppress = SesSuppressionService(profile=profile)
+    ses_success = ses_suppress.suppress_email(address, reason=reason)
+
+    console.print(
+        f"[bold green]Unsubscribed[/bold green] {address}. "
+        f"Local exclusion added. AWS SES suppression: {'[green]Success[/green]' if ses_success else '[yellow]Failed/Offline[/yellow]'}"
+    )
+
+
+@app.command("suppression-list")
+def list_suppressed(
+    limit: int = typer.Option(50, "--limit", help="Max suppressed emails to display."),
+) -> None:
+    """List suppressed email addresses from AWS SES account-level suppression list."""
+    campaign_name = _require_campaign()
+    _, profile = _settings(campaign_name)
+
+    from cocli.application.ses_suppression_service import SesSuppressionService
+
+    ses_suppress = SesSuppressionService(profile=profile)
+    items = ses_suppress.list_suppressed(limit=limit)
+
+    if not items:
+        console.print("[dim]No suppressed destinations found in AWS SES.[/dim]")
+        return
+
+    for item in items:
+        console.print(f"[cyan]{item['email']}[/cyan] ({item['reason']}) - updated: {item['last_updated']}")
+

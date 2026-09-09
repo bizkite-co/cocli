@@ -55,7 +55,23 @@ class IcpRescoringProtocol(Protocol):
 
 
 
+@runtime_checkable
+class SesSuppressionProtocol(Protocol):
+    def suppress_email(self, email: str, reason: str = "COMPLAINT") -> bool:
+        ...
+
+    def is_suppressed(self, email: str) -> bool:
+        ...
+
+    def unsuppress_email(self, email: str) -> bool:
+        ...
+
+    def list_suppressed(self, limit: int = 100) -> list[dict[str, Any]]:
+        ...
+
+
 class SearchProvider(Protocol):
+
     def __call__(
         self,
         search_query: str = "",

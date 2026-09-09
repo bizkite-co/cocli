@@ -86,10 +86,27 @@ class EmailService:
         self._aws_profile = aws_profile
 
     def send(self, request: SendMailRequest) -> SendMailResult:
+        from cocli.core.exclusions import ExclusionManager
+        from cocli.application.ses_suppression_service import SesSuppressionService
+
         source = request.from_address or self.settings.from_address
         if not source:
             raise ValueError("from_address is required (request or campaign [email].from_address)")
+
+        # Pre-send suppression & exclusion checks
+        slug_for_check = request.company_slug or self._lookup(request.to_address)
+        ex_mgr = ExclusionManager(self.campaign_name)
+        if ex_mgr.is_excluded(slug=slug_for_check, domain=request.to_address):
+            raise ValueError(f"Recipient {request.to_address} is locally excluded.")
+
+        ses_suppress = SesSuppressionService(
+            region=self.settings.ses_region, profile=self._aws_profile
+        )
+        if ses_suppress.is_suppressed(request.to_address):
+            raise ValueError(f"Recipient {request.to_address} is suppressed in AWS SES.")
+
         sender = self._ses()
+
         ses_id = sender.send_email(
             source=source,
             to_address=request.to_address,
