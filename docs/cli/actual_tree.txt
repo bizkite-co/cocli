@@ -246,6 +246,9 @@ cocli
         remove-query - Removes a search query from the campaign configuration.
             query (text) [required]
             --campaign/-c (text)
+        rescore - Rescore campaign prospects using dynamic feedback signals and promote top leads to to-call-high-value queue.
+            campaign_name (text)
+            --threshold/-t (float)
         restore-names - Restores company names from the Google Maps index and writes provenance receipts.
             campaign_name (text)
             --dry-run (boolean)
@@ -409,12 +412,19 @@ cocli
         authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
         poll - Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match.
             --limit (integer)
+        prepare-batch - Generate personalized outreach email drafts for testing (filters prospects with contact first names).
+            --limit/-l (integer)
         send - Send one email via SES and record a note on the matching company.
             --to (text) [required]
             --subject (text) [required]
             --body (text) [required]
             --company (text)
             --from (text)
+        suppression-list - List suppressed email addresses from AWS SES account-level suppression list.
+            --limit (integer)
+        unsubscribe - Unsubscribe an email address, adding to AWS SES suppression list and local exclusions.
+            --address/-a (text) [required]
+            --reason/-r (text)
     enrich - Commands for enriching company data.
         contacts - Scrape contact information from a company's website and add/update them in the CRM.
             company_name (text) [required]
@@ -667,6 +677,29 @@ cocli
             slug (text)
         sync - Sync the task index with the filesystem (discovering active/pending/draft).
         tree - Show a visual dependency tree of tasks.
+    telemetry - Telemetry and web landing page signal ingestion.
+        deploy - Deploy GTM container IaC manifest via Google Tag Manager REST API v2 or browser automation.
+            --container-id/-c (text)
+            --mode/-m (text)
+            --headful (boolean)
+        ingest - Ingest web landing page (GTM/UTM) telemetry events into campaign engagement log.
+            --json/-j (text)
+            --file/-f (path)
+            --campaign/-c (text)
+        ping - Send an initial telemetry hit to GA4 to warm up data ingestion and clear 48-hour missing traffic alerts.
+            --measurement-id/-m (text)
+            --domain/-d (text)
+        sync - Resolve/create GA4 Measurement ID and compile declarative GTM IaC container spec.
+            --measurement-id/-m (text)
+            --campaign/-c (text)
+            --domain/-d (text)
+        verify - Run Playwright E2E verification test against live URL to inspect dataLayer and network telemetry.
+            --url/-u (text)
+        wizard - Guided wizard for inspecting status, syncing IaC spec, verifying live site, and deploying GTM across Google accounts.
+            --campaign/-c (text)
+            --domain/-d (text)
+            --container-id (text)
+            --skip-verify (boolean)
     tui - Launches the Textual TUI for cocli.
         --dump-tree (path)
     video

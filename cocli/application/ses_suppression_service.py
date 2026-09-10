@@ -41,12 +41,14 @@ class SesSuppressionService:
 
     def is_suppressed(self, email: str) -> bool:
         """Check if an email address is in the AWS SES suppression list."""
-        client = self._get_client()
         try:
+            client = self._get_client()
             resp = client.get_suppressed_destination(EmailAddress=email)
             return bool(resp and resp.get("SuppressedDestination"))
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not check SES suppression for %s: %s", email, exc)
             return False
+
 
     def unsuppress_email(self, email: str) -> bool:
         """Remove email address from AWS SES account-level suppression list."""

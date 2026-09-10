@@ -711,6 +711,7 @@ dependencies = [
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib", version = "1.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "google-auth-oauthlib", version = "1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "gtm-telemetry-wizard" },
     { name = "html5lib" },
     { name = "httpx" },
     { name = "jmespath" },
@@ -836,6 +837,7 @@ requires-dist = [
     { name = "google-auth-oauthlib" },
     { name = "google-genai", marker = "extra == 'full'" },
     { name = "google-genai", marker = "extra == 'video'" },
+    { name = "gtm-telemetry-wizard", specifier = ">=0.1.0" },
     { name = "html5lib" },
     { name = "httpx" },
     { name = "import-linter", marker = "extra == 'dev'" },
@@ -1969,6 +1971,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b8/b6/2d82c6b6161169b0cb87ccb746e3a590c5a9fb54cb7c59d6c657ed731394/grimp-3.15-pp311-pypy311_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:12fd9e675e6fcf633a5d14f6cbeee4b667a3d3307c91653ccc1a5aef03f53ec6", size = 2472941, upload-time = "2026-07-03T12:09:13.481Z" },
     { url = "https://files.pythonhosted.org/packages/b7/36/fb2906ed60288b236867829f9b3ced558a2725225ec0ed2354a7124a0474/grimp-3.15-pp311-pypy311_pp73-musllinux_1_2_i686.whl", hash = "sha256:0012653561d80b4e4972ac246deb569051a1fbf3880d620a9475e7159722bbab", size = 2513392, upload-time = "2026-07-03T12:09:24.122Z" },
     { url = "https://files.pythonhosted.org/packages/5e/d2/ec5f501d9623fe8eb2d517ab7528708b672dba51322a931515b58b659f6f/grimp-3.15-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:e438ae00dfd554c6262e92c945ec233c5e311cc99fdb0d602c6063b4f5fc3d9c", size = 2522530, upload-time = "2026-07-03T12:09:34.518Z" },
+]
+
+[[package]]
+name = "gtm-telemetry-wizard"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "playwright" },
+    { name = "rich" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/69/f4/c565d52fea6eb656e52f39452ad9490f162bfdfaf711f3640f1df87754d3/gtm_telemetry_wizard-0.1.0.tar.gz", hash = "sha256:1e30416c1c9db43d24a41c7ba530243f1dcbc76185ec8e574542fe375c8b2a88", size = 9320, upload-time = "2026-09-09T22:12:17.51Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/9e/a3d784800043cb551a810c1365587ab1351d69518fd912e3a36255dce1b4/gtm_telemetry_wizard-0.1.0-py3-none-any.whl", hash = "sha256:cb12a68e36e1120ad15ff0dd3913fd05ec3a7109f2c20c7f2a2986c227e0e616", size = 10181, upload-time = "2026-09-09T22:12:16.27Z" },
 ]
 
 [[package]]

@@ -318,6 +318,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
         Binding("E", "re_enrich", "Re-enrich"),
         Binding("D", "delete_company", "Delete Company"),
+        Binding("U", "unsubscribe_company", "Unsubscribe"),
         Binding("e", "open_folder", "Explorer (NVim)"),
         Binding("C", "compose_email", "Compose email"),
     ]
@@ -916,6 +917,86 @@ class CompanyDetail(MarkPrefixMixin, Container):
                     self.app.notify(f"Delete failed: {e}", severity="error")
 
         self.app.run_worker(run_delete())
+
+    def action_unsubscribe_company(self) -> None:
+        """Unsubscribe company and suppress all email communications."""
+        if isinstance(self.app.focused, Input):
+            return
+
+        company_info = self.company_data.get("company", {})
+        slug = company_info.get("slug")
+        name = company_info.get("name") or slug or "Company"
+        email = company_info.get("email")
+
+        if not email:
+            contacts = self.company_data.get("contacts", [])
+            for c in contacts:
+                if c.get("email"):
+                    email = c.get("email")
+                    break
+
+        async def run_unsubscribe() -> None:
+            from .confirm_screen import ConfirmScreen
+            from ...core.config import get_campaign, load_campaign_config
+            from ...core.exclusions import ExclusionManager
+
+            target_desc = f"'{name}' ({email})" if email else f"'{name}'"
+            confirm = await self.app.push_screen_wait(
+                ConfirmScreen(
+                    f"Unsubscribe and suppress all email communications for {target_desc}?"
+                )
+            )
+            if not confirm:
+                return
+
+            campaign_name = get_campaign() or "default"
+            ex_mgr = ExclusionManager(campaign_name)
+            ex_mgr.add_exclusion(
+                domain=email, slug=slug, reason="tui_phone_unsubscribe"
+            )
+
+            ses_success = False
+            if email:
+                try:
+                    from ...application.ses_suppression_service import (
+                        SesSuppressionService,
+                    )
+
+                    cfg = load_campaign_config(campaign_name)
+                    aws_cfg = cfg.get("aws", {})
+                    profile = (
+                        aws_cfg.get("profile")
+                        or aws_cfg.get("aws_profile")
+                        or cfg.get("aws-profile")
+                    )
+                    ses_suppress = SesSuppressionService(profile=profile)
+                    ses_success = ses_suppress.suppress_email(email, reason="COMPLAINT")
+                except Exception as e:
+                    logger.warning(f"AWS SES suppression failed for {email}: {e}")
+
+            if slug:
+                notes_dir = paths.companies.entry(slug) / "notes"
+                unsub_note = Note(
+                    title="UNSUBSCRIBED",
+                    content=(
+                        f"Manually unsubscribed email communications via TUI.\n"
+                        f"Email: {email or 'N/A'}\n"
+                        f"Reason: tui_phone_unsubscribe\n"
+                        f"SES Suppressed: {ses_success}\n"
+                        f"Timestamp: {datetime.now(UTC).isoformat()}"
+                    ),
+                )
+                unsub_note.to_file(notes_dir)
+
+            msg = f"Unsubscribed '{name}'. Local exclusion added."
+            if email:
+                msg += f" SES: {'Suppressed' if ses_success else 'Offline/Failed'}"
+            self.app.notify(msg)
+
+            self.refresh_notes_data()
+            self._refresh_info_table()
+
+        self.app.run_worker(run_unsubscribe())
 
     def action_open_folder(self) -> None:
         slug = self.company_data["company"].get("slug")

@@ -70,6 +70,20 @@ class SesSuppressionProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class TelemetryProviderProtocol(Protocol):
+    """Protocol for pluggable web telemetry and tag manager providers (GA4/GTM, Plausible, PostHog)."""
+
+    def resolve_measurement_id(self, domain: str, default_if_missing: bool = True) -> Optional[str]:
+        ...
+
+    def compile_container_manifest(self, measurement_id: str, campaign_name: str) -> Path:
+        ...
+
+    def verify_live_telemetry(self, target_url: str) -> dict[str, Any]:
+        ...
+
+
 class SearchProvider(Protocol):
 
     def __call__(
