@@ -791,7 +791,7 @@ echo '@@ERRORS@@'
 # excluded here so DEGRADED reflects real pipeline health, not the baseline
 # failure rate of scraping arbitrary real-world websites. Still fully
 # visible below in ERROR_PATTERNS.
-docker logs --since 30m cocli-supervisor 2>&1 | grep -vF '[navigation_failed]' | grep -icE 'error|exception|traceback|denied' || true
+docker logs --since 30m cocli-supervisor 2>&1 | grep -vF '[navigation_failed]' | grep -vE '"HTTP/[0-9.]+" 2[0-9]{2}' | grep -icE '\b(error|errors|exception|exceptions|traceback|denied)\b' || true
 echo '@@ERROR_PATTERNS@@'
 # Normalize variable parts (timestamps, per-company/campaign path segments,
 # domains, long IDs/hashes/ARNs) so the same underlying error collapses to
@@ -818,7 +818,8 @@ echo '@@ERROR_PATTERNS@@'
 # threshold and swallows real path structure into one opaque <ID>,
 # observed live as "Error reading task file <ID>*/queues/gm-<ID><DOMAIN>").
 docker logs --since 30m cocli-supervisor 2>&1 \
-  | grep -iE 'error|exception|traceback|denied' \
+  | grep -iE '\b(error|errors|exception|exceptions|traceback|denied)\b' \
+  | grep -vE '"HTTP/[0-9.]+" 2[0-9]{2}' \
   | grep -vF 'errors=0' \
   | grep -vF '[navigation_failed]' \
   | grep -vF 'NAVIGATION_FAILED' \
