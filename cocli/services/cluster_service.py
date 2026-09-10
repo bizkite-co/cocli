@@ -121,7 +121,7 @@ class ClusterService:
 
                 if node_workers:
                     self.cluster_config.nodes.append(
-                        PiNodeConfig(host=host, ip=None, workers=node_workers)
+                        PiNodeConfig(host=host, ip=None, workers=node_workers, arch="arm64")
                     )
 
         if not self.registry_host and self.cluster_config.nodes:
@@ -262,17 +262,53 @@ class ClusterService:
         self, node: PiNodeConfig, image_name: str, registry_image: str, user: str
     ) -> bool:
         host = node.hostname
-        logger.info(f"Deploying to Spoke: {host}...")
-        try:
-            # Pull
-            pull_cmd = f"docker pull {registry_image} && docker tag {registry_image} {image_name}"
-            subprocess.run(["ssh", f"{user}@{host}", pull_cmd], check=True)
+        logger.info(f"Deploying to Spoke: {host} (arch: {node.arch})...")
 
-            # Restart
+        registry_node = next(
+            (n for n in self.cluster_config.nodes if n.hostname == self.registry_host),
+            None,
+        )
+        registry_arch = registry_node.arch if registry_node else "arm64"
+
+        # If architecture matches hub, try fast pull from hub registry
+        if node.arch == registry_arch:
+            try:
+                pull_cmd = f"docker pull {registry_image} && docker tag {registry_image} {image_name}"
+                subprocess.run(["ssh", f"{user}@{host}", pull_cmd], check=True)
+                await self._restart_node(host, image_name, user)
+                return True
+            except Exception as e:
+                logger.info(f"Pull failed on {host}, falling back to local build: {e}")
+
+        # Mismatched architecture or pull failure: perform native local build on spoke
+        logger.info(f"Performing native local build on {host} ({node.arch})...")
+        try:
+            project_root = Path(__file__).parent.parent.parent.resolve()
+            subprocess.run(
+                ["ssh", f"{user}@{host}", f"mkdir -p {BUILD_DIR}"], check=True
+            )
+            rsync_cmd = [
+                "rsync",
+                "-az",
+                "--delete",
+                "--exclude",
+                ".venv",
+                "--exclude",
+                ".git",
+                "--exclude",
+                "data",
+                "--exclude",
+                ".logs",
+                str(project_root) + "/",
+                f"{user}@{host}:{BUILD_DIR}/",
+            ]
+            subprocess.run(rsync_cmd, check=True)
+            build_cmd = f"cd {BUILD_DIR} && docker build -t {image_name} -f docker/rpi-worker/Dockerfile ."
+            subprocess.run(["ssh", f"{user}@{host}", build_cmd], check=True)
             await self._restart_node(host, image_name, user)
             return True
-        except Exception as e:
-            logger.info(f"Pull failed on {host}, falling back to local build: {e}")
+        except Exception as build_err:
+            logger.error(f"Local build failed on {host}: {build_err}")
             return False
 
     async def _restart_node(self, host: str, image_name: str, user: str) -> None:

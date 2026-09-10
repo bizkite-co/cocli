@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.company_detail import CompanyDetail
 from textual.widgets import ListView
@@ -71,31 +71,35 @@ async def test_company_selection_integration():
 
 
 @pytest.mark.asyncio
-async def test_selecting_an_unmaterialized_lead_notifies_instead_of_silent_bell():
-    """Regression (Mark, 2026-08-31): "several of them show the preview,
-    but do not navigate to the detail when I press ENTER or l." Root
-    cause: a "lead" in the list can come from raw prospects data
-    (google_maps_prospects checkpoint) that was never materialized into a
-    companies/<slug>/ directory - get_company_details_for_view() requires
-    that directory and returns None otherwise (confirmed ~47% of "All
-    Leads" for roadmap have no directory at all). The preview pane never
-    hit this - it renders straight from the search result, no filesystem
-    lookup - so a lead could preview fine and still fail to open. The old
-    handler was `else: self.bell()` with zero logging, indistinguishable
-    from a real crash. Now it must notify with a diagnosable message."""
+async def test_selecting_an_unmaterialized_lead_auto_materializes_and_opens_detail(tmp_path, monkeypatch):
+    """Verify that selecting an unmaterialized lead from All Leads automatically
+    materializes the company directory on demand and opens the CompanyDetail view."""
+    from cocli.core.paths import paths
+    monkeypatch.setattr(paths, "root", tmp_path)
+
     mock_search = MagicMock()
     mock_search.return_value = [
         SearchResult(
             name="Unmaterialized Lead",
             slug="unmaterialized-lead",
-            domain=None,
+            domain="unmat.com",
             type="company",
             unique_id="unmaterialized-lead",
             tags=[],
             display="",
         ),
     ]
-    mock_company_service = MagicMock(return_value=None)
+
+    def mock_get_details(slug: str):
+        p = tmp_path / "companies" / slug / "_index.md"
+        if not p.exists():
+            return None
+        return {
+            "company": {"name": "Unmaterialized Lead", "slug": slug, "domain": "unmat.com"},
+            "tags": [], "content": "", "website_data": None, "contacts": [], "meetings": [], "notes": []
+        }
+
+    mock_company_service = MagicMock(side_effect=mock_get_details)
 
     services = ServiceContainer(
         search_service=mock_search,
@@ -106,18 +110,19 @@ async def test_selecting_an_unmaterialized_lead_notifies_instead_of_silent_bell(
 
     async with app.run_test() as driver:
         await driver.app.action_show_companies()
-        await driver.pause(1.0)
+        await driver.pause(0.5)
         company_list_screen = await wait_for_widget(driver, CompanyList)
         list_view = company_list_screen.query_one(ListView)
         list_view.focus()
         await driver.pause(0.1)
         list_view.index = 0
 
-        with patch.object(driver.app, "notify") as mock_notify:
-            list_view.action_select_cursor()
-            await driver.pause(0.3)
+        list_view.action_select_cursor()
+        await driver.pause(0.5)
 
-        mock_notify.assert_called_once()
-        assert "unmaterialized-lead" in mock_notify.call_args.args[0]
-        assert mock_notify.call_args.kwargs.get("severity") == "warning"
-        assert len(driver.app.query(CompanyDetail)) == 0
+        # CompanyDetail should now be mounted
+        company_detail = await wait_for_widget(driver, CompanyDetail)
+        assert isinstance(company_detail, CompanyDetail)
+        # Check that directory was created on disk
+        assert (tmp_path / "companies" / "unmaterialized-lead" / "_index.md").exists()
+

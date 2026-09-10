@@ -43,10 +43,11 @@ class TemplateList(CocliPanel):
         )
 
     async def on_mount(self) -> None:
-        pass
+        """Trigger counts update automatically on mount (background worker)."""
+        self.trigger_counts_update()
 
     def trigger_counts_update(self) -> None:
-        """Manually trigger counts update (deferred from on_mount for faster startup)."""
+        """Manually trigger counts update."""
         self.update_counts()
 
     @work(exclusive=True, thread=True)
@@ -62,7 +63,7 @@ class TemplateList(CocliPanel):
                 label = item.query_one(Label)
                 # Cast to Any to access renderable which exists at runtime but might be tricky for mypy
                 base_text = str(cast(Any, label).renderable).split(" (")[0]
-                label.update(f"{base_text} ({count})")
+                label.update(f"{base_text} ({count:,})")
             except Exception:
                 pass
 

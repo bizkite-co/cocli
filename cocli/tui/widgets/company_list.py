@@ -424,6 +424,13 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             loading.first().display = False
 
         try:
+            count = len(self.filtered_fz_items)
+            count_str = f"{count:,}" if count > 0 else "0"
+            self.query_one("#search_header", Label).update(f"SEARCH ({count_str} results)")
+        except Exception:
+            pass
+
+        try:
             list_views = self.query(ListView)
             if not list_views:
                 return

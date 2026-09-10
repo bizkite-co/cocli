@@ -867,6 +867,38 @@ class CocliApp(App[None]):
         company_slug = message.company_slug
         try:
             company_data = self.services.get_company_details(company_slug)
+            if not company_data:
+                # A lead in "All leads" or search results may originate from raw prospects
+                # data (google_maps_prospects checkpoint) before being materialized to disk.
+                # Auto-materialize the company directory on demand so the user can open it.
+                match_item = None
+                search_views = list(self.query(CompanySearchView))
+                if search_views:
+                    c_list = search_views[0].company_list
+                    match_item = next(
+                        (i for i in c_list.filtered_fz_items if i.slug == company_slug),
+                        None,
+                    )
+                if not match_item and hasattr(self.services, "fuzzy_search"):
+                    try:
+                        results = self.services.fuzzy_search(company_slug)
+                        match_item = next(
+                            (i for i in results if i.slug == company_slug),
+                            None,
+                        )
+                    except Exception:
+                        match_item = None
+
+                if match_item:
+                    temp_list = CompanyList()
+                    company_obj = temp_list._preview_company(match_item)
+                    if company_obj:
+                        company_obj.save()
+                        logger.info(
+                            f"Auto-materialized prospect directory for slug={company_slug!r}"
+                        )
+                        company_data = self.services.get_company_details(company_slug)
+
             if company_data:
                 content = self.query_one("#app_content")
                 # Hide Branch Roots, Remove Details

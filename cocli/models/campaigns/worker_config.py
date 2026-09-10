@@ -18,6 +18,7 @@ class PiNodeConfig(BaseModel):
     hostname: str = Field(..., alias="host", description="Node hostname (e.g. cocli5x1.pi)")
     ip_address: Optional[str] = Field(None, alias="ip")
     label: Optional[str] = None
+    arch: str = Field("arm64", description="Node architecture ('arm64' or 'amd64')")
 
     enabled: bool = True
     workers: list[WorkerDefinition] = Field(default_factory=list)
