@@ -424,8 +424,10 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             loading.first().display = False
 
         try:
-            count = len(self.filtered_fz_items)
-            count_str = f"{count:,}" if count > 0 else "0"
+            total_count = getattr(self.filtered_fz_items, "total_count", None)
+            if total_count is None:
+                total_count = len(self.filtered_fz_items)
+            count_str = f"{total_count:,}" if total_count > 0 else "0"
             self.query_one("#search_header", Label).update(f"SEARCH ({count_str} results)")
         except Exception:
             pass

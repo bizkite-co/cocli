@@ -653,8 +653,17 @@ def get_fuzzy_search_results(
             elif not search_query:
                 sql += " ORDER BY name ASC"
 
-            sql += f" LIMIT {limit} OFFSET {offset}"
-            res = _con.execute(sql, params).fetchall()
+            # Calculate total count of matching items before pagination
+            total_matching = 0
+            try:
+                count_res = _con.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone()
+                if count_res:
+                    total_matching = int(count_res[0] or 0)
+            except Exception:
+                total_matching = 0
+
+            sql_paginated = f"{sql} LIMIT {limit} OFFSET {offset}"
+            res = _con.execute(sql_paginated, params).fetchall()
 
             # 4. Filter Exclusions
             exclusions = list_all_exclusions(campaign or "")
@@ -692,6 +701,7 @@ def get_fuzzy_search_results(
                     )
                 )
 
+            setattr(final_items, "total_count", total_matching)
             return final_items
 
         except Exception as e:

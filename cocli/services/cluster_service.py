@@ -314,6 +314,18 @@ class ClusterService:
     async def _restart_node(self, host: str, image_name: str, user: str) -> None:
         """Restarts the node using the new ORCHESTRATED worker mode."""
         short_name = host.split(".")[0]
+
+        # Ensure target host has latest campaign config in ~/repos/data for container mount
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        local_cfg = project_root / "data" / "campaigns" / self.campaign_name / "config.toml"
+        if local_cfg.exists():
+            remote_dir = f"~/repos/data/campaigns/{self.campaign_name}"
+            subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_dir}"], capture_output=True)
+            subprocess.run(
+                ["rsync", "-az", str(local_cfg), f"{user}@{host}:{remote_dir}/config.toml"],
+                capture_output=True,
+            )
+
         # Standardize on 'cocli-supervisor' as the container name for now
         stop_cmd = "docker stop cocli-supervisor && docker rm cocli-supervisor"
         subprocess.run(["ssh", f"{user}@{host}", stop_cmd], capture_output=True)
