@@ -137,6 +137,7 @@ def _make_compact_manager_mock(
     manager.s3_proc_prefix = "campaigns/c/indexes/i/processing/run_x/"
     manager.index_dir = Path("/tmp/index")
     manager.local_proc_dir = Path("/tmp/index/processing/run_x")
+    manager._lock_acquired = lock_ok
     manager.acquire_lock.return_value = lock_ok
     manager.isolate_wal.return_value = moved
 

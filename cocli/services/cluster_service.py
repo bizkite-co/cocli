@@ -327,7 +327,7 @@ class ClusterService:
             )
 
         # Standardize on 'cocli-supervisor' as the container name for now
-        stop_cmd = "docker stop cocli-supervisor && docker rm cocli-supervisor"
+        stop_cmd = "docker stop -t 5 cocli-supervisor 2>/dev/null || true; docker rm -f cocli-supervisor 2>/dev/null || true"
         subprocess.run(["ssh", f"{user}@{host}", stop_cmd], capture_output=True)
 
         # We map .cocli to both /root/ and the host user's home path
@@ -458,12 +458,18 @@ class ClusterService:
             remote_config = f"{remote_campaign_root}config.toml"
 
             try:
-                # Ensure remote directories exist
-                remote_dirs = []
-                if local_dg_completed.exists():
-                    remote_dirs.append(remote_dg_completed)
-                if local_dg_batches.exists():
-                    remote_dirs.append(remote_dg_batches)
+                # Sync Active Queues (discovery-gen, enrichment, gm-details)
+                local_enrichment_pending = campaign_dir / "queues" / "enrichment" / "pending"
+                local_gmdetails_pending = campaign_dir / "queues" / "gm-details" / "pending"
+                remote_enrichment_pending = f"{remote_campaign_root}queues/enrichment/pending/"
+                remote_gmdetails_pending = f"{remote_campaign_root}queues/gm-details/pending/"
+
+                remote_dirs: list[str] = []
+                if local_enrichment_pending.exists():
+                    remote_dirs.append(remote_enrichment_pending)
+                if local_gmdetails_pending.exists():
+                    remote_dirs.append(remote_gmdetails_pending)
+
                 if remote_dirs:
                     subprocess.run(
                         [
@@ -495,6 +501,26 @@ class ClusterService:
                         timeout=120,
                     )
 
+                # Sync Pending Enrichment tasks to spoke nodes
+                if local_enrichment_pending.exists():
+                    subprocess.run(
+                        ["rsync", "-rtWz", str(local_enrichment_pending) + "/", f"{user}@{host}:{remote_enrichment_pending}"],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+
+                # Sync Pending GM-Details tasks to spoke nodes
+                if local_gmdetails_pending.exists():
+                    subprocess.run(
+                        ["rsync", "-rtWz", str(local_gmdetails_pending) + "/", f"{user}@{host}:{remote_gmdetails_pending}"],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+
                 # Sync Batches (Always sync, small files)
                 if local_dg_batches.exists():
                     rsync_cmd_batches = [
@@ -519,6 +545,13 @@ class ClusterService:
                         str(local_config),
                         f"{user}@{host}:{remote_config}",
                     ]
+                    subprocess.run(
+                        rsync_cmd_config,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
                     subprocess.run(
                         rsync_cmd_config,
                         check=True,

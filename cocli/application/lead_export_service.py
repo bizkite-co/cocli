@@ -132,10 +132,12 @@ def export_enriched_emails(
     """)
 
     email_manager = EmailIndexManager(campaign_name)
-    email_shard_glob = str(email_manager.shards_dir / "*.usv")
-    if list(email_manager.shards_dir.glob("*.usv")):
+    email_files = [str(p) for p in email_manager.shards_dir.glob("*.usv")] + [
+        str(p) for p in email_manager.inbox_dir.rglob("*.usv")
+    ]
+    if email_files:
         con.execute(f"""
-            CREATE TABLE emails AS SELECT * FROM read_csv('{email_shard_glob}',
+            CREATE TABLE emails AS SELECT * FROM read_csv({email_files!r},
                 delim='\x1f',
                 header=False,
                 columns={{
@@ -149,6 +151,8 @@ def export_enriched_emails(
                     'verification_status': 'VARCHAR',
                     'tags': 'VARCHAR'
                 }},
+                auto_detect=False,
+                ignore_errors=True,
                 quote=''
             )
         """)

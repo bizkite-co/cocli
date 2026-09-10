@@ -226,7 +226,9 @@ def get_template_counts(campaign_name: Optional[str] = None) -> dict[str, int]:
                     counts["tpl_leads"] = int(row[0] or 0)
                     counts["tpl_venues"] = int(row[8] or 0)
 
-                _counts_cache[campaign] = (now, counts)
+                building: set[str] = getattr(get_fuzzy_search_results, "_building", set())
+                if campaign not in building:
+                    _counts_cache[campaign] = (now, counts)
             except Exception as e:
                 logger.error(f"Failed to calculate template counts: {e}")
 
@@ -302,6 +304,11 @@ def get_fuzzy_search_results(
                     except Exception:
                         pass
                     finally:
+                        with _lock:
+                            global _last_cache_mtime
+                            _last_cache_mtime = -1.0
+                            if campaign in _counts_cache:
+                                del _counts_cache[campaign]
                         get_fuzzy_search_results._building.remove(campaign)  # type: ignore
 
                 threading.Thread(target=bg_rebuild, daemon=True).start()

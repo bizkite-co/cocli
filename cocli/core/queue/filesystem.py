@@ -229,18 +229,25 @@ class FilesystemQueue:
             if attempts_path.exists():
                 with open(attempts_path, "r") as f:
                     count = json.load(f).get("count", 0)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
         except Exception as e:
             logger.error(f"Error reading attempts file for {task_id}: {e}")
 
         count += 1
 
         try:
-            with open(attempts_path, "w") as f:
-                json.dump({"count": count}, f)
+            if attempts_path.parent.exists():
+                attempts_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(attempts_path, "w") as f:
+                    json.dump({"count": count}, f)
+        except FileNotFoundError:
+            pass
         except Exception as e:
             logger.error(f"Error writing attempts file for {task_id}: {e}")
 
         return count
+
 
     def _dead_letter(self, task_id: str, attempts: int) -> None:
         """Moves a task that has exceeded max_nack_attempts from pending to failed."""
@@ -507,9 +514,17 @@ class FilesystemQueue:
                     task.ack_token = task_id
                     tasks.append(task)
                     count += 1
+                except FileNotFoundError:
+                    # Task file was completed/removed by a concurrent worker between lease creation and open
+                    try:
+                        self._get_lease_path(task_id).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+
                 except Exception as e:
                     logger.error(f"Error reading task file {task_file}: {e}")
                     self.nack(task_id)
+
         return tasks
 
     def _discover_tasks_from_s3(self, max_discovery: int = 100) -> None:

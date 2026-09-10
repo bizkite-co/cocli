@@ -53,25 +53,35 @@ def compact(
 
     services = ServiceContainer(campaign_name=campaign)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task_id = progress.add_task("Starting compaction...", total=None)
+    from botocore.exceptions import BotoCoreError, ClientError
 
-        def log_cb(msg: str) -> None:
-            # Live step updates during long S3-bound FIMC work (cluster idiom).
-            progress.update(task_id, description=msg)
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task("Starting compaction...", total=None)
 
-        result = services.index_service.compact(
-            index_name=index,
-            log_file=log_file,
-            log_callback=log_cb,
-        )
+            def log_cb(msg: str) -> None:
+                # Live step updates during long S3-bound FIMC work (cluster idiom).
+                progress.update(task_id, description=msg)
+
+            result = services.index_service.compact(
+                index_name=index,
+                log_file=log_file,
+                log_callback=log_cb,
+            )
+    except (BotoCoreError, ClientError, Exception) as e:
+        console.print(f"[bold red]AWS Credential / Storage Error:[/bold red] {e}")
+        if any(err_kw in str(e) for err_kw in ["1Password", "Credential", "authorization", "expired"]):
+            console.print("[yellow]Hint: Ensure 1Password desktop is unlocked (Developer → Integrate with 1Password CLI) or AWS credentials are active, then try again.[/yellow]")
+        raise typer.Exit(code=1)
 
     if not result.success:
         console.print(f"[bold red]{result.message}[/bold red]")
+        if any(err_kw in result.message for err_kw in ["1Password", "Credential", "authorization", "expired", "AWS"]):
+            console.print("[yellow]Hint: Ensure 1Password desktop is unlocked (Developer → Integrate with 1Password CLI) or AWS credentials are active, then try again.[/yellow]")
         raise typer.Exit(code=1)
 
     if result.isolated_files == 0 and result.message == "Nothing to compact.":

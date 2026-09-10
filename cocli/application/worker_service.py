@@ -12,7 +12,7 @@ from typing import Any, Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext
 
 from ..core.queue.factory import get_queue_manager
-from ..core.error_classification import classify_exception
+from ..core.error_classification import ErrorCategory, classify_exception
 from ..scrapers.google.google_maps import scrape_google_maps
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
@@ -658,7 +658,10 @@ class WorkerService:
                     return
             except Exception as e:
                 category = classify_exception(e)
-                logger.error(f"Detail Task Failed [{category.value}]: {e}")
+                if category in (ErrorCategory.NAVIGATION_FAILED, ErrorCategory.TIMEOUT):
+                    logger.info(f"[{category.value}] Detail Task notice for {task.place_id}: {e}")
+                else:
+                    logger.error(f"Detail Task Failed [{category.value}]: {e}")
                 await asyncio.to_thread(gm_list_item_queue.nack, task)
                 if once:
                     return
@@ -727,11 +730,19 @@ class WorkerService:
                     # with no data, found via `cocli index trace`). The
                     # write above is already merge-safe (Website.save()), so
                     # this only changes queue disposition, not persistence.
-                    logger.warning(
-                        f"Enrichment scrape failed for {task.domain} "
-                        f"[{website_data.error_category}]: {website_data.error} - "
-                        "nacking for retry instead of acking a failed result."
-                    )
+                    err_cat = website_data.error_category
+                    cat_val = err_cat.value if err_cat is not None else "unknown"
+                    if err_cat in (ErrorCategory.NAVIGATION_FAILED, ErrorCategory.TIMEOUT):
+                        logger.info(
+                            f"[{cat_val}] Enrichment scrape notice for {task.domain}: "
+                            f"{website_data.error} - nacking for retry."
+                        )
+                    else:
+                        logger.warning(
+                            f"Enrichment scrape failed for {task.domain} "
+                            f"[{cat_val}]: {website_data.error} - "
+                            "nacking for retry instead of acking a failed result."
+                        )
                     await asyncio.to_thread(enrichment_queue.nack, task)
                 else:
                     await asyncio.to_thread(enrichment_queue.ack, task)
@@ -739,11 +750,16 @@ class WorkerService:
                     return
             except Exception as e:
                 category = classify_exception(e)
-                logger.error(f"Enrichment Task Failed [{category.value}]: {e}")
+                if category in (ErrorCategory.NAVIGATION_FAILED, ErrorCategory.TIMEOUT):
+                    logger.info(f"[{category.value}] Enrichment Task notice for {task.domain}: {e}")
+                else:
+                    logger.error(f"Enrichment Task Failed [{category.value}]: {e}")
                 await asyncio.to_thread(enrichment_queue.nack, task)
                 if once:
                     return
+
                 await asyncio.sleep(5)
+
 
     async def _run_command_poller_loop(self, command_queue: Any, s3_client: Any) -> None:
         from ..application.campaign_service import CampaignService

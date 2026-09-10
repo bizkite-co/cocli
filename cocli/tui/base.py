@@ -23,11 +23,19 @@ class CocliPanel(Container):
     ) -> None:
         super().__init__(*args, **kwargs)
         self.panel_title = panel_title
-        self.border_title = ""
+        super().__setattr__("border_title", "")
+
+    @property
+    def border_title(self) -> str:
+        return ""
+
+    @border_title.setter
+    def border_title(self, value: Any) -> None:
+        pass
 
     def watch_title(self, title: str) -> None:
         """Override Textual's reactive watcher to prevent title from populating border_title."""
-        self.border_title = ""
+        super().__setattr__("border_title", "")
 
 
 class BaseModalScreen(ModalScreen[T], Generic[T]):

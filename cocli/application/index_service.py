@@ -322,65 +322,82 @@ class IndexService:
         ``log_callback`` receives plain step messages so CLI/TUI can show live progress
         without the service depending on Rich.
         """
+        from botocore.exceptions import BotoCoreError, ClientError
         from cocli.core.compact import CompactManager
 
-        _emit(log_callback, "Checking for interrupted runs...")
-        recovered = self.list_interrupted_runs(index_name)
-        if recovered:
-            _emit(
-                log_callback,
-                f"Found {len(recovered)} interrupted runs. Recovering...",
-            )
-            for run_id in recovered:
-                _emit(log_callback, f"Recovering interrupted run: {run_id}")
-                try:
-                    self.recover_interrupted_run(index_name, run_id, log_file=log_file)
-                except Exception as e:
-                    logger.error(
-                        "Failed to recover interrupted run %s: %s", run_id, e, exc_info=True
-                    )
-                    msg = f"Failed to recover interrupted run {run_id}: {e}"
-                    _emit(log_callback, msg)
-                    return CompactResult(
-                        campaign_name=self.campaign_name,
-                        index_name=index_name,
-                        success=False,
-                        recovered_runs=recovered,
-                        message=msg,
-                        log_file=log_file,
-                    )
-            _emit(log_callback, "Recovery complete.")
-        else:
-            _emit(log_callback, "No interrupted runs found.")
+        manager: Optional[CompactManager] = None
+        recovered: list[str] = []
 
-        manager = CompactManager(
-            campaign_name=self.campaign_name,
-            index_name=index_name,
-            log_file=log_file,
-        )
-
-        from cocli.services.cluster_service import ClusterService
         try:
-            nodes = ClusterService(self.campaign_name).get_nodes()
-        except Exception as e:
-            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
-            nodes = []
+            _emit(log_callback, "Checking for interrupted runs...")
+            try:
+                recovered = self.list_interrupted_runs(index_name)
+            except (BotoCoreError, ClientError) as e:
+                logger.error("AWS credential error while checking interrupted runs: %s", e)
+                msg = f"AWS Credential Error: {e}"
+                _emit(log_callback, msg)
+                return CompactResult(
+                    campaign_name=self.campaign_name,
+                    index_name=index_name,
+                    success=False,
+                    message=msg,
+                    log_file=log_file,
+                )
 
-        _emit(log_callback, "Acquiring S3 lock...")
-        if not manager.acquire_lock():
-            msg = "Lock acquisition failed (another compact may be running)."
-            _emit(log_callback, msg)
-            return CompactResult(
+            if recovered:
+                _emit(
+                    log_callback,
+                    f"Found {len(recovered)} interrupted runs. Recovering...",
+                )
+                for run_id in recovered:
+                    _emit(log_callback, f"Recovering interrupted run: {run_id}")
+                    try:
+                        self.recover_interrupted_run(index_name, run_id, log_file=log_file)
+                    except Exception as e:
+                        logger.error(
+                            "Failed to recover interrupted run %s: %s", run_id, e, exc_info=True
+                        )
+                        msg = f"Failed to recover interrupted run {run_id}: {e}"
+                        _emit(log_callback, msg)
+                        return CompactResult(
+                            campaign_name=self.campaign_name,
+                            index_name=index_name,
+                            success=False,
+                            recovered_runs=recovered,
+                            message=msg,
+                            log_file=log_file,
+                        )
+                _emit(log_callback, "Recovery complete.")
+            else:
+                _emit(log_callback, "No interrupted runs found.")
+
+            manager = CompactManager(
                 campaign_name=self.campaign_name,
                 index_name=index_name,
-                success=False,
-                recovered_runs=recovered,
-                message=msg,
                 log_file=log_file,
             )
-        _emit(log_callback, "Lock acquired.")
 
-        try:
+            from cocli.services.cluster_service import ClusterService
+            try:
+                nodes = ClusterService(self.campaign_name).get_nodes()
+            except Exception as e:
+                logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+                nodes = []
+
+            _emit(log_callback, "Acquiring S3 lock...")
+            if not manager.acquire_lock():
+                msg = "Lock acquisition failed (another compact may be running)."
+                _emit(log_callback, msg)
+                return CompactResult(
+                    campaign_name=self.campaign_name,
+                    index_name=index_name,
+                    success=False,
+                    recovered_runs=recovered,
+                    message=msg,
+                    log_file=log_file,
+                )
+            _emit(log_callback, "Lock acquired.")
+
             if index_name == "google_maps_prospects":
                 # gm-list already captures category/phone/rating/reviews_count/
                 # street_address reliably (see task-agent
@@ -456,6 +473,18 @@ class IndexService:
                 message=msg,
                 log_file=log_file,
             )
+        except (BotoCoreError, ClientError) as e:
+            logger.error("AWS authentication/S3 error during compaction: %s", e, exc_info=True)
+            msg = f"AWS Credential Error: {e}"
+            _emit(log_callback, msg)
+            return CompactResult(
+                campaign_name=self.campaign_name,
+                index_name=index_name,
+                success=False,
+                recovered_runs=recovered,
+                message=msg,
+                log_file=log_file,
+            )
         except Exception as e:
             logger.error("Compaction failed: %s", e, exc_info=True)
             msg = f"Compaction failed: {e}"
@@ -469,7 +498,8 @@ class IndexService:
                 log_file=log_file,
             )
         finally:
-            manager.release_lock()
+            if manager and getattr(manager, "_lock_acquired", False):
+                manager.release_lock()
 
     # ------------------------------------------------------------------
     # Trace (identity-scoped audit across pipeline stations)

@@ -193,12 +193,12 @@ async def test_enrichment_loop_nacks_instead_of_acking_a_failed_scrape(tmp_path,
 
     with patch("cocli.models.campaigns.campaign.Campaign.load", return_value=MagicMock()), \
          patch("cocli.core.enrichment.enrich_company_website", new=AsyncMock(return_value=failed_website)), \
-         caplog.at_level("WARNING", logger="cocli.application.worker_service"):
+         caplog.at_level("INFO", logger="cocli.application.worker_service"):
         await service._run_enrichment_task_loop(context, enrichment_queue, False, True)
 
     enrichment_queue.nack.assert_called_once_with(fake_task)
     enrichment_queue.ack.assert_not_called()
-    assert "enrichment scrape failed" in caplog.text.lower()
+    assert "enrichment scrape" in caplog.text.lower()
 
 
 @pytest.mark.asyncio
