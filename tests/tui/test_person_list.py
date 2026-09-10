@@ -17,29 +17,32 @@ mock_fz_person_items = [
     SearchResult(name="Another Duplicate Person", slug="duplicate-person", type="person", unique_id="duplicate-person-1", tags=[], display=""),
 ]
 
-class PersonListTestApp(App[None]):
-    """A test app for the PersonList screen."""
+from textual.app import ComposeResult
 
-    SCREENS = {"person_list": PersonList}
+
+class PersonListTestApp(App[None]):
+    """A test app for the PersonList container."""
 
     def __init__(self, services=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
         self.auto_show = False
+        self.person_list = PersonList()
 
-    def on_mount(self) -> None:
-        self.push_screen("person_list")
+    def compose(self) -> ComposeResult:
+        yield self.person_list
+
 
 @pytest.mark.asyncio
 async def test_person_list_display_people():
     mock_search = MagicMock()
     mock_search.return_value = mock_fz_person_items
     services = ServiceContainer(search_service=mock_search, sync_search=True)
-    
+
     app = PersonListTestApp(services=services)
     async with app.run_test() as driver:
-        # Get the PersonList screen
-        person_list_screen = app.get_screen("person_list")
+        # Get the PersonList widget
+        person_list_screen = app.person_list
         assert isinstance(person_list_screen, PersonList)
 
         # Allow worker to run
@@ -74,7 +77,7 @@ async def test_person_list_search_duplicate_slugs():
 
     app = PersonListTestApp(services=services)
     async with app.run_test() as driver:
-        person_list_screen = app.get_screen("person_list")
+        person_list_screen = app.person_list
         assert isinstance(person_list_screen, PersonList)
 
         list_view = person_list_screen.query_one(ListView)

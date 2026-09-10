@@ -1,8 +1,33 @@
+from typing import Any, TypeVar, Generic
+from textual.containers import Container
 from textual.screen import ModalScreen
 from textual import events
-from typing import TypeVar, Generic
 
 T = TypeVar("T")
+
+
+class CocliPanel(Container):
+    """
+    A base container for titled panels in the cocli TUI.
+
+    Use this base class for any focusable or titled panel container that renders
+    its own header Label in `compose()`. It structurally prevents duplicate header rendering
+    by ensuring `border_title` is always suppressed.
+    """
+
+    def __init__(
+        self,
+        panel_title: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.panel_title = panel_title
+        self.border_title = ""
+
+    def watch_title(self, title: str) -> None:
+        """Override Textual's reactive watcher to prevent title from populating border_title."""
+        self.border_title = ""
 
 
 class BaseModalScreen(ModalScreen[T], Generic[T]):
@@ -23,3 +48,4 @@ class BaseModalScreen(ModalScreen[T], Generic[T]):
         Ensures key events are stopped at the modal level by default.
         """
         event.stop()
+

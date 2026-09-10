@@ -20,11 +20,12 @@ from cocli.models.search import SearchResult
 
 from .inputs import CocliSearchInput
 from .mark_prefix import MarkPrefixMixin
+from ..base import CocliPanel
 
 logger = logging.getLogger(__name__)
 
 
-class CompanyList(MarkPrefixMixin, Container):
+class CompanyList(MarkPrefixMixin, CocliPanel):
     class CompanyHighlighted(Message):
         def __init__(self, company: Company) -> None:
             super().__init__()
@@ -47,8 +48,7 @@ class CompanyList(MarkPrefixMixin, Container):
     def __init__(
         self, name: str | None = None, id: str | None = None, classes: str | None = None
     ):
-        super().__init__(name=name, id=id, classes=classes)
-        self.border_title = ""
+        super().__init__(panel_title="SEARCH", name=name, id=id, classes=classes)
         self.filtered_fz_items: list[SearchResult] = []
         self.filter_contact: bool = True
         # DEFAULT TO MRU (Most Recently Updated)

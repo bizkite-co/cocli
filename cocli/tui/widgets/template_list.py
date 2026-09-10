@@ -1,22 +1,22 @@
 from typing import TYPE_CHECKING, cast, Any
 from textual.app import ComposeResult
 from textual.widgets import Label, ListView, ListItem
-from textual.containers import Container
 from textual.message import Message
 from textual import on, events, work
+
+from ..base import CocliPanel
 
 if TYPE_CHECKING:
     from ..app import CocliApp
 
 
-class TemplateList(Container):
+class TemplateList(CocliPanel):
     """A list of search templates."""
 
     def __init__(
         self, name: str | None = None, id: str | None = None, classes: str | None = None
     ) -> None:
-        super().__init__(name=name, id=id, classes=classes)
-        self.border_title = ""
+        super().__init__(panel_title="TEMPLATES", name=name, id=id, classes=classes)
 
     class TemplateSelected(Message):
         def __init__(self, template_id: str) -> None:

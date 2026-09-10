@@ -8,18 +8,18 @@ from textual.app import ComposeResult
 from cocli.utils.open_url import open_url
 from .phone import Phone
 from .email import Email
+from ..base import CocliPanel
 
 
-class CompanyPreview(Container):
+class CompanyPreview(CocliPanel):
     """A widget to display a preview of a company."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Capture initial widgets to mount in preview_content later
         self._initial_widgets = args
-        super().__init__(**kwargs)
+        super().__init__(panel_title="PREVIEW", **kwargs)
         self.can_focus = False
         self.company: Optional[Company] = None
-        self.border_title = ""
 
     def compose(self) -> ComposeResult:
         yield Label("PREVIEW", id="preview_header", classes="pane-header")

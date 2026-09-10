@@ -24,6 +24,7 @@ from ...models.phone import PhoneNumber
 from ...core.paths import paths
 from ...core.config import get_editor_command
 from .mark_prefix import MarkPrefixMixin
+from ..base import CocliPanel
 from ...utils.open_url import open_url
 from .confirm_screen import ConfirmScreen
 
@@ -100,6 +101,14 @@ class QuadrantTable(DataTable[Any]):
         Binding("h", "exit_quadrant", "Back", show=False),
         Binding("escape", "exit_quadrant", "Exit Quadrant"),
     ]
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.border_title = ""
+
+    def watch_title(self, title: str) -> None:
+        """Override Textual's reactive watcher to prevent title from populating border_title."""
+        self.border_title = ""
 
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "i":
@@ -280,13 +289,12 @@ class EditInput(Input):
             event.prevent_default()
 
 
-class DetailPanel(Container):
+class DetailPanel(CocliPanel):
     """A focusable panel containing a title and a widget."""
 
     def __init__(self, title: str, child: Widget, id: str):
-        super().__init__(id=id, classes="panel")
+        super().__init__(panel_title=title, id=id, classes="panel")
         self.can_focus = True
-        self.panel_title = title
         self.child = child
 
     def compose(self) -> ComposeResult:

@@ -2,21 +2,21 @@ import logging
 import asyncio
 from typing import TYPE_CHECKING, cast
 
-from textual.screen import Screen
+from textual.containers import VerticalScroll
 from textual.widgets import ListView, ListItem, Label, Input
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
 from textual.message import Message
 from textual import on, work
 
 if TYPE_CHECKING:
     from ..app import CocliApp
 from cocli.models.search import SearchResult
+from ..base import CocliPanel
 
 logger = logging.getLogger(__name__)
 
-class PersonList(Screen[None]):
-    """A screen to display a list of people."""
+class PersonList(CocliPanel):
+    """A view container to display a list of people."""
 
     class PersonSelected(Message):
         """Posted when a person is selected from the list."""
@@ -30,12 +30,12 @@ class PersonList(Screen[None]):
     ]
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
-        super().__init__(name, id, classes)
+        super().__init__(panel_title="PEOPLE", name=name, id=id, classes=classes)
         self.all_fz_items: list[SearchResult] = []
         self.filtered_fz_items: list[SearchResult] = []
 
     def compose(self) -> ComposeResult:
-        yield Label("People")
+        yield Label("PEOPLE", classes="pane-header")
         yield Input(placeholder="Search people...", id="person_search_input")
         with VerticalScroll():
             yield ListView(
