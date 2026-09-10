@@ -26,6 +26,14 @@ from cocli.models.campaigns.indexes.email import EmailEntry
 logger = logging.getLogger(__name__)
 
 
+class SearchResultsList(list[SearchResult]):
+    """Subclass of list that allows custom attributes such as total_count."""
+
+    total_count: int = 0
+
+
+
+
 def _get_compacted_fallback_columns() -> dict[str, str]:
     """Return fallback columns for items_compacted table when no data exists."""
     return {
@@ -670,7 +678,7 @@ def get_fuzzy_search_results(
             excluded_slugs = {e.company_slug for e in exclusions if e.company_slug}
             excluded_domains = {e.domain for e in exclusions if e.domain}
 
-            final_items = []
+            final_items = SearchResultsList()
             for r in res:
                 slug = str(r[2])
                 domain = str(r[3]) if r[3] else None
@@ -701,7 +709,7 @@ def get_fuzzy_search_results(
                     )
                 )
 
-            setattr(final_items, "total_count", total_matching)
+            final_items.total_count = total_matching
             return final_items
 
         except Exception as e:
@@ -709,4 +717,5 @@ def get_fuzzy_search_results(
             import traceback
 
             logger.debug(traceback.format_exc())
-            return []
+            return SearchResultsList()
+
