@@ -1239,7 +1239,15 @@ class WorkerService:
         from ..services.cluster_service import ClusterService
 
         cluster_service = ClusterService(self.campaign_name)
-        node_config = next((n for n in cluster_service.get_nodes() if n.hostname.startswith(hostname)), None)
+        node_config = next(
+            (
+                n
+                for n in cluster_service.get_nodes()
+                if n.hostname.lower().startswith(hostname.lower())
+                or hostname.lower().startswith(n.hostname.lower())
+            ),
+            None,
+        )
 
         if not node_config:
             if running_in_fargate or hostname == "fargate":
