@@ -704,7 +704,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 cleaned = "1" + cleaned
 
             # 1. Open Google Voice
-            voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
+            from ...utils.google_voice_url import google_voice_url
+
+            voice_url = google_voice_url(str(phone))
             voice_opened = open_url(voice_url)
 
             # 2. Open Company Website if it exists

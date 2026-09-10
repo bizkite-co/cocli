@@ -4,7 +4,6 @@ import typer
 from typing import Any
 from pathlib import Path
 import subprocess
-import re
 import os
 import shutil
 import sys
@@ -153,17 +152,14 @@ def _interactive_view_company(company_slug: str) -> None:
             console.print("\n[bold green]Initiating phone call...[/bold green]")
             phone_number = frontmatter_data.get('phone_number')
             if phone_number:
-                # Clean the phone number for the tel: URI
-                cleaned_phone_number = re.sub(r'\D', '', phone_number)
-                if not cleaned_phone_number.startswith('+1'):
-                    cleaned_phone_number = '+1' + cleaned_phone_number # Assuming US numbers, adjust if needed
+                from ..utils.google_voice_url import google_voice_url
 
-                google_voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned_phone_number}"
+                voice_url = google_voice_url(phone_number)
                 try:
-                    if open_url(google_voice_url):
+                    if open_url(voice_url):
                         console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
                     else:
-                        console.print(f"[bold red]Could not open browser for {google_voice_url}[/bold red]")
+                        console.print(f"[bold red]Could not open browser for {voice_url}[/bold red]")
                     _add_meeting_logic(company_name=company_slug, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
                     console.print("[bold green]Meeting for call added. Press any key to continue.[/bold green]")
                 except Exception as e:
