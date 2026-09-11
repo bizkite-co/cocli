@@ -789,9 +789,9 @@ echo '@@ERRORS@@'
 # [navigation_failed] is ErrorCategory.NAVIGATION_FAILED - "site
 # unreachable/blocked/4xx/5xx - never our bug" per error_classification.py -
 # excluded here so DEGRADED reflects real pipeline health, not the baseline
-# failure rate of scraping arbitrary real-world websites. Still fully
-# visible below in ERROR_PATTERNS.
-docker logs --since 30m cocli-supervisor 2>&1 | grep -vF '[navigation_failed]' | grep -vE '"HTTP/[0-9.]+" 2[0-9]{2}' | grep -icE '\b(error|errors|exception|exceptions|traceback|denied)\b' || true
+# failure rate of scraping arbitrary real-world websites. External site HTTP status
+# response lines (e.g. 500/404/200 HTTP responses during web scraping) are also excluded.
+docker logs --since 30m cocli-supervisor 2>&1 | grep -vF '[navigation_failed]' | grep -vE 'HTTP Request:|"HTTP/[0-9.]+" [0-9]{3}' | grep -icE '\b(error|errors|exception|exceptions|traceback|denied)\b' || true
 echo '@@ERROR_PATTERNS@@'
 # Normalize variable parts (timestamps, per-company/campaign path segments,
 # domains, long IDs/hashes/ARNs) so the same underlying error collapses to
@@ -819,7 +819,7 @@ echo '@@ERROR_PATTERNS@@'
 # observed live as "Error reading task file <ID>*/queues/gm-<ID><DOMAIN>").
 docker logs --since 30m cocli-supervisor 2>&1 \
   | grep -iE '\b(error|errors|exception|exceptions|traceback|denied)\b' \
-  | grep -vE '"HTTP/[0-9.]+" 2[0-9]{2}' \
+  | grep -vE 'HTTP Request:|"HTTP/[0-9.]+" [0-9]{3}' \
   | grep -vF 'errors=0' \
   | grep -vF '[navigation_failed]' \
   | grep -vF 'NAVIGATION_FAILED' \
