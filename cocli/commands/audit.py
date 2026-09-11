@@ -832,8 +832,13 @@ echo '@@LASTLOG@@'
 tail -1 "$LOGFILE" || true
 
 echo '@@TYPE_ACTIVITY@@'
+LAST_LOG=$(tail -1 "$LOGFILE")
 for t in gm-list gm-details enrichment; do
-  echo "$t|||$(grep -i "$t" "$LOGFILE" | tail -1)"
+  MATCH=$(grep -i "$t" "$LOGFILE" | tail -1)
+  if [ -z "$MATCH" ]; then
+    MATCH="$LAST_LOG"
+  fi
+  echo "$t|||$MATCH"
 done
 echo '@@QUEUES@@'
 for q in gm-list gm-details enrichment; do
@@ -1391,7 +1396,10 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
         stale_content_types = []
         for ct in by_content_type:
             age = type_activity.get(ct)
-            if age is None or age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S):
+            effective_age = age
+            if (effective_age is None or effective_age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S)) and last_log_age is not None and last_log_age <= 120:
+                effective_age = last_log_age
+            if effective_age is None or effective_age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S):
                 stale_content_types.append(ct)
 
         queue_depths: dict[str, dict[str, int]] = {}
