@@ -1040,11 +1040,10 @@ class WorkerService:
                     last_activity[child.content_type] = ts_iso
 
         worker_count = sum(designation.values())
-        queue_pending = await self._compute_queue_pending()
-        gm_list_tile_coverage = await self._compute_gm_list_tile_coverage()
+        now_iso = datetime.now(UTC).isoformat()
 
         stats = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": now_iso,
             "hostname": self.processed_by,
             "campaign": self.campaign_name,
             "system": {"cpu": cpu_usage, "mem": mem_usage},
@@ -1057,40 +1056,57 @@ class WorkerService:
             "last_activity": last_activity,
             "error_count_30m": get_recent_error_count(1800),
             "recent_errors": get_recent_error_messages(),
-            "queue_pending": queue_pending,
-            "gm_list_tile_coverage": gm_list_tile_coverage,
+            "queue_pending": {},
+            "gm_list_tile_coverage": {},
         }
 
-        # Write local copy for container/health checks
+        # 1. Immediate local heartbeat & Gossip broadcast (<1ms, before any disk scans)
         try:
             with open("/tmp/cocli_heartbeat.json", "w") as f:
                 json.dump(stats, f)
         except Exception as local_err:
             logger.debug(f"Failed to write local heartbeat: {local_err}")
 
-        # 1. Durability Tier (S3)
-        try:
-            s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats), ContentType="application/json")
-        except Exception as s3_err:
-            logger.debug(f"S3 Heartbeat failed: {s3_err}")
-
-        # 2. Real-Time Tier (Gossip)
         if bridge and bridge.running:
             try:
                 from ..core.environment import get_environment
                 hb = HeartbeatDatagram(
                     campaign_name=self.campaign_name,
                     node_id=self.processed_by,
-                    timestamp=str(stats["timestamp"]),
-                    load_avg=cpu_usage, # We use CPU % as a proxy for load in the datagram
+                    timestamp=now_iso,
+                    load_avg=cpu_usage,
                     memory_percent=mem_usage,
                     worker_count=worker_count,
-                    active_tasks=worker_count, # For now, assume all workers are active if in the loop
+                    active_tasks=worker_count,
                     environment=get_environment().value
                 )
                 bridge.broadcast_msg(hb.to_usv())
             except Exception as gossip_err:
                 logger.debug(f"Gossip Heartbeat failed: {gossip_err}")
+
+        # 2. Async heavy stats with strict 2s timeout so large queue dirs never block heartbeat loop
+        try:
+            stats["queue_pending"] = await asyncio.wait_for(self._compute_queue_pending(), timeout=2.0)
+        except (asyncio.TimeoutError, Exception) as err:
+            logger.debug(f"queue_pending calculation timed out or failed: {err}")
+
+        try:
+            stats["gm_list_tile_coverage"] = await asyncio.wait_for(self._compute_gm_list_tile_coverage(), timeout=2.0)
+        except (asyncio.TimeoutError, Exception) as err:
+            logger.debug(f"gm_list_tile_coverage calculation timed out or failed: {err}")
+
+        # Update local copy & S3 put with completed stats
+        try:
+            with open("/tmp/cocli_heartbeat.json", "w") as f:
+                json.dump(stats, f)
+        except Exception:
+            pass
+
+        # Durability Tier (S3)
+        try:
+            s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats), ContentType="application/json")
+        except Exception as s3_err:
+            logger.debug(f"S3 Heartbeat failed: {s3_err}")
 
     async def run_supervisor(self, headless: bool, debug: bool, interval: int) -> None:
         async with async_playwright() as p:
