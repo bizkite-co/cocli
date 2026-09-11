@@ -638,7 +638,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
             self.app.notify("Enrichment file not found", severity="warning")
 
     def action_open_mark_menu(self) -> None:
-        """``m`` then ``i`` invalid or ``h`` high-value. Nav mode only."""
+        """``m`` then ``i`` invalid, ``v`` valid, or ``h`` high-value. Nav mode only."""
         if isinstance(self.app.focused, Input):
             return
         self.enter_mark_prefix()
@@ -665,6 +665,25 @@ class CompanyDetail(MarkPrefixMixin, Container):
             reason=REASON_NONCONFORMING,
         )
         self.app.notify(f"Marked '{name}' invalid — off to-call, in to-call-invalid")
+
+    def action_mark_valid(self) -> None:
+        company = self.company_data.get("company", {})
+        slug = company.get("slug")
+        if not slug:
+            self.app.notify("No slug found", severity="error")
+            return
+
+        from ...core.config import get_campaign
+        from ...application.to_call_disposition_service import mark_to_call_valid
+
+        campaign = get_campaign() or "default"
+        name = company.get("name") or slug
+        mark_to_call_valid(
+            campaign=campaign,
+            slug=slug,
+            domain=company.get("domain"),
+        )
+        self.app.notify(f"Marked '{name}' valid — removed from invalid list")
 
     def action_mark_high_value(self) -> None:
         company = self.company_data.get("company", {})

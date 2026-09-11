@@ -155,6 +155,7 @@ _last_checkpoint_mtime: float = -1.0
 _last_venue_mtime: float = -1.0
 _last_lifecycle_mtime: float = -1.0
 _last_to_call_mtime: float = -1.0
+_last_to_call_invalid_mtime: float = -1.0
 _last_email_mtime: float = -1.0
 _last_campaign: Optional[str] = None
 _lock = threading.RLock()
@@ -199,6 +200,7 @@ def get_template_counts(campaign_name: Optional[str] = None) -> dict[str, int]:
                     SELECT
                       COUNT(*) FILTER (WHERE type = 'company'),
                       COUNT(*) FILTER (WHERE type = 'company' AND is_to_call = TRUE),
+                      COUNT(*) FILTER (WHERE type = 'company' AND is_invalid = TRUE),
                       COUNT(*) FILTER (WHERE type = 'company' AND {email_sql}),
                       COUNT(*) FILTER (WHERE type = 'company' AND NOT {email_sql}),
                       COUNT(*) FILTER (
@@ -217,14 +219,15 @@ def get_template_counts(campaign_name: Optional[str] = None) -> dict[str, int]:
                 if row:
                     counts["tpl_all"] = int(row[0] or 0)
                     counts["tpl_to_call"] = int(row[1] or 0)
-                    counts["tpl_with_email"] = int(row[2] or 0)
-                    counts["tpl_no_email"] = int(row[3] or 0)
-                    counts["tpl_actionable"] = int(row[4] or 0)
-                    counts["tpl_no_address"] = int(row[5] or 0)
-                    counts["tpl_top_rated"] = int(row[6] or 0)
-                    counts["tpl_most_reviewed"] = int(row[7] or 0)
+                    counts["tpl_invalid"] = int(row[2] or 0)
+                    counts["tpl_with_email"] = int(row[3] or 0)
+                    counts["tpl_no_email"] = int(row[4] or 0)
+                    counts["tpl_actionable"] = int(row[5] or 0)
+                    counts["tpl_no_address"] = int(row[6] or 0)
+                    counts["tpl_top_rated"] = int(row[7] or 0)
+                    counts["tpl_most_reviewed"] = int(row[8] or 0)
                     counts["tpl_leads"] = int(row[0] or 0)
-                    counts["tpl_venues"] = int(row[8] or 0)
+                    counts["tpl_venues"] = int(row[9] or 0)
 
                 building: set[str] = getattr(get_fuzzy_search_results, "_building", set())
                 if campaign not in building:
@@ -255,6 +258,7 @@ def get_fuzzy_search_results(
         _last_venue_mtime, \
         _last_lifecycle_mtime, \
         _last_to_call_mtime, \
+        _last_to_call_invalid_mtime, \
         _last_email_mtime, \
         _last_campaign
 
@@ -274,6 +278,7 @@ def get_fuzzy_search_results(
     lifecycle_path = None
     lifecycle_dp = None
     to_call_pending_dir = None
+    to_call_invalid_pending_dir = None
     emails_root = None
 
     if campaign:
@@ -285,6 +290,9 @@ def get_fuzzy_search_results(
         lifecycle_path = campaign_node.lifecycle
         lifecycle_dp = campaign_node.path / "indexes" / "lifecycle" / "datapackage.json"
         to_call_pending_dir = paths.queue(campaign, "to-call") / "pending"
+        to_call_invalid_pending_dir = (
+            paths.queue(campaign, "to-call-invalid") / "pending"
+        )
         emails_root = campaign_node.index("emails").path
 
     # 1. NON-BLOCKING CACHE REBUILD (Standard Pattern)
@@ -339,6 +347,11 @@ def get_fuzzy_search_results(
             if to_call_pending_dir and to_call_pending_dir.exists()
             else -1.0
         )
+        current_to_call_invalid_mtime = (
+            os.path.getmtime(to_call_invalid_pending_dir)
+            if to_call_invalid_pending_dir and to_call_invalid_pending_dir.exists()
+            else -1.0
+        )
         current_email_mtime = max(
             _dir_mtime(emails_root / "shards" if emails_root else None),
             _dir_mtime(emails_root / "inbox" if emails_root else None),
@@ -353,6 +366,7 @@ def get_fuzzy_search_results(
                 _last_venue_mtime = -1.0
                 _last_lifecycle_mtime = -1.0
                 _last_to_call_mtime = -1.0
+                _last_to_call_invalid_mtime = -1.0
                 _last_email_mtime = -1.0
 
             if (
@@ -362,6 +376,7 @@ def get_fuzzy_search_results(
                 or _last_campaign != campaign
                 or _last_lifecycle_mtime != current_lifecycle_mtime
                 or _last_to_call_mtime != current_to_call_mtime
+                or _last_to_call_invalid_mtime != current_to_call_invalid_mtime
                 or _last_email_mtime != current_email_mtime
             ):
                 _con.execute("DROP VIEW IF EXISTS items")
@@ -372,6 +387,7 @@ def get_fuzzy_search_results(
                     "items_venues",
                     "items_lifecycle",
                     "items_to_call",
+                    "items_to_call_invalid",
                     "items_compacted",
                     "items_emails",
                     "items_emails_by_slug",
@@ -495,6 +511,19 @@ def get_fuzzy_search_results(
                     if items:
                         _con.executemany("INSERT INTO items_to_call VALUES (?)", items)
 
+                _con.execute("CREATE TABLE items_to_call_invalid (slug VARCHAR)")
+                if to_call_invalid_pending_dir and to_call_invalid_pending_dir.exists():
+                    invalid_items = [
+                        [fname.replace(".usv", "")]
+                        for fname in os.listdir(to_call_invalid_pending_dir)
+                        if fname.endswith(".usv")
+                    ]
+                    if invalid_items:
+                        _con.executemany(
+                            "INSERT INTO items_to_call_invalid VALUES (?)",
+                            invalid_items,
+                        )
+
                 _load_email_index(_con, emails_root)
 
                 # D. Unified Search View (Strict Schema Implementation)
@@ -606,12 +635,15 @@ def get_fuzzy_search_results(
                         COALESCE({lc_details}, t1.updated_at) as details_found_at,
                         COALESCE({lc_enqueued}, CAST(NULL AS VARCHAR)) as enqueued_at,
                         COALESCE({lc_enriched}, CAST(NULL AS VARCHAR)) as last_enriched,
-                        CASE WHEN tc.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_to_call
+                        CASE WHEN tc.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_to_call,
+                        CASE WHEN tci.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_invalid
                     FROM items_checkpoint t1 
                     LEFT JOIN items_compacted compacted ON t1.place_id = compacted.place_id
                     FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug
                     LEFT JOIN items_lifecycle lc ON t1.place_id = lc.place_id
                     LEFT JOIN items_to_call tc ON COALESCE(t1.slug, t2.slug) = tc.slug
+                    LEFT JOIN items_to_call_invalid tci
+                        ON COALESCE(t1.slug, t2.slug) = tci.slug
                     LEFT JOIN items_emails_by_slug e_slug
                         ON COALESCE(t1.slug, t2.slug) = e_slug.slug
                     LEFT JOIN items_emails_by_domain e_dom
@@ -624,6 +656,7 @@ def get_fuzzy_search_results(
                 _last_venue_mtime = current_venue_mtime
                 _last_lifecycle_mtime = current_lifecycle_mtime
                 _last_to_call_mtime = current_to_call_mtime
+                _last_to_call_invalid_mtime = current_to_call_invalid_mtime
                 _last_email_mtime = current_email_mtime
                 _last_campaign = campaign
                 if campaign in _counts_cache:
@@ -653,6 +686,8 @@ def get_fuzzy_search_results(
                     sql += f" AND NOT {addr_sql}"
                 if filters.get("to_call"):
                     sql += " AND is_to_call = TRUE"
+                if filters.get("invalid"):
+                    sql += " AND is_invalid = TRUE"
 
             if search_query:
                 sql += " AND (name ILIKE ? OR slug ILIKE ? OR array_to_string(tags, ',') ILIKE ?)"
@@ -681,9 +716,14 @@ def get_fuzzy_search_results(
             res = _con.execute(sql_paginated, params).fetchall()
 
             # 4. Filter Exclusions
-            exclusions = list_all_exclusions(campaign or "")
-            excluded_slugs = {e.company_slug for e in exclusions if e.company_slug}
-            excluded_domains = {e.domain for e in exclusions if e.domain}
+            # Invalid list IS the exclusion/review pile — do not hide those rows.
+            skip_exclusions = bool(filters and filters.get("invalid"))
+            excluded_slugs: set[str] = set()
+            excluded_domains: set[str] = set()
+            if not skip_exclusions:
+                exclusions = list_all_exclusions(campaign or "")
+                excluded_slugs = {e.company_slug for e in exclusions if e.company_slug}
+                excluded_domains = {e.domain for e in exclusions if e.domain}
 
             final_items = SearchResultsList()
             for r in res:

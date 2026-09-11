@@ -51,6 +51,33 @@ def mark_to_call_invalid(
     return invalid.get_local_path()
 
 
+def mark_to_call_valid(
+    *,
+    campaign: str,
+    slug: str,
+    domain: Optional[str] = None,
+) -> Path:
+    """Undo mark_to_call_invalid: drop the exclusion and review-pile file.
+
+    Does not re-enqueue to-call; the company is simply no longer invalid.
+    """
+    from cocli.core.exclusions import ExclusionManager
+    from cocli.models.campaigns.queues.to_call_invalid import ToCallInvalidTask
+
+    ExclusionManager(campaign).remove_exclusion(slug=slug, domain=domain)
+
+    invalid = ToCallInvalidTask(
+        company_slug=slug,
+        domain=domain or "unknown",
+        campaign_name=campaign,
+        ack_token=None,
+    )
+    path = invalid.get_local_path()
+    if path.exists():
+        path.unlink()
+    return path
+
+
 def _high_value_task_path(*, campaign: str, slug: str, domain: Optional[str]) -> Path:
     from cocli.models.campaigns.queues.to_call_high_value import ToCallHighValueTask
 

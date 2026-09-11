@@ -94,6 +94,8 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self.current_sort = "reviews"
         elif tpl_id == "tpl_to_call":
             self.current_filters = {"to_call": True}
+        elif tpl_id == "tpl_invalid":
+            self.current_filters = {"invalid": True}
 
         # Clear search without triggering redundant update
         search_inputs = self.query("#company_search_input")
@@ -678,7 +680,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self.app.notify(f"Failed to remove: {e}", severity="error")
 
     def action_open_mark_menu(self) -> None:
-        """``m`` then ``i`` / ``h``. No-op while typing in search."""
+        """``m`` then ``i`` / ``v`` / ``h``. No-op while typing in search."""
         if isinstance(self.app.focused, Input):
             return
         item = self._highlighted_result()
@@ -690,6 +692,9 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
     def action_mark_invalid(self) -> None:
         self._apply_list_mark("invalid")
 
+    def action_mark_valid(self) -> None:
+        self._apply_list_mark("valid")
+
     def action_mark_high_value(self) -> None:
         self._apply_list_mark("high-value")
 
@@ -698,6 +703,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             REASON_NONCONFORMING,
             mark_to_call_high_value,
             mark_to_call_invalid,
+            mark_to_call_valid,
         )
         from cocli.core.config import get_campaign
 
@@ -714,6 +720,11 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                 campaign=campaign, slug=item.slug, domain=item.domain
             )
             self.app.notify(f"Marked {item.slug} high-value")
+        elif kind == "valid":
+            mark_to_call_valid(
+                campaign=campaign, slug=item.slug, domain=item.domain
+            )
+            self.app.notify(f"Marked {item.slug} valid")
         else:
             mark_to_call_invalid(
                 campaign=campaign,

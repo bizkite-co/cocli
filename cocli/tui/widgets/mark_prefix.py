@@ -8,7 +8,7 @@ from textual.widgets import Input, Static
 
 # Bold the keys. Do not wrap letters in [i] — Rich treats that as italic.
 MARK_PREFIX_HINT = (
-    "Mark  [bold]i[/] invalid   [bold]h[/] high-value   "
+    "Mark  [bold]i[/] invalid   [bold]v[/] valid   [bold]h[/] high-value   "
     "[dim]esc/alt+s cancel[/]"
 )
 
@@ -43,6 +43,9 @@ class MarkPrefixMixin:
         if event.key == "i":
             self.clear_mark_prefix()
             self.action_mark_invalid()  # type: ignore[attr-defined]
+        elif event.key == "v":
+            self.clear_mark_prefix()
+            self.action_mark_valid()  # type: ignore[attr-defined]
         elif event.key == "h":
             self.clear_mark_prefix()
             self.action_mark_high_value()  # type: ignore[attr-defined]

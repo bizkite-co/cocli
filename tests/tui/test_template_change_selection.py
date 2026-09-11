@@ -57,10 +57,11 @@ async def test_template_change_updates_selection():
         assert len(company_list.filtered_fz_items) > 0
         assert company_list.filtered_fz_items[0].name == "All Company 1"
         
-        # Focus templates and select "With Email" (index 2)
+        # Focus templates and select "With Email" (index 3)
         await driver.press("t")
-        await driver.press("j") # Down to "To Call Tomorrow"
-        await driver.press("j") # Down to "With Email"
+        await driver.press("j")  # To Call
+        await driver.press("j")  # Invalid
+        await driver.press("j")  # With Email
         await driver.press("enter")
         
         # Ample time for search worker and UI refresh synchronization
@@ -86,8 +87,9 @@ async def test_l_key_drill_down_updates_selection():
         
         # Focus templates
         await driver.press("t")
-        await driver.press("j") # Down to "To Call Tomorrow"
-        await driver.press("j") # Down to "With Email"
+        await driver.press("j")  # To Call
+        await driver.press("j")  # Invalid
+        await driver.press("j")  # With Email
         
         # Press 'l' to drill down
         await driver.press("l")

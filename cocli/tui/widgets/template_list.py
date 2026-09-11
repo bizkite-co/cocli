@@ -33,6 +33,7 @@ class TemplateList(CocliPanel):
         yield ListView(
             ListItem(Label("All Leads"), id="tpl_all"),
             ListItem(Label("To Call"), id="tpl_to_call"),
+            ListItem(Label("Invalid"), id="tpl_invalid"),
             ListItem(Label("With Email"), id="tpl_with_email"),
             ListItem(Label("Missing Email"), id="tpl_no_email"),
             ListItem(Label("Actionable (E+P)"), id="tpl_actionable"),

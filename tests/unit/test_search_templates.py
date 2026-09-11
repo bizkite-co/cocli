@@ -31,6 +31,8 @@ def reset_search_state() -> Iterator[None]:
     search_service._last_venue_mtime = -1.0
     search_service._last_lifecycle_mtime = -1.0
     search_service._last_to_call_mtime = -1.0
+    if hasattr(search_service, "_last_to_call_invalid_mtime"):
+        search_service._last_to_call_invalid_mtime = -1.0
     if hasattr(search_service, "_last_email_mtime"):
         search_service._last_email_mtime = -1.0
     yield
@@ -264,3 +266,38 @@ def test_template_counts_cover_all_company_templates(templates_env: str) -> None
     assert counts["tpl_top_rated"] == 4  # rating >= 4.0
     assert counts["tpl_most_reviewed"] == 4  # reviews >= 10
     assert counts.get("tpl_to_call", 0) == 0
+    assert counts.get("tpl_invalid", 0) == 0
+
+
+def test_invalid_template_lists_excluded_invalid_companies(
+    templates_env: str,
+) -> None:
+    from cocli.application.to_call_disposition_service import mark_to_call_invalid
+    from cocli.core.exclusions import ExclusionManager
+
+    slug = "email-co"
+    mark_to_call_invalid(
+        campaign=templates_env, slug=slug, domain="emailco.com"
+    )
+    assert ExclusionManager(templates_env).is_excluded(slug=slug)
+
+    search_service._last_to_call_invalid_mtime = -1.0
+    search_service._counts_cache.clear()
+
+    hidden = get_fuzzy_search_results(
+        "",
+        campaign_name=templates_env,
+        force_rebuild_cache=True,
+    )
+    assert slug not in [r.slug for r in hidden]
+
+    results = get_fuzzy_search_results(
+        "",
+        campaign_name=templates_env,
+        filters={"invalid": True},
+        force_rebuild_cache=True,
+    )
+    assert [r.slug for r in results] == [slug]
+
+    counts = get_template_counts(campaign_name=templates_env)
+    assert counts.get("tpl_invalid") == 1

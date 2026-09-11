@@ -141,3 +141,31 @@ async def test_mark_prefix_h_marks_high_value(mock_company_data):
                 slug="nemeth-family-interiors",
                 domain="nemethfamilyinteriors.com",
             )
+
+
+@pytest.mark.asyncio
+async def test_mark_prefix_v_marks_valid(mock_company_data):
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await pilot.pause()
+
+        with patch(
+            "cocli.application.to_call_disposition_service.mark_to_call_valid"
+        ) as mock_mark, patch(
+            "cocli.core.config.get_campaign", return_value="roadmap"
+        ):
+            await pilot.press("m")
+            await pilot.pause()
+            bar = detail.query_one("#mark-prefix-bar")
+            assert "hidden" not in bar.classes
+            await pilot.press("v")
+            await pilot.pause()
+
+            mock_mark.assert_called_once_with(
+                campaign="roadmap",
+                slug="nemeth-family-interiors",
+                domain="nemethfamilyinteriors.com",
+            )
+            assert "hidden" in bar.classes
