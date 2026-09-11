@@ -13,10 +13,13 @@ from cocli.core.queue.filesystem import (
 )
 from cocli.core.queue.layout import resolve_queue_station
 from cocli.core.sharding import get_domain_shard, get_place_id_shard, get_shard_id
+from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.station_defs.campaigns.queues import (
     ENRICHMENT_QUEUE_STATION,
     GM_DETAILS_QUEUE_STATION,
     GM_LIST_QUEUE_STATION,
+    GM_LIST_RESULTS_STATION,
     station_for_queue,
 )
 from stations.segments import collect_shard
@@ -81,6 +84,39 @@ def test_domain_hash_combinator_matches_get_domain_shard() -> None:
         "test.com",
     ):
         assert sh.shard_for(domain) == get_domain_shard(domain)
+
+
+def test_gm_list_work_decl_is_not_gm_details_copy() -> None:
+    """Pending gm-list is ScrapeTask USV with geo in the task id, not
+    place-id json-file (the gm-details copy that GM_LIST_QUEUE_STATION was)."""
+    assert GM_LIST_QUEUE_STATION.model is ScrapeTask
+    assert GM_LIST_QUEUE_STATION.serialization == "usv"
+    assert collect_shard(GM_LIST_QUEUE_STATION.segments) is None
+    assert GM_DETAILS_QUEUE_STATION.serialization == "json-file"
+    details_shard = collect_shard(GM_DETAILS_QUEUE_STATION.segments)
+    assert details_shard is not None
+    assert details_shard.shard_for("ChIJ-5-rest") == get_place_id_shard("ChIJ-5-rest")
+
+
+def test_gm_list_results_station_is_list_item_usv_in_place() -> None:
+    assert GM_LIST_RESULTS_STATION.model is GoogleMapsListItem
+    assert GM_LIST_RESULTS_STATION.serialization == "usv"
+    assert GM_LIST_RESULTS_STATION.datapackage_path == "datapackage.json"
+    assert GM_LIST_RESULTS_STATION.path_template.endswith(
+        "queues/gm-list/completed/results"
+    )
+    assert collect_shard(GM_LIST_RESULTS_STATION.segments) is None
+
+
+def test_gm_list_layout_keeps_geo_pending_path() -> None:
+    from cocli.core.queue.layout import task_rel_under_phase
+
+    task_id = "3/33.4/-80.9/commercial-vinyl-flooring-contractor.usv"
+    rel = task_rel_under_phase(GM_LIST_QUEUE_STATION, "pending", task_id)
+    assert rel == "pending/3/33.4/-80.9/commercial-vinyl-flooring-contractor"
+    # A leftover place-id combinator would still skip extra shard for this
+    # pre-sharded id; the decl itself must not be that combinator.
+    assert collect_shard(GM_LIST_QUEUE_STATION.segments) is None
 
 
 def test_fsq_resolves_decl_and_shard_via_layout(tmp_path: Path) -> None:

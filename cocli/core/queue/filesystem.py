@@ -1019,7 +1019,8 @@ class FilesystemGmListQueue(FilesystemQueue):
                 ),  # Include audited metadata if present
             }
 
-            # Local path (product shape: completed/results/{geo}/… — not DFQ flat)
+            # Receipt overlay (JSON) next to GM_LIST_RESULTS_STATION USVs
+            # under completed/results/{geo}/… — not DFQ completed/{id}.json.
             from ..sharding import get_geo_shard
 
             lat_shard = get_geo_shard(str(task.latitude))

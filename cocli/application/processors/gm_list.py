@@ -49,7 +49,8 @@ class GmListProcessor:
             lat_tile, lon_tile = grid_id.split("_")
             phrase_slug = slugify(task.search_phrase)
 
-            # 1. Save USV Trace File
+            # 1. Save USV Trace File (GM_LIST_RESULTS_STATION, still nested
+            # under completed/results/ until gm-list-results/ relocation).
             results_dir = (
                 paths.queue(task.campaign_name, "gm-list").completed
                 / "results"

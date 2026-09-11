@@ -7,7 +7,7 @@ Phase names are declared per station — not a single global phase list.
 | Queue family | Production algorithm | Combinator |
 | :--- | :--- | :--- |
 | gm-details (default DFQ) | place_id 6th char, raw alphabet (``-``/``_`` distinct) | ``shard_by_char_index(5)`` |
-| gm-list | same for bare ids; pre-sharded task ids (``2/25.0/…``) keep first segment | ``shard_by_char_index(5)`` + FSQ pre-shard rule |
+| gm-list work | geo identity in the task id (``{lat_shard}/{lat}/{lon}/{phrase}.usv``) | no extra combinator (not place-id) |
 | enrichment | ``sha256(domain)[:2]`` hex | ``shard_by_hash(2)`` |
 | map-tile | no DFQ item shard; payload bag under pending | phases only; layout ``tiles`` under pending |
 | unknown queue_name | place_id char (safe DFQ default) | ``shard_by_char_index(5)`` |
@@ -18,8 +18,13 @@ discovery-gen is still PR7.
 
 from __future__ import annotations
 
+from typing import Any
+
 from stations.segments import phases, shard_by_char_index, shard_by_hash
 from stations.station import StationDecl
+
+from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 
 # Shared DFQ phase set (value-level names on disk; not a global enum type).
 _DFQ_PHASES = phases("pending", "completed", "failed", "sideline", "processing")
@@ -44,12 +49,31 @@ GM_DETAILS_QUEUE_STATION: StationDecl[object] = StationDecl(
     segments=(_DFQ_PHASES, _PLACE_ID_SHARD),
 )
 
-GM_LIST_QUEUE_STATION: StationDecl[object] = StationDecl(
+# Work items: ScrapeTask USV at pending/{lat_shard}/{lat}/{lon}/{phrase}.usv
+# Geo is the identity path, not place-id shard_by_char_index(5). QueueLayout
+# still sees a pre-sharded task_id (first segment length ≤ 2) so it must not
+# insert another shard. completed/ exists as the parent of results/; the
+# payload there is a different station (GM_LIST_RESULTS_STATION).
+# JSON siblings of those USVs (*.json receipts) are a product overlay until
+# gm-list-results/ is a real directory.
+GM_LIST_QUEUE_STATION: StationDecl[ScrapeTask] = StationDecl(
     name="gm-list-queue",
     path_template="campaigns/{campaign}/queues/{queue}",
-    model=object,
-    serialization="json-file",
-    segments=(_DFQ_PHASES, _PLACE_ID_SHARD),
+    model=ScrapeTask,
+    serialization="usv",
+    datapackage_path="pending/datapackage.json",
+    segments=(_DFQ_PHASES,),
+)
+
+# Discovery hits written by GmListProcessor. Live path stays
+# completed/results/ until a later move to queues/gm-list-results/.
+GM_LIST_RESULTS_STATION: StationDecl[GoogleMapsListItem] = StationDecl(
+    name="gm-list-results",
+    path_template="campaigns/{campaign}/queues/gm-list/completed/results",
+    model=GoogleMapsListItem,
+    serialization="usv",
+    datapackage_path="datapackage.json",
+    segments=(),
 )
 
 ENRICHMENT_QUEUE_STATION: StationDecl[object] = StationDecl(
@@ -121,7 +145,7 @@ QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
 DFQ_DOMAIN_SHARD_STATION: StationDecl[object] = ENRICHMENT_QUEUE_STATION
 
 # queue_name → StationDecl (FilesystemQueue / QueueLayout resolution)
-QUEUE_STATIONS: dict[str, StationDecl[object]] = {
+QUEUE_STATIONS: dict[str, StationDecl[Any]] = {
     "gm-details": GM_DETAILS_QUEUE_STATION,
     "gm-list": GM_LIST_QUEUE_STATION,
     "enrichment": ENRICHMENT_QUEUE_STATION,
@@ -133,6 +157,6 @@ QUEUE_STATIONS: dict[str, StationDecl[object]] = {
 }
 
 
-def station_for_queue(queue_name: str) -> StationDecl[object]:
+def station_for_queue(queue_name: str) -> StationDecl[Any]:
     """Resolve StationDecl for a queue_name (algorithm-preserving DFQ default)."""
     return QUEUE_STATIONS.get(queue_name, DFQ_QUEUE_STATION)
