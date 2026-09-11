@@ -1353,6 +1353,8 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
 
         cpu_str = "-"
         mem_str = "-"
+        hb_age: Optional[float] = None
+        hb_type_activity: dict[str, float] = {}
         if sections["HEARTBEAT"]:
             try:
                 hb = json.loads("\n".join(sections["HEARTBEAT"]))
@@ -1363,6 +1365,19 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
                 system = hb.get("system") or {}
                 cpu_str = _fmt_pct(system.get("cpu"))
                 mem_str = _fmt_pct(system.get("mem"))
+                if hb.get("timestamp"):
+                    try:
+                        hb_dt = datetime.fromisoformat(str(hb["timestamp"]))
+                        hb_age = max(0.0, (datetime.now(timezone.utc) - hb_dt.astimezone(timezone.utc)).total_seconds())
+                    except (ValueError, TypeError):
+                        pass
+                if isinstance(hb.get("last_activity"), dict):
+                    for ct, ts in hb["last_activity"].items():
+                        try:
+                            act_dt = datetime.fromisoformat(str(ts))
+                            hb_type_activity[ct] = max(0.0, (datetime.now(timezone.utc) - act_dt.astimezone(timezone.utc)).total_seconds())
+                        except (ValueError, TypeError):
+                            pass
             except (json.JSONDecodeError, AttributeError):
                 pass
 
@@ -1377,6 +1392,8 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
 
         last_log_line = sections["LASTLOG"][0].strip() if sections["LASTLOG"] else ""
         last_log_age = _log_line_age_seconds(last_log_line)
+        if last_log_age is None or (hb_age is not None and hb_age < last_log_age):
+            last_log_age = hb_age
 
         # Per-content-type last activity, so a busy gm-details worker logging every
         # 5s doesn't mask a silently dead enrichment worker on the same container.
@@ -1389,7 +1406,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
 
         stale_content_types = []
         for ct in by_content_type:
-            age = type_activity.get(ct)
+            age = hb_type_activity.get(ct) if ct in hb_type_activity else type_activity.get(ct)
             effective_age = age
             if (effective_age is None or effective_age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S)) and last_log_age is not None and last_log_age <= 120:
                 effective_age = last_log_age
