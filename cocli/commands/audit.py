@@ -843,16 +843,10 @@ done
 echo '@@QUEUES@@'
 for q in gm-list gm-details enrichment; do
   for s in pending completed failed; do
-    # gm-list's real work pool is discovery-gen/completed (a witness-indexed
-    # pool the worker walks directly), not queues/gm-list/pending/ - that dir
-    # is essentially always empty. Pending = mission tiles minus completion
-    # receipts (same {shard}/{lat}/{lon}/{phrase} shape on both sides, just
-    # .usv vs .json), a real set-difference rather than a directory count.
+    # gm-list stores real task files in queues/gm-list/pending/ (matching standard
+    # filesystem queue contract). Count .usv pending files directly.
     if [ "$q" = "gm-list" ] && [ "$s" = "pending" ]; then
-      c=$(comm -23 \
-        <(find ~/repos/data/campaigns/__CAMPAIGN__/queues/discovery-gen/completed -name '*.usv' 2>/dev/null | sed 's|.*/completed/||;s|\.usv$||' | sort) \
-        <(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' 2>/dev/null | sed 's|.*/results/||;s|\.json$||' | sort) \
-        | wc -l)
+      c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/pending -name '*.usv' 2>/dev/null | wc -l)
       echo "$q/$s=$c"
       continue
     fi

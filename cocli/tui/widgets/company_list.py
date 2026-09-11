@@ -50,7 +50,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
     ):
         super().__init__(panel_title="SEARCH", name=name, id=id, classes=classes)
         self.filtered_fz_items: list[SearchResult] = []
-        self.filter_contact: bool = True
+        self.filter_contact: bool = False
         # DEFAULT TO MRU (Most Recently Updated)
         self.sort_recent: bool = True
         self.current_filters: dict[str, Any] = {}
