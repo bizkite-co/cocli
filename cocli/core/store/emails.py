@@ -1,10 +1,10 @@
 from __future__ import annotations
 import logging
-import hashlib
 from pathlib import Path
 from typing import Optional
 from .models import ShardIDPath
 from ..paths import paths
+from ...station_defs.path_helpers import email_shard_id
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,8 @@ class EmailStore:
         return f"campaigns/{self.campaign_name}/indexes/emails/"
 
     def get_shard_id(self, domain: str) -> str:
-        """Deterministic shard (00-ff) based on domain hash."""
-        return hashlib.sha256(domain.encode()).hexdigest()[:2]
+        """Domain-hash shard from EMAIL_INBOX's declared combinator."""
+        return email_shard_id(domain)
 
     def resolve(self, identity: str, layer: str = "inbox") -> Path:
         """

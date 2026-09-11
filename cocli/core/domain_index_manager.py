@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 import os
 import boto3
-import hashlib
 from typing import Optional, Any
 from datetime import datetime, timezone
 from botocore.config import Config
@@ -10,6 +9,7 @@ from botocore.config import Config
 from ..models.campaigns.campaign import Campaign
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..models.index_manifest import IndexManifest, IndexShard
+from ..station_defs.path_helpers import domain_inbox_leaf, domain_shard_id
 from .text_utils import slugdotify
 from .config import get_cocli_base_dir
 
@@ -117,8 +117,8 @@ class DomainIndexManager:
             return (self.root_dir / key).exists()
 
     def get_shard_id(self, domain: str) -> str:
-        """Calculates a deterministic shard ID (00-ff) based on domain hash."""
-        return hashlib.sha256(domain.encode()).hexdigest()[:2]
+        """Domain-hash shard from DOMAIN_INBOX's declared combinator."""
+        return domain_shard_id(domain)
 
     def get_latest_manifest(self) -> IndexManifest:
         """Fetches the latest manifest using the LATEST pointer."""
@@ -168,8 +168,7 @@ class DomainIndexManager:
         """Writes to sharded inbox for eventual compaction."""
         if not data.domain:
             return
-        shard_id = self.get_shard_id(str(data.domain))
-        s3_key = f"{self.inbox_root}{shard_id}/{slugdotify(str(data.domain))}.usv"
+        s3_key = f"{self.inbox_root}{domain_inbox_leaf(str(data.domain), filename=slugdotify(str(data.domain)) + '.usv')}"
         # Sanitize any legacy RS characters
         usv_line = data.to_usv().replace("\x1e", "")
         self._write_object(s3_key, usv_line)
@@ -300,7 +299,7 @@ class DomainIndexManager:
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         # 1. Check Inbox first (fastest, atomic source of truth)
         shard_id = self.get_shard_id(domain)
-        s3_key = f"{self.inbox_root}{shard_id}/{slugdotify(domain)}.usv"
+        s3_key = f"{self.inbox_root}{domain_inbox_leaf(domain, filename=slugdotify(domain) + '.usv')}"
         try:
             content = self._read_object(s3_key)
             return WebsiteDomainCsv.from_usv(content)
@@ -481,9 +480,10 @@ class DomainIndexManager:
         # 7. Cleanup Inbox
         logger.info("Cleaning up processed inbox files...")
         for item in inbox_items:
-            shard_id = self.get_shard_id(str(item.domain))
-            # Use relative keys for _delete_object
-            inbox_key = f"{self.inbox_root}{shard_id}/{slugdotify(str(item.domain))}.usv"
+            inbox_key = (
+                f"{self.inbox_root}"
+                f"{domain_inbox_leaf(str(item.domain), filename=slugdotify(str(item.domain)) + '.usv')}"
+            )
             try:
                 self._delete_object(inbox_key)
             except Exception as e:

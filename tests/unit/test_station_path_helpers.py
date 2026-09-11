@@ -27,10 +27,11 @@ def test_email_inbox_phase_ref_not_magic_string() -> None:
 
 def test_email_inbox_item_path(tmp_path: Path, monkeypatch: Any) -> None:
     monkeypatch.setattr(paths, "root", tmp_path)
-    p = email_inbox_item_path("camp", "a@example.com")
+    p = email_inbox_item_path("camp", "a@example.com", domain="example.com")
     sh = collect_shard(EMAIL_INBOX.segments)
     assert sh is not None
-    expected_shard = sh.shard_for("a@example.com")
+    expected_shard = sh.shard_for("example.com")
+    assert expected_shard != sh.shard_for("a@example.com")
     assert p == (
         tmp_path
         / "campaigns"

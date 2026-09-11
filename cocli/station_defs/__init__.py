@@ -11,6 +11,10 @@ maps to this package.
 See ``IDENTIFIER_AUDIT.md`` and stations decision 0010.
 """
 
+from cocli.station_defs.campaigns.indexes.domains import (
+    DOMAIN_INBOX,
+    DOMAIN_SHARDS,
+)
 from cocli.station_defs.campaigns.indexes.emails import (
     EMAIL_INBOX,
     EMAIL_INDEX,
@@ -24,6 +28,8 @@ from cocli.station_defs.campaigns.queues import QUEUE_PENDING_TEMPLATE
 from cocli.station_defs.wal.entity_field import ENTITY_FIELD_JOURNAL
 
 __all__ = [
+    "DOMAIN_INBOX",
+    "DOMAIN_SHARDS",
     "EMAIL_INBOX",
     "EMAIL_INDEX",
     "EMAIL_SHARDS",

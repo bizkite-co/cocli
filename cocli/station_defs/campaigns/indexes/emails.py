@@ -6,16 +6,18 @@ Data tree:
   indexes/emails/CURRENT    — stations commit pointer
 
 Segments are declared at construction time (combinators), not hard-coded
-globals: inbox uses hash sharding width 2 (domain → 00..ff); shards are cold
-materialization of the same fold.
+globals: inbox uses DOMAIN_HASH_SHARD (domain → 00..ff); the email address is
+the filename, not the shard key. Shards are cold materialization of the same
+fold.
 """
 
 from __future__ import annotations
 
-from stations.segments import phases, shard_by_hash
+from stations.segments import phases
 from stations.station import StationDecl
 
 from cocli.models.campaigns.indexes.email import EmailEntry
+from cocli.station_defs.campaigns.indexes import DOMAIN_HASH_SHARD
 
 # path_template is relative to the emails index root (product resolves absolute).
 EMAIL_INBOX: StationDecl[EmailEntry] = StationDecl(
@@ -25,7 +27,7 @@ EMAIL_INBOX: StationDecl[EmailEntry] = StationDecl(
     serialization="usv-or-json-file",
     segments=(
         phases("inbox"),  # hot layer phase name is "inbox" for this station
-        shard_by_hash(2),  # domain hash 00-ff (matches EmailIndexManager)
+        DOMAIN_HASH_SHARD,  # domain → 00-ff; filename is the email, not the shard key
     ),
 )
 
@@ -34,7 +36,7 @@ EMAIL_SHARDS: StationDecl[EmailEntry] = StationDecl(
     path_template="shards",
     model=EmailEntry,
     serialization="usv-lines",
-    segments=(shard_by_hash(2),),
+    segments=(DOMAIN_HASH_SHARD,),
 )
 
 EMAIL_INDEX: StationDecl[EmailEntry] = StationDecl(
@@ -44,6 +46,6 @@ EMAIL_INDEX: StationDecl[EmailEntry] = StationDecl(
     serialization="json-checkpoint",
     segments=(
         phases("inbox", "shards"),  # materialization layers under the index
-        shard_by_hash(2),
+        DOMAIN_HASH_SHARD,
     ),
 )

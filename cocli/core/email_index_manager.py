@@ -1,10 +1,10 @@
 from __future__ import annotations
 import json
 import logging
-import hashlib
 from typing import Optional
 
 from ..models.campaigns.indexes.email import EmailEntry
+from ..station_defs.path_helpers import email_inbox_rel, email_shard_id
 from .config import get_campaign_dir
 
 logger = logging.getLogger(__name__)
@@ -32,21 +32,19 @@ class EmailIndexManager:
         self.shards_dir.mkdir(parents=True, exist_ok=True)
 
     def get_shard_id(self, domain: str) -> str:
-        """Deterministic shard (00-ff) based on domain hash."""
-        return hashlib.sha256(domain.encode()).hexdigest()[:2]
+        """Domain-hash shard from EMAIL_INBOX's declared combinator."""
+        return email_shard_id(domain)
 
     def add_email(self, email_entry: EmailEntry) -> bool:
         """
         Adds an email entry to the sharded inbox.
         Uses the email address as the filename for atomic isolation in the hot layer.
         """
-        shard_id = self.get_shard_id(email_entry.domain)
-        shard_inbox = self.inbox_dir / shard_id
-        shard_inbox.mkdir(parents=True, exist_ok=True)
-        
-        # Use raw email (lowercased) to avoid collisions with characters like '+' or '.'
         email_filename = str(email_entry.email).lower().strip()
-        path = shard_inbox / f"{email_filename}.usv"
+        path = self.index_root / email_inbox_rel(
+            f"{email_filename}.usv", domain=email_entry.domain
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
         
         try:
             # Simple append/overwrite for the hot layer
