@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
+import shutil
 import subprocess
+import time
 import re
 import textwrap
 from typing import Optional, Any, Union, cast, TYPE_CHECKING
@@ -327,7 +329,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         Binding("E", "re_enrich", "Re-enrich"),
         Binding("D", "delete_company", "Delete Company"),
         Binding("U", "unsubscribe_company", "Unsubscribe"),
-        Binding("e", "open_folder", "Explorer (NVim)"),
+        Binding("e", "open_folder", "Explore (Yazi)"),
         Binding("C", "compose_email", "Compose email"),
     ]
 
@@ -1009,13 +1011,35 @@ class CompanyDetail(MarkPrefixMixin, Container):
         self.app.run_worker(run_unsubscribe())
 
     def action_open_folder(self) -> None:
+        """Suspend the TUI and browse the company folder in yazi.
+
+        Yazi is the folder browser; opening a file from yazi drops into the
+        user's editor. Launching nvim (or any TUI) with Popen on the same
+        tty, without suspend, garbles the terminal.
+        """
         slug = self.company_data["company"].get("slug")
-        if slug:
-            path = paths.companies.entry(slug)
-            self.app.notify(f"Opening {slug} in NVim...")
-            subprocess.Popen(["nvim", str(path)])
-        else:
+        if not slug:
             self.app.notify("No slug found", severity="error")
+            return
+
+        folder = paths.companies.entry(slug).path
+        if not folder.is_dir():
+            self.app.notify(f"Company folder not found: {folder}", severity="error")
+            return
+
+        browser = shutil.which("yazi")
+        if not browser:
+            self.app.notify("yazi not found on PATH", severity="error")
+            return
+
+        logger.info("Opening company folder in yazi: %s", folder)
+        try:
+            self._run_external_in_suspend([browser, str(folder)])
+            self.refresh_notes_data()
+            self.refresh_meetings_data()
+        except Exception as e:
+            logger.error("Yazi explorer session failed: %s", e)
+            self.app.notify(f"Explorer failed: {e}", severity="error")
 
     def action_compose_email(self) -> None:
         slug = self.company_data["company"].get("slug")
@@ -1297,18 +1321,19 @@ class CompanyDetail(MarkPrefixMixin, Container):
         self.refresh_notes_data()
         self.refresh_meetings_data()
 
+    def _run_external_in_suspend(self, argv: list[str]) -> None:
+        """Yield the tty to an interactive process, then restore the TUI."""
+        with self.app.suspend():
+            subprocess.run(argv, check=False)
+        self.app.refresh()
+        time.sleep(0.1)
+
     def _edit_with_nvim(self, path: Path) -> None:
         """Suspend the TUI and open NVim."""
-        import time
-
         editor = get_editor_command() or "nvim"
 
         try:
-            with self.app.suspend():
-                subprocess.run([editor, str(path)], check=False)
-
-            self.app.refresh()
-            time.sleep(0.1)
+            self._run_external_in_suspend([editor, str(path)])
             self.app.notify("Item saved")
             self.refresh_notes_data()
             self.refresh_meetings_data()
