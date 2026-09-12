@@ -71,8 +71,11 @@ def test_email_index_manager_add_email_uses_decl_path(
 def test_domain_index_manager_inbox_key_uses_decl_leaf() -> None:
     campaign = MagicMock()
     campaign.name = "test-campaign"
-    with patch("cocli.core.config.load_campaign_config") as mock_config:
+    with patch("cocli.core.config.load_campaign_config") as mock_config, patch(
+        "cocli.core.reporting.get_boto3_session"
+    ) as mock_session:
         mock_config.return_value = {"aws": {"data_bucket_name": "test-bucket"}}
+        mock_session.return_value.client.return_value = MagicMock()
         manager = DomainIndexManager(campaign, use_cloud=True)
         manager.s3_client = MagicMock()
         item = WebsiteDomainCsv(

@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 import os
 import asyncio
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from contextlib import contextmanager
@@ -38,7 +40,11 @@ from .navigation import NavNode, ProcessRun
 from .navigation_manager import NavigationStateManager
 from ..utils.browser_manager import BrowserManager
 from ..application.services import ServiceContainer
-from ..core.config import create_default_config_file, is_campaign_overridden
+from ..core.config import (
+    create_default_config_file,
+    get_campaign_dir,
+    is_campaign_overridden,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -431,6 +437,7 @@ class CocliApp(App[None]):
         Binding("]", "focus_content", "Focus Content", show=False),
         ("t", "focus_templates", "Templates"),
         Binding("ctrl+p", "command_palette", "Commands", show=True),
+        Binding("y", "open_campaign_yazi", "Yazi"),
     ]
 
     leader_mode: bool = False
@@ -621,6 +628,33 @@ class CocliApp(App[None]):
                 tui_debug_log("APP: Gossip Bridge stopped.")
             except Exception as e:
                 tui_debug_log(f"APP: Gossip Bridge failed to stop: {e}")
+
+    def action_open_campaign_yazi(self) -> None:
+        """Suspend the TUI and open yazi in the active campaign directory.
+
+        Company detail ``e`` still opens the company folder. This is the
+        campaign root (queues, indexes, companies) from any view.
+        """
+        name = self.services.campaign_name
+        if not name:
+            self.notify("No campaign selected", severity="error")
+            return
+        folder = get_campaign_dir(name)
+        if folder is None or not folder.is_dir():
+            self.notify(f"Campaign directory not found: {name}", severity="error")
+            return
+        browser = shutil.which("yazi")
+        if not browser:
+            self.notify("yazi not found on PATH", severity="error")
+            return
+        try:
+            with self.suspend():
+                subprocess.run([browser, str(folder)], check=False)
+            self.refresh()
+            time.sleep(0.1)
+        except Exception as e:
+            logger.error("Yazi campaign session failed: %s", e)
+            self.notify(f"Yazi failed: {e}", severity="error")
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
