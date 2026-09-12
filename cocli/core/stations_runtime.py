@@ -20,9 +20,9 @@ from stations.backends import LocalPathBackend
 from stations.compactor import DefaultCompactor, last_write_wins_fold
 from stations.edges import PathIndexEdge, PathLogEdge
 from stations.engine import DefaultTransformEngine
+from stations.protocols import QueueEdge
 from stations.station import StationDecl
 
-from cocli.core.stations_adapt import as_queue_edge
 from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
 from cocli.station_defs.campaigns.indexes.emails import (
     EMAIL_INBOX,
@@ -56,7 +56,7 @@ class _CallbackLogEdge(Generic[U]):
 
 
 def run_queue_transform_once(
-    queue: Any,
+    queue: QueueEdge[T],
     transform: Callable[[T], U],
     *,
     worker_id: str,
@@ -64,12 +64,13 @@ def run_queue_transform_once(
     model: type = object,
     ttl_seconds: int = 900,
 ) -> bool:
-    """One claim→transform→complete cycle on a cocli CampaignQueueProtocol.
+    """One claim→transform→complete cycle on a stations QueueEdge.
 
-    Uses stations ``DefaultTransformEngine`` solely for the cycle. Sink is a
-    callback log (optional); source complete/ack still runs via QueueEdge adapter.
+    Filesystem queues are QueueEdges themselves (enqueue/claim/complete).
+    ``model`` is unused (kept so existing call sites do not break).
     """
-    source = as_queue_edge(queue, model=model)
+    _ = model
+    source = queue
     station = StationDecl(
         name=f"{getattr(queue, 'queue_name', 'queue')}-out",
         path_template="callback",

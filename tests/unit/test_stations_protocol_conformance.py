@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 from stations.backends import LocalPathBackend
 from stations.protocols import Compactor, QueueEdge, Transform
 
+from cocli.core.queue.protocol import QueueEdgeAliasesMixin
 from cocli.core.stations_adapt import (
     SimpleStation,
     accept_compactor,
@@ -16,7 +17,6 @@ from cocli.core.stations_adapt import (
     accept_station,
     accept_transform,
     as_compactor,
-    as_queue_edge,
     as_transform,
     compact_manager_as_compactor,
     domain_index_as_compactor,
@@ -29,8 +29,8 @@ class _FakeTask:
         self.task_id = task_id
 
 
-class _FakeQueue:
-    """Minimal CampaignQueueProtocol stand-in."""
+class _FakeQueue(QueueEdgeAliasesMixin):
+    """Product push/poll/ack plus native QueueEdge aliases."""
 
     campaign_name = "roadmap"
     queue_name = "gm-list"
@@ -39,6 +39,12 @@ class _FakeQueue:
         self._items: list[_FakeTask] = []
         self.acked: list[_FakeTask] = []
         self.nacked: list[_FakeTask] = []
+        self.station = SimpleStation(
+            name="roadmap/gm-list",
+            path_template="campaigns/{campaign}/queues/{queue}/pending",
+            model=_FakeTask,
+        )
+        self.backend = LocalPathBackend()
 
     def push(self, task: _FakeTask) -> Any:
         self._items.append(task)
@@ -75,9 +81,7 @@ def test_simple_station_is_station() -> None:
 
 def test_queue_adapter_satisfies_queue_edge() -> None:
     q = _FakeQueue()
-    edge = as_queue_edge(q, station_name="roadmap/gm-list", model=_FakeTask)
-    # mypy gate
-    typed: QueueEdge[_FakeTask] = accept_queue_edge(edge)
+    typed: QueueEdge[_FakeTask] = accept_queue_edge(q)
 
     item_id = typed.enqueue(_FakeTask("t1"))
     assert item_id == "t1"
@@ -101,7 +105,7 @@ def test_queue_adapter_satisfies_queue_edge() -> None:
 
 
 def test_queue_claim_empty() -> None:
-    edge = as_queue_edge(_FakeQueue(), model=_FakeTask)
+    edge: QueueEdge[_FakeTask] = _FakeQueue()
     assert edge.claim(worker_id="w", ttl_seconds=10) is None
 
 
@@ -151,8 +155,17 @@ def test_pure_function_is_transform() -> None:
 
 
 def test_campaign_queue_protocol_module_documents_mapping() -> None:
-    """Ensure legacy protocol module still exists (not deleted by extraction)."""
-    from cocli.core.queue.protocol import CampaignQueueProtocol
+    """Product poll/ack remain; QueueEdge lives on the filesystem type, not a wrapper."""
+    from cocli.core.queue.filesystem import FilesystemQueue
+    from cocli.core.queue.protocol import CampaignQueueProtocol, QueueEdgeAliasesMixin
 
     assert hasattr(CampaignQueueProtocol, "push")
     assert hasattr(CampaignQueueProtocol, "poll")
+    assert issubclass(FilesystemQueue, QueueEdgeAliasesMixin)
+    assert hasattr(FilesystemQueue, "enqueue")
+    assert hasattr(FilesystemQueue, "claim")
+    assert hasattr(FilesystemQueue, "complete")
+    import cocli.core.stations_adapt as adapt
+
+    assert not hasattr(adapt, "CampaignQueueAsQueueEdge")
+    assert not hasattr(adapt, "as_queue_edge")

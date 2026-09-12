@@ -7,7 +7,11 @@ from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
+from stations.backends import LocalPathBackend
+
 from cocli.core.email_index_manager import EmailIndexManager
+from cocli.core.queue.protocol import QueueEdgeAliasesMixin
+from cocli.core.stations_adapt import SimpleStation
 from cocli.core.stations_runtime import (
     compact_email_index_stations_only,
     run_queue_transform_once,
@@ -21,7 +25,7 @@ class _FakeTask:
         self.n = n
 
 
-class _FakeQueue:
+class _FakeQueue(QueueEdgeAliasesMixin):
     campaign_name = "test-campaign"
     queue_name = "to-call"
 
@@ -29,6 +33,12 @@ class _FakeQueue:
         self._items: list[_FakeTask] = []
         self.acked: list[_FakeTask] = []
         self.nacked: list[_FakeTask] = []
+        self.station = SimpleStation(
+            name="test-campaign/to-call",
+            path_template="campaigns/{campaign}/queues/{queue}/pending",
+            model=_FakeTask,
+        )
+        self.backend = LocalPathBackend()
 
     def push(self, task: _FakeTask) -> Any:
         self._items.append(task)

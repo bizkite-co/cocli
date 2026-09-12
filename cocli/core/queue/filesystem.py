@@ -12,6 +12,7 @@ from ...models.campaigns.queues.base import QueueMessage
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
 from .layout import QueueLayout, resolve_queue_station
+from .protocol import QueueEdgeAliasesMixin
 from .task_file_filter import is_valid_task_data_file
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", ScrapeTask, GmItemTask, QueueMessage)
 
 
-class FilesystemQueue:
+class FilesystemQueue(QueueEdgeAliasesMixin):
     """
     A distributed-safe filesystem queue using atomic leases (V2).
     Structure:
@@ -87,6 +88,9 @@ class FilesystemQueue:
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.completed_dir.mkdir(parents=True, exist_ok=True)
         self.failed_dir.mkdir(parents=True, exist_ok=True)
+
+        self.station = self.layout.station
+        self.backend = self._local_path_backend()
 
         # Enforce Frictionless Data Policy: Ensure authoritative queue datapackage.json sidecar exists
         self.ensure_schema_sidecar()
@@ -335,8 +339,12 @@ class FilesystemQueue:
     def _local_path_backend(self) -> Any:
         from stations.backends import LocalPathBackend
 
+        cached = getattr(self, "_path_backend", None)
+        if cached is not None:
+            return cached
         # Absolute lease paths — no root sandbox (queue dirs already under data home)
-        return LocalPathBackend()
+        self._path_backend = LocalPathBackend()
+        return self._path_backend
 
     def _s3_path_backend(self) -> Any:
         from stations.backends import S3PathBackend

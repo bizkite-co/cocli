@@ -1,36 +1,26 @@
-"""Structural adapters: cocli queue/compactor types → stations.protocols.
+"""Structural adapters: cocli compact/transform types → stations.protocols.
 
-Existing cocli types keep ``push/poll/ack/nack`` and product compact APIs; these
-shims present the stations vocabulary (``enqueue/claim/complete``,
-``compact_once``) so mypy can verify conformance against ``stations.protocols``.
-
-Claim/lease CAS is owned by ``stations.backends`` (Phase 2); product queues
-call ``acquire_lease`` directly. QueueEdge adapters here only map vocabulary
-and do not reimplement storage CAS.
-
-Do **not** add a parallel protocol zoo here — Protocols live in ``stations``.
+Filesystem queues satisfy ``QueueEdge`` themselves (``QueueEdgeAliasesMixin``).
+Compactor shims remain for product compact entrypoints. Claim/lease CAS is
+owned by ``stations.backends``. Do **not** add a parallel protocol zoo —
+Protocols live in ``stations`` (decision 0007).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 from typing import Any, Callable, Generic, Optional, Sequence, TypeVar
 
-from stations.backends import LocalPathBackend
 from stations.protocols import (
     Compactor,
     Fold,
     IndexEdge,
-    Lease,
     LogEdge,
     PathBackend,
     QueueEdge,
     Station,
     Transform,
 )
-
-from cocli.core.queue.protocol import CampaignQueueProtocol
 
 T = TypeVar("T")
 T_in = TypeVar("T_in")
@@ -58,113 +48,6 @@ class SimpleStation(Generic[T]):
         for key, value in params.items():
             out = out.replace("{" + key + "}", value)
         return out
-
-
-@dataclass
-class SimpleLease:
-    worker_id: str
-    claimed_at: datetime
-    expires_at: datetime
-    attempt: int
-    item_id: str
-
-
-# ---------------------------------------------------------------------------
-# Queue: CampaignQueueProtocol (push/poll/ack/nack) → QueueEdge
-# ---------------------------------------------------------------------------
-
-
-def _item_id(item: Any) -> str:
-    for attr in ("task_id", "id", "place_id", "message_id"):
-        val = getattr(item, attr, None)
-        if val is not None:
-            return str(val)
-    return str(id(item))
-
-
-@dataclass
-class CampaignQueueAsQueueEdge(Generic[T]):
-    """Adapt cocli ``CampaignQueueProtocol`` to stations ``QueueEdge``.
-
-    Maps: enqueue←push, claim←poll, complete←ack, fail←nack.
-    Storage CAS stays on the product queue (stations PathBackend); this edge
-    only adapts the API surface for TransformEngine.
-    """
-
-    queue: CampaignQueueProtocol[T]
-    station: Station[T]
-    backend: PathBackend = field(default_factory=LocalPathBackend)
-    _open_leases: dict[str, SimpleLease] = field(default_factory=dict)
-
-    def enqueue(self, item: T) -> str:
-        result = self.queue.push(item)
-        return str(result) if result is not None else _item_id(item)
-
-    def claim(
-        self, *, worker_id: str, ttl_seconds: int
-    ) -> Optional[tuple[T, Lease]]:
-        batch = self.queue.poll(batch_size=1)
-        if not batch:
-            return None
-        item = batch[0]
-        now = datetime.now(timezone.utc)
-        lease = SimpleLease(
-            worker_id=worker_id,
-            claimed_at=now,
-            expires_at=now + timedelta(seconds=ttl_seconds),
-            attempt=1,
-            item_id=_item_id(item),
-        )
-        self._open_leases[lease.item_id] = lease
-        return item, lease
-
-    def complete(
-        self, item: T, lease: Lease, result: Optional[object] = None
-    ) -> None:
-        _ = result
-        self.queue.ack(item)
-        self._open_leases.pop(lease.item_id, None)
-
-    def fail(self, item: T, lease: Lease, error: object) -> None:
-        _ = error
-        self.queue.nack(item)
-        self._open_leases.pop(lease.item_id, None)
-
-    def renew(self, lease: Lease, *, ttl_seconds: int) -> bool:
-        # CampaignQueueProtocol has no lease renew surface; product queues use heartbeat.
-        now = datetime.now(timezone.utc)
-        updated = SimpleLease(
-            worker_id=lease.worker_id,
-            claimed_at=lease.claimed_at,
-            expires_at=now + timedelta(seconds=ttl_seconds),
-            attempt=lease.attempt,
-            item_id=lease.item_id,
-        )
-        self._open_leases[lease.item_id] = updated
-        return True
-
-
-def as_queue_edge(
-    queue: CampaignQueueProtocol[T],
-    *,
-    station_name: Optional[str] = None,
-    model: type[T] = object,  # type: ignore[assignment]
-) -> QueueEdge[T]:
-    """Return a ``QueueEdge`` view of a cocli campaign queue (mypy gate)."""
-    from cocli.station_defs.campaigns.queues import QUEUE_PENDING_TEMPLATE
-
-    name = station_name or f"{queue.campaign_name}/{queue.queue_name}"
-    # 0010: path template from mirrored station def; name is instance-specific.
-    station: Station[T] = SimpleStation(
-        name=name,
-        path_template=QUEUE_PENDING_TEMPLATE.path_template,
-        model=model,
-        serialization=QUEUE_PENDING_TEMPLATE.serialization,
-    )
-    edge: QueueEdge[T] = CampaignQueueAsQueueEdge(
-        queue=queue, station=station, backend=LocalPathBackend()
-    )
-    return edge
 
 
 # ---------------------------------------------------------------------------

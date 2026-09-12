@@ -119,6 +119,20 @@ def test_gm_list_layout_keeps_geo_pending_path() -> None:
     assert collect_shard(GM_LIST_QUEUE_STATION.segments) is None
 
 
+def test_filesystem_queues_are_queue_edges(tmp_path: Path) -> None:
+    from cocli.core.stations_adapt import accept_queue_edge
+
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        glist = FilesystemGmListQueue("camp")
+        details = FilesystemGmDetailsQueue("camp")
+        enrich = FilesystemEnrichmentQueue("camp")
+        accept_queue_edge(glist)
+        accept_queue_edge(details)
+        accept_queue_edge(enrich)
+        assert glist.station is glist.layout.station
+        assert FilesystemGmListQueue.enqueue is FilesystemQueue.enqueue
+
+
 def test_fsq_resolves_decl_and_shard_via_layout(tmp_path: Path) -> None:
     with patch("cocli.core.paths.paths.root", tmp_path):
         details = FilesystemGmDetailsQueue("camp")
