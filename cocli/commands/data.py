@@ -187,6 +187,9 @@ def compact_emails(
     if result.get("status") != "success":
         console.print(f"[red]{result.get('message')}[/red]")
         raise typer.Exit(1)
+    coverage_text = result.get("coverage_text")
+    if coverage_text:
+        console.print(str(coverage_text))
     console.print(f"[green]{result.get('message')}[/green]")
 
 
@@ -361,6 +364,8 @@ def queue_compact(
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
+    if result.coverage_text:
+        console.print(result.coverage_text)
     console.print(f"[green]{result.message}[/green]")
 
 

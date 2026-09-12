@@ -29,6 +29,28 @@ def _emit(log_callback: Optional[LogCallback], message: str) -> None:
         log_callback(message)
 
 
+def _emit_compaction_coverage(
+    *,
+    compaction: str,
+    campaign: str,
+    run_id: str,
+    records_read: dict[str, int],
+    log_file: Optional[Path],
+    log_callback: Optional[LogCallback],
+) -> str:
+    from cocli.core.compaction_coverage import coverage_for
+
+    text = coverage_for(
+        compaction,
+        campaign,
+        paths.campaign(campaign).path,
+        run_id=run_id,
+        records_read=records_read,
+    ).emit(log_file=log_file)
+    _emit(log_callback, text)
+    return text
+
+
 class IndexLockStatus(BaseModel):
     """Lock tier of a sharded index status report."""
 
@@ -69,6 +91,7 @@ class CompactResult(BaseModel):
     isolated_files: int = 0
     message: str = ""
     log_file: Optional[Path] = None
+    coverage_text: str = ""
 
 
 class DomainBackfillResult(BaseModel):
@@ -327,6 +350,7 @@ class IndexService:
 
         manager: Optional[CompactManager] = None
         recovered: list[str] = []
+        coverage_text = ""
 
         try:
             _emit(log_callback, "Checking for interrupted runs...")
@@ -398,6 +422,7 @@ class IndexService:
                 )
             _emit(log_callback, "Lock acquired.")
 
+            records_read: dict[str, int] = {}
             if index_name == "google_maps_prospects":
                 # gm-list already captures category/phone/rating/reviews_count/
                 # street_address reliably (see task-agent
@@ -425,6 +450,7 @@ class IndexService:
                     )
 
                     gm_list_merged = compact_gm_list_results(self.campaign_name)
+                    records_read["gm-list-results"] = gm_list_merged
                     _emit(log_callback, f"gm-list merge: {gm_list_merged} records.")
                 except Exception as e:
                     logger.warning(
@@ -434,6 +460,19 @@ class IndexService:
 
             _emit(log_callback, "Staging Pi WAL over Tailscale...")
             moved = manager.isolate_wal(nodes=nodes)
+            from cocli.core.compaction_coverage import count_usv_records
+
+            wal_records = count_usv_records(manager.local_proc_dir)
+            if wal_records:
+                records_read["prospects-wal"] = wal_records
+            coverage_text = _emit_compaction_coverage(
+                compaction=index_name,
+                campaign=self.campaign_name,
+                run_id=manager.run_id,
+                records_read=records_read,
+                log_file=log_file,
+                log_callback=log_callback,
+            )
             if moved == 0:
                 msg = "Nothing to compact."
                 _emit(log_callback, msg)
@@ -445,6 +484,7 @@ class IndexService:
                     isolated_files=0,
                     message=msg,
                     log_file=log_file,
+                    coverage_text=coverage_text,
                 )
             _emit(log_callback, f"Staged {moved} files.")
 
@@ -472,6 +512,7 @@ class IndexService:
                 isolated_files=moved,
                 message=msg,
                 log_file=log_file,
+                coverage_text=coverage_text,
             )
         except (BotoCoreError, ClientError) as e:
             logger.error("AWS authentication/S3 error during compaction: %s", e, exc_info=True)

@@ -84,6 +84,9 @@ def compact(
             console.print("[yellow]Hint: Ensure 1Password desktop is unlocked (Developer → Integrate with 1Password CLI) or AWS credentials are active, then try again.[/yellow]")
         raise typer.Exit(code=1)
 
+    if result.coverage_text:
+        console.print(result.coverage_text)
+
     if result.isolated_files == 0 and result.message == "Nothing to compact.":
         console.print("[yellow]Nothing to compact.[/yellow]")
         return

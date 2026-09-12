@@ -102,6 +102,7 @@ class QueueCompactResult(BaseModel):
     success: bool = True
     message: str = ""
     records_merged: int = 0
+    coverage_text: str = ""
 
 
 class UnknownColumnError(ValueError):
@@ -198,9 +199,26 @@ class DataSyncService:
         """Runs the email index compaction (Hot Inbox -> Shards)."""
         try:
             from ..core.email_index_manager import EmailIndexManager
+            from cocli.core.compaction_coverage import count_usv_records, coverage_for
+
             manager = EmailIndexManager(self.campaign_name)
+            inbox_n = count_usv_records(manager.inbox_dir)
+            shard_n = count_usv_records(manager.shards_dir)
             manager.compact()
-            return {"status": "success", "message": "Email index compacted (Hot Inbox -> Shards)"}
+            coverage_text = coverage_for(
+                "email-index",
+                self.campaign_name,
+                paths.campaign(self.campaign_name).path,
+                records_read={
+                    "email-inbox": inbox_n,
+                    "email-shards": shard_n,
+                },
+            ).emit()
+            return {
+                "status": "success",
+                "message": "Email index compacted (Hot Inbox -> Shards)",
+                "coverage_text": coverage_text,
+            }
         except Exception as e:
             logger.error(f"Email compaction failed: {e}")
             return {"status": "error", "message": str(e)}
@@ -777,13 +795,22 @@ class DataSyncService:
 
         name = campaign_name or self.campaign_name
         if queue_name == "gm-list":
+            from cocli.core.compaction_coverage import coverage_for
+
             count = compact_gm_list_results(name)
+            coverage_text = coverage_for(
+                "gm-list",
+                name,
+                paths.campaign(name).path,
+                records_read={"gm-list-results": count},
+            ).emit()
             return QueueCompactResult(
                 campaign_name=name,
                 queue_name=queue_name,
                 success=True,
                 message=f"Compaction complete. Merged {count} records.",
                 records_merged=count,
+                coverage_text=coverage_text,
             )
         raise ValueError(
             f"Unknown queue '{queue_name}'. Currently supported: gm-list"

@@ -137,6 +137,7 @@ def _make_compact_manager_mock(
     manager.s3_proc_prefix = "campaigns/c/indexes/i/processing/run_x/"
     manager.index_dir = Path("/tmp/index")
     manager.local_proc_dir = Path("/tmp/index/processing/run_x")
+    manager.run_id = "run_x"
     manager._lock_acquired = lock_ok
     manager.acquire_lock.return_value = lock_ok
     manager.isolate_wal.return_value = moved
@@ -278,6 +279,7 @@ def test_compact_success_path() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             return_value=0,
         ),
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact(
             "google_maps_prospects",
@@ -301,6 +303,7 @@ def test_compact_success_path() -> None:
     assert "Merging via stations commit path (DuckDB fold + CURRENT CAS)..." in steps
     assert "Uploading new checkpoint to S3..." in steps
     assert "Cleaning up..." in steps
+    assert "Compaction: google_maps_prospects" in result.coverage_text
 
 
 def test_compact_nothing_to_do() -> None:
@@ -313,12 +316,14 @@ def test_compact_nothing_to_do() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             return_value=0,
         ),
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("google_maps_prospects")
 
     assert result.success is True
     assert result.isolated_files == 0
     assert result.message == "Nothing to compact."
+    assert "Compaction: google_maps_prospects" in result.coverage_text
     manager.merge.assert_not_called()
 
 
@@ -332,11 +337,13 @@ def test_compact_merges_gm_list_results_for_prospects_index() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             return_value=42,
         ) as gm_merge,
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("google_maps_prospects")
 
     gm_merge.assert_called_once_with("roadmap")
     assert result.success is True
+    assert "42 records" in result.coverage_text
 
 
 def test_compact_skips_gm_list_merge_for_non_prospects_index() -> None:
@@ -348,6 +355,7 @@ def test_compact_skips_gm_list_merge_for_non_prospects_index() -> None:
         patch(
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
         ) as gm_merge,
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("emails")
 
@@ -368,6 +376,7 @@ def test_compact_gm_list_merge_failure_is_non_fatal() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             side_effect=RuntimeError("malformed gm-list result"),
         ),
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("google_maps_prospects")
 
@@ -393,11 +402,13 @@ def test_compact_gm_list_merge_does_not_override_nothing_to_compact() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             return_value=17080,
         ) as gm_merge,
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("google_maps_prospects")
 
     gm_merge.assert_called_once_with("roadmap")
     assert result.message == "Nothing to compact."
+    assert "17080 records" in result.coverage_text
     manager.merge.assert_not_called()
     manager.commit_remote.assert_not_called()
     manager.release_lock.assert_called_once()
@@ -416,6 +427,7 @@ def test_compact_recovers_interrupted_runs() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             return_value=0,
         ),
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("google_maps_prospects")
 
@@ -440,6 +452,7 @@ def test_compact_aborts_when_isolate_wal_fails() -> None:
             "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
             return_value=0,
         ),
+        patch("cocli.core.compaction_coverage.count_usv_records", return_value=0),
     ):
         result = service.compact("google_maps_prospects")
 

@@ -317,8 +317,9 @@ def test_compact_queue_gm_list() -> None:
     with patch(
         "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
         return_value=42,
-    ):
+    ), patch("cocli.core.compaction_coverage.count_usv_records", return_value=0):
         result = service.compact_queue("gm-list", campaign_name="road")
     assert result.success is True
     assert result.records_merged == 42
     assert "42" in result.message
+    assert "42 records" in result.coverage_text
