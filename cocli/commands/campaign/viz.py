@@ -36,7 +36,7 @@ def visualize_coverage(
     ),
 ) -> None:
     """
-    Generates KML files to visualize the scraped areas for a campaign.
+    Generates KML/GeoJSON for the campaign map-tile grid (item counts + scrape status).
     """
     name = _resolve_campaign(campaign_name)
     services = ServiceContainer(campaign_name=name)

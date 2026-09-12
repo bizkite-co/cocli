@@ -15,9 +15,16 @@ permalink: /kml-viewer.html
             max-height: 90%; overflow-y: auto;
         }
         .layer-item { margin-bottom: 5px; }
+        .legend { margin-top: 8px; font-size: 12px; color: #444; }
+        .legend-row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+        .swatch { width: 12px; height: 12px; border: 1px solid #666; display: inline-block; }
+        .measure-panel { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ddd; font-size: 12px; }
+        .measure-panel button { margin-right: 4px; margin-top: 4px; }
+        .measure-readout { margin-top: 6px; line-height: 1.4; white-space: pre-line; }
+        .measure-hint { color: #666; margin-top: 4px; }
     </style>
     <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key={% if campaign.googleMapsApiKey %}{{ campaign.googleMapsApiKey }}{% else %}AIzaSyCwMXoSea-O43V02XWegH-zW_LcSV3etS8{% endif %}&callback=initMap">
+        src="https://maps.googleapis.com/maps/api/js?key={% if campaign.googleMapsApiKey %}{{ campaign.googleMapsApiKey }}{% else %}AIzaSyCwMXoSea-O43V02XWegH-zW_LcSV3etS8{% endif %}&libraries=geometry&callback=initMap">
     </script>
 </head>
 <body>
@@ -74,11 +81,193 @@ permalink: /kml-viewer.html
             controlDiv.style.display = 'block';
             map.controls[google.maps.ControlPosition.RIGHT_TOP].push(controlDiv);
 
+            const legend = document.createElement('div');
+            legend.className = 'legend';
+            legend.innerHTML = [
+                '<strong>Map Tiles</strong>',
+                '<div class="legend-row"><span class="swatch" style="background:#ff9800"></span> not scraped</div>',
+                '<div class="legend-row"><span class="swatch" style="background:#ffeb3b"></span> partial</div>',
+                '<div class="legend-row"><span class="swatch" style="background:#9e9e9e"></span> scraped, 0 items</div>',
+                '<div class="legend-row"><span class="swatch" style="background:#4caf50"></span> scraped, items found</div>'
+            ].join('');
+            controlDiv.appendChild(legend);
+
+            const measurePanel = document.createElement('div');
+            measurePanel.className = 'measure-panel';
+            measurePanel.innerHTML = [
+                '<strong>Measure</strong>',
+                '<div>',
+                '<button type="button" id="measure-toggle">Start</button>',
+                '<button type="button" id="measure-clear">Clear</button>',
+                '</div>',
+                '<div class="measure-readout" id="measure-readout">Off</div>',
+                '<div class="measure-hint">Click the map to add points. 3+ points also reports area.</div>'
+            ].join('');
+            controlDiv.appendChild(measurePanel);
+
+            const measureState = {
+                active: false,
+                path: new google.maps.MVCArray(),
+                markers: [],
+                polyline: new google.maps.Polyline({
+                    strokeColor: '#1565c0',
+                    strokeOpacity: 0.9,
+                    strokeWeight: 3,
+                    clickable: false,
+                    zIndex: 1000
+                }),
+                polygon: new google.maps.Polygon({
+                    strokeColor: '#1565c0',
+                    strokeOpacity: 0.4,
+                    strokeWeight: 0,
+                    fillColor: '#1565c0',
+                    fillOpacity: 0.12,
+                    clickable: false,
+                    zIndex: 999
+                })
+            };
+            measureState.polyline.setPath(measureState.path);
+            measureState.polygon.setPath(measureState.path);
+
+            const METERS_PER_MILE = 1609.344;
+            const SQ_METERS_PER_SQ_MILE = 2589988.110336;
+
+            function formatMiles(meters) {
+                const miles = meters / METERS_PER_MILE;
+                if (miles < 0.1) {
+                    return (meters * 3.28084).toFixed(0) + ' ft';
+                }
+                return miles.toFixed(miles < 10 ? 2 : 1) + ' mi';
+            }
+
+            function formatArea(sqMeters) {
+                const sqMi = Math.abs(sqMeters) / SQ_METERS_PER_SQ_MILE;
+                if (sqMi < 0.01) {
+                    return Math.abs(sqMeters * 10.7639).toFixed(0) + ' sq ft';
+                }
+                return sqMi.toFixed(sqMi < 10 ? 2 : 1) + ' sq mi';
+            }
+
+            function updateMeasureReadout() {
+                const readout = document.getElementById('measure-readout');
+                const n = measureState.path.getLength();
+                if (!measureState.active && n === 0) {
+                    readout.textContent = 'Off';
+                    return;
+                }
+                if (n < 2) {
+                    readout.textContent = measureState.active
+                        ? 'Click the map…'
+                        : (n === 1 ? '1 point' : 'Off');
+                    return;
+                }
+                const spherical = google.maps.geometry.spherical;
+                const meters = spherical.computeLength(measureState.path);
+                let text = 'Distance: ' + formatMiles(meters);
+                if (n >= 3) {
+                    text += '\nArea: ' + formatArea(spherical.computeArea(measureState.path));
+                }
+                readout.innerText = text;
+            }
+
+            function clearMeasure() {
+                measureState.path.clear();
+                measureState.markers.forEach((marker) => marker.setMap(null));
+                measureState.markers = [];
+                measureState.polyline.setMap(null);
+                measureState.polygon.setMap(null);
+                updateMeasureReadout();
+            }
+
+            function setMeasureActive(active) {
+                measureState.active = active;
+                const toggle = document.getElementById('measure-toggle');
+                toggle.textContent = active ? 'Done' : 'Start';
+                map.setOptions({
+                    draggableCursor: active ? 'crosshair' : null,
+                    disableDoubleClickZoom: active
+                });
+                if (active) {
+                    measureState.polyline.setMap(map);
+                }
+                updateMeasureReadout();
+            }
+
+            document.getElementById('measure-toggle').addEventListener('click', () => {
+                setMeasureActive(!measureState.active);
+            });
+            document.getElementById('measure-clear').addEventListener('click', () => {
+                clearMeasure();
+                if (measureState.active) {
+                    measureState.polyline.setMap(map);
+                }
+            });
+
+            map.addListener('click', (event) => {
+                if (!measureState.active) return;
+                const point = event.latLng;
+                measureState.path.push(point);
+                const marker = new google.maps.Marker({
+                    position: point,
+                    map: map,
+                    clickable: false,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 4,
+                        fillColor: '#1565c0',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 1
+                    }
+                });
+                measureState.markers.push(marker);
+                measureState.polyline.setMap(map);
+                if (measureState.path.getLength() >= 3) {
+                    measureState.polygon.setMap(map);
+                }
+                updateMeasureReadout();
+            });
+
+            function cacheBust(url) {
+                return url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+            }
+
+            function styleMapTile(feature) {
+                const status = feature.getProperty('status');
+                const items = feature.getProperty('total_items') || 0;
+                let color = '#ff9800';
+                let opacity = 0.18;
+                if (status === 'scraped') {
+                    if (items > 0) { color = '#4caf50'; opacity = 0.35; }
+                    else { color = '#9e9e9e'; opacity = 0.2; }
+                } else if (status === 'partial') {
+                    color = '#ffeb3b';
+                    opacity = 0.28;
+                }
+                return {
+                    fillColor: color,
+                    fillOpacity: opacity,
+                    strokeColor: color,
+                    strokeWeight: 0.6,
+                    strokeOpacity: 0.85
+                };
+            }
+
+            function phraseTable(phrases) {
+                if (!phrases) return '';
+                const rows = Object.keys(phrases).map((phrase) => {
+                    const count = phrases[phrase];
+                    const display = (count === null || count === undefined) ? 'not scraped' : count;
+                    return `<tr><td>${phrase}</td><td align="right">${display}</td></tr>`;
+                }).join('');
+                return `<table border="1" cellspacing="0" cellpadding="3"><tr><th align="left">Search Phrase</th><th>Found</th></tr>${rows}</table>`;
+            }
+
             let zoomed = false;
             layers.forEach((layerData, index) => {
-                // Determine if this layer should trigger an automatic zoom
-                // "Scraped Areas" can be very large/disparate, so we don't want to zoom to fit them.
-                const excludeFromZoom = ["Scraped Areas", "Legacy Scrapes"];
+                // Map Tiles / Scraped Areas cover the whole campaign grid, so
+                // don't zoom-to-fit them (they dwarf city-scale layers).
+                const excludeFromZoom = ["Scraped Areas", "Map Tiles"];
                 const canTriggerZoom = !excludeFromZoom.includes(layerData.name);
                 
                 let preserve = true;
@@ -87,32 +276,69 @@ permalink: /kml-viewer.html
                     zoomed = true;
                 }
 
-                // Append timestamp to prevent caching
-                const kmlUrl = layerData.url + (layerData.url.includes('?') ? '&' : '?') + 'v=' + Date.now();
-
-                const layer = new google.maps.KmlLayer({
-                    url: kmlUrl,
-                    map: layerData.default ? map : null,
-                    preserveViewport: preserve,
-                    suppressInfoWindows: false 
-                });
-
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'layer-item';
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.checked = layerData.default;
+                checkbox.checked = !!layerData.default;
                 checkbox.id = 'layer-' + index;
                 
                 const label = document.createElement('label');
                 label.htmlFor = 'layer-' + index;
                 label.textContent = ' ' + layerData.name;
 
-                checkbox.addEventListener('change', () => layer.setMap(checkbox.checked ? map : null));
-
                 itemDiv.appendChild(checkbox);
                 itemDiv.appendChild(label);
                 listDiv.appendChild(itemDiv);
+
+                if (layerData.format === 'geojson') {
+                    const dataLayer = new google.maps.Data();
+                    dataLayer.setStyle(styleMapTile);
+                    const infoWindow = new google.maps.InfoWindow();
+                    dataLayer.addListener('click', (event) => {
+                        if (measureState.active) return;
+                        const feature = event.feature;
+                        const tileId = feature.getProperty('tile_id');
+                        const status = feature.getProperty('status');
+                        const items = feature.getProperty('total_items');
+                        const phrases = feature.getProperty('phrases');
+                        infoWindow.setContent(
+                            `<div><b>Tile: ${tileId}</b><br>Status: ${status}<br>Items: ${items}<br><br>${phraseTable(phrases)}</div>`
+                        );
+                        infoWindow.setPosition(event.latLng);
+                        infoWindow.open(map);
+                    });
+                    fetch(cacheBust(layerData.url))
+                        .then((response) => {
+                            if (!response.ok) {
+                                throw new Error('HTTP ' + response.status);
+                            }
+                            return response.json();
+                        })
+                        .then((geojson) => {
+                            dataLayer.addGeoJson(geojson);
+                            if (checkbox.checked) {
+                                dataLayer.setMap(map);
+                            }
+                        })
+                        .catch((err) => {
+                            console.error(`Layer ${layerData.name} error:`, err);
+                            label.style.color = 'red';
+                        });
+                    checkbox.addEventListener('change', () => {
+                        dataLayer.setMap(checkbox.checked ? map : null);
+                    });
+                    return;
+                }
+
+                const layer = new google.maps.KmlLayer({
+                    url: cacheBust(layerData.url),
+                    map: layerData.default ? map : null,
+                    preserveViewport: preserve,
+                    suppressInfoWindows: false
+                });
+
+                checkbox.addEventListener('change', () => layer.setMap(checkbox.checked ? map : null));
 
                 layer.addListener('status_changed', () => {
                     if (layer.getStatus() !== 'OK') {

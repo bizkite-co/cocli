@@ -79,6 +79,11 @@ def test_generate_coverage_kml_writes_files(tmp_path: Path) -> None:
     assert result.count == 2
     assert result.export_dir == campaign_dir / "exports"
     assert (campaign_dir / "exports" / "coverage_grid_aggregated.kml").exists()
+    geojson_path = campaign_dir / "exports" / "map_tiles.geojson"
+    assert geojson_path.exists()
+    geojson = json.loads(geojson_path.read_text())
+    assert geojson["type"] == "FeatureCollection"
+    assert len(geojson["features"]) == 2
     # slugified phrase files
     phrase_files = list((campaign_dir / "exports").glob("coverage_*.kml"))
     assert any("welders" in p.name for p in phrase_files)
@@ -100,7 +105,74 @@ def test_generate_coverage_kml_empty(tmp_path: Path) -> None:
     ):
         result = service.generate_coverage_kml()
     assert result.count == 0
-    assert "No scraped areas" in result.message
+    assert "No map tiles found" in result.message
+
+
+def test_generate_coverage_kml_from_map_tile_queue(tmp_path: Path) -> None:
+    campaign_dir = _campaign_tree(tmp_path)
+    scraped_tile = (
+        campaign_dir
+        / "queues"
+        / "map-tile"
+        / "completed"
+        / "3"
+        / "30.0"
+        / "-90.0"
+        / "30.0_-90.0.usv"
+    )
+    scraped_tile.parent.mkdir(parents=True)
+    scraped_tile.write_text("30.0_-90.0\x1fwelders\x1f30.0\x1f-90.0\n")
+    pending_tile = (
+        campaign_dir
+        / "queues"
+        / "map-tile"
+        / "pending"
+        / "3"
+        / "30.2"
+        / "-90.0"
+        / "30.2_-90.0.usv"
+    )
+    pending_tile.parent.mkdir(parents=True)
+    pending_tile.write_text("30.2_-90.0\x1fwelders\x1f30.2\x1f-90.0\n")
+
+    def fake_is_tile_scraped(
+        self: Any, phrase: str, tile_id: str, ttl_days: Any = None
+    ) -> ScrapedArea | None:
+        if tile_id != "30.0_-90.0":
+            return None
+        if phrase == "welders":
+            return _area("welders", items_found=4, tile_id=tile_id)
+        if phrase == "fabricators":
+            return _area("fabricators", items_found=1, tile_id=tile_id)
+        return None
+
+    service = ReportingService(campaign_name="test-campaign")
+    with patch(
+        "cocli.application.reporting_service.get_campaign_dir",
+        return_value=campaign_dir,
+    ), patch(
+        "cocli.core.scrape_index.ScrapeIndex.is_tile_scraped",
+        fake_is_tile_scraped,
+    ):
+        result = service.generate_coverage_kml()
+
+    assert result.success is True
+    assert result.count == 2
+    geojson = json.loads((campaign_dir / "exports" / "map_tiles.geojson").read_text())
+    by_id = {f["properties"]["tile_id"]: f["properties"] for f in geojson["features"]}
+    assert by_id["30.0_-90.0"]["status"] == "scraped"
+    assert by_id["30.0_-90.0"]["scraped"] is True
+    assert by_id["30.0_-90.0"]["total_items"] == 5
+    assert by_id["30.0_-90.0"]["phrases"]["welders"] == 4
+    assert by_id["30.2_-90.0"]["status"] == "unscraped"
+    assert by_id["30.2_-90.0"]["scraped"] is False
+    assert by_id["30.2_-90.0"]["total_items"] == 0
+    assert by_id["30.2_-90.0"]["phrases"]["welders"] is None
+    assert by_id["30.2_-90.0"]["phrases"]["fabricators"] is None
+    agg = (campaign_dir / "exports" / "coverage_grid_aggregated.kml").read_text()
+    assert "Status: scraped" in agg
+    assert "Status: unscraped" in agg
+    assert "not scraped" in agg
 
 
 def test_generate_legacy_scrapes_kml(tmp_path: Path) -> None:
@@ -154,6 +226,7 @@ def test_upload_kml_layers(tmp_path: Path) -> None:
     export_dir = campaign_dir / "exports"
     export_dir.mkdir()
     (export_dir / "coverage_grid_aggregated.kml").write_text("<kml/>")
+    (export_dir / "map_tiles.geojson").write_text('{"type":"FeatureCollection","features":[]}')
     (export_dir / "target-areas.kml").write_text("<kml/>")
     (campaign_dir / "ship_prospects.kml").write_text("<kml/>")
 
@@ -178,14 +251,20 @@ def test_upload_kml_layers(tmp_path: Path) -> None:
     assert isinstance(result, PublishKmlResult)
     assert result.success is True
     assert "kml/ship_aggregated.kml" in result.uploaded_keys
+    assert "kml/ship_map_tiles.geojson" in result.uploaded_keys
     assert "kml/ship_targets.kml" in result.uploaded_keys
     assert "kml/ship_prospects.kml" in result.uploaded_keys
-    assert mock_s3.upload_file.call_count == 3
+    assert mock_s3.upload_file.call_count == 4
     mock_s3.put_object.assert_called_once()
     put_kwargs = mock_s3.put_object.call_args.kwargs
     assert put_kwargs["Key"] == "kml/layers.json"
     layers = json.loads(put_kwargs["Body"])
+    map_tiles = next(layer for layer in layers if layer["name"] == "Map Tiles")
+    assert map_tiles["format"] == "geojson"
+    assert map_tiles["url"].endswith("kml/ship_map_tiles.geojson")
     assert any(layer["name"] == "Prospects" for layer in layers)
+    assert not any(layer["name"] == "Scraped Areas" for layer in layers)
+    assert not any(layer["name"] == "Legacy Scrapes" for layer in layers)
     assert any("Uploaded" in s for s in steps)
     assert "Published layers.json" in steps
 
