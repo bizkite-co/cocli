@@ -203,17 +203,15 @@ class PiSyncService:
         staging dir, then `aws s3 sync` staging -> S3's wal/ prefix.
 
         Must NOT land the rsync in the campaign's real local WAL dir
-        (indexes/{index_name}/wal) - CompactManager.isolate_wal() unconditionally
-        deletes that directory as a side effect of running compaction, so
-        anything staged there first would be lost before merge() ever saw it.
-        Staging lives under the campaign root instead, outside the index
-        directory entirely, so it can never be swept into a compact run's scan
-        or purge by accident.
+        (indexes/{index_name}/wal). isolate_wal() no longer deletes that
+        directory (C9: purge only in cleanup() after commit), but staging
+        still lives under the campaign root so a copy used only for the S3
+        push cannot be mistaken for a fold source.
 
         Staging is cleared after a successful S3 push so already-pushed WAL
-        entries aren't re-synced/re-uploaded on the next run - once compaction
-        isolates and folds them, S3's wal/ prefix stops having them, and a
-        stale local staging copy would otherwise look "new" again forever.
+        entries aren't re-synced/re-uploaded on the next run. That rmtree is
+        the S3-push copy under ``_pi_wal_staging/``, not Pi WAL and not
+        ``index_dir/wal``.
         """
         import shutil
 
