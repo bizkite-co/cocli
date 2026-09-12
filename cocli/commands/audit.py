@@ -1,5 +1,7 @@
 from __future__ import annotations
+import json
 import logging
+import math
 import re
 import time
 import typer
@@ -45,6 +47,52 @@ def _run_async(coro: Any) -> Any:
     if exc:
         raise exc[0]
     return result[0] if result else None
+
+
+def _percentile_nearest(sorted_vals: list[int], p: float) -> int:
+    """Inclusive nearest-rank percentile. ``p`` is in [0, 1]."""
+    if not sorted_vals:
+        return 0
+    if p <= 0:
+        return sorted_vals[0]
+    if p >= 1:
+        return sorted_vals[-1]
+    rank = max(1, int(math.ceil(p * len(sorted_vals))))
+    return sorted_vals[rank - 1]
+
+
+def _gm_list_result_count_stats(results_root: Path) -> dict[str, Any]:
+    """n / zero_pct / p10 / median / max of gm-list receipt ``result_count``.
+
+    Reads local ``completed/results/**/*.json`` (Pi→dev syncs ``completed/``;
+    ``audit scrape`` already bulk-syncs before this runs). Never AWS.
+    """
+    counts: list[int] = []
+    if results_root.is_dir():
+        for receipt in results_root.rglob("*.json"):
+            if receipt.name == "datapackage.json":
+                continue
+            try:
+                data = json.loads(receipt.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            rc = data.get("result_count")
+            if isinstance(rc, bool) or not isinstance(rc, int):
+                continue
+            counts.append(rc)
+    n = len(counts)
+    zeros = sum(1 for c in counts if c == 0)
+    ordered = sorted(counts)
+    return {
+        "n": n,
+        "zero_pct": round((100.0 * zeros / n), 1) if n else 0.0,
+        "p10": _percentile_nearest(ordered, 0.10),
+        "median": _percentile_nearest(ordered, 0.50),
+        "max": ordered[-1] if ordered else 0,
+        "source": "local completed receipts (after Pi sync)",
+    }
 
 
 @queue_app.command(name="gm-list")
@@ -491,6 +539,8 @@ def audit_scrape(
     if gm_list_queue.pending.exists():
         gm_list_claimed = len(list(gm_list_queue.pending.rglob("lease*.json")))
 
+    result_count_stats = _gm_list_result_count_stats(gm_list_queue.completed / "results")
+
     # Count enrichment pipeline queue states via Queue abstractions
     from cocli.core.queue.factory import get_queue_manager
     from cocli.core.ordinant import QueueIdentity
@@ -550,6 +600,12 @@ def audit_scrape(
         "gm_list_pending": gm_list_pending,
         "gm_list_claimed": gm_list_claimed,
         "gm_list_completed": gm_list_tiles,
+        "gm_list_result_count_n": result_count_stats["n"],
+        "gm_list_zero_pct": result_count_stats["zero_pct"],
+        "gm_list_result_count_p10": result_count_stats["p10"],
+        "gm_list_result_count_median": result_count_stats["median"],
+        "gm_list_result_count_max": result_count_stats["max"],
+        "gm_list_result_count_source": result_count_stats["source"],
         "gm_details_pending": gm_details_pending,
         "gm_details_completed": gm_details_completed,
         "gm_details_failed": gm_details_failed,
