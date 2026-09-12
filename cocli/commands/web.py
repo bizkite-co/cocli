@@ -19,7 +19,12 @@ def deploy(
     campaign_name: Optional[str] = typer.Option(None, "--campaign-name", "--campaign", help="Campaign name. Defaults to current context."),
     profile: Optional[str] = typer.Option(None, "--profile", help="AWS profile to use. Defaults to 'aws-profile' in config.toml."),
     bucket_name: Optional[str] = typer.Option(None, "--bucket", help="S3 bucket name. Defaults to cocli-web-assets-<domain-slug>."),
-    domain: Optional[str] = typer.Option(None, "--domain", help="Web domain. Defaults to cocli.<hosted-zone-domain>.")
+    domain: Optional[str] = typer.Option(None, "--domain", help="Web domain. Defaults to cocli.<hosted-zone-domain>."),
+    shell_only: bool = typer.Option(
+        False,
+        "--shell-only",
+        help="Rebuild and upload only the static site shell (kml-viewer, dashboard HTML/JS/CSS). Skip emails, reports, and KML publish.",
+    ),
 ) -> None:
     """
     Deploys the web dashboard (shell) and campaign data (KMLs, Report) to S3.
@@ -116,6 +121,36 @@ def deploy(
     else:
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
+    def invalidate_cloudfront() -> None:
+        try:
+            cf = session.client("cloudfront")
+            dists = cf.list_distributions().get("DistributionList", {}).get("Items", [])
+            dist_id = next((d["Id"] for d in dists if domain in d.get("Aliases", {}).get("Items", [])), None)
+
+            if dist_id:
+                paths = ["/kml-viewer.html"] if shell_only else ["/*"]
+                console.print(f"[bold]Invalidating CloudFront cache for {dist_id} ({', '.join(paths)})...[/bold]")
+                cf.create_invalidation(
+                    DistributionId=dist_id,
+                    InvalidationBatch={
+                        "Paths": {
+                            "Quantity": len(paths),
+                            "Items": paths,
+                        },
+                        "CallerReference": str(datetime.now().timestamp()),
+                    },
+                )
+                console.print("[green]Invalidation request sent.[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Note: Could not invalidate CloudFront cache: {e}[/yellow]")
+
+    if shell_only:
+        invalidate_cloudfront()
+        console.print(
+            f"[bold green]Shell-only deploy complete. Visit https://{domain}/kml-viewer.html[/bold green]"
+        )
+        return
+
     # 1.3-2.0 Data refresh: pull fresh gm-list/gm-details/enrichment results
     # and WAL data from the Pi cluster, compact the prospects index, and
     # regenerate + upload the customer-facing enriched-emails CSV. Shared
@@ -183,26 +218,7 @@ def deploy(
         raise typer.Exit(1)
 
     # 4. Invalidate CloudFront Cache
-    try:
-        cf = session.client("cloudfront")
-        dists = cf.list_distributions().get("DistributionList", {}).get("Items", [])
-        dist_id = next((d["Id"] for d in dists if domain in d.get("Aliases", {}).get("Items", [])), None)
-        
-        if dist_id:
-            console.print(f"[bold]Invalidating CloudFront cache for {dist_id}...[/bold]")
-            cf.create_invalidation(
-                DistributionId=dist_id,
-                InvalidationBatch={
-                    'Paths': {
-                        'Quantity': 1,
-                        'Items': ['/*']
-                    },
-                    'CallerReference': str(datetime.now().timestamp())
-                }
-            )
-            console.print("[green]Invalidation request sent.[/green]")
-    except Exception as e:
-        console.print(f"[yellow]Note: Could not invalidate CloudFront cache: {e}[/yellow]")
+    invalidate_cloudfront()
 
     console.print(f"[bold green]Deployment complete! Visit https://{domain}/[/bold green]")
 

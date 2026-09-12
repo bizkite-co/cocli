@@ -148,6 +148,17 @@ def get_scraped_tiles_index_dir() -> Path:
     return v_dir.path
 
 
+def get_wilderness_tiles_index_dir() -> Path:
+    """
+    Global (all campaigns, all phrases) wilderness tile index.
+    Path: data/indexes/wilderness-tiles/{lat}/{lon}.usv
+    """
+    p = paths.indexes / "wilderness-tiles"
+    v_dir = get_validated_dir(p, "Wilderness Tiles Index")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
+
+
 def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     """
     Returns the scraped data directory for a specific campaign.

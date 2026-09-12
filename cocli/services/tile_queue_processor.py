@@ -90,6 +90,10 @@ def process_tile_queue(
     logger.info(f"  Input:  {pending_dir}")
     logger.info(f"  Output: {discovery_gen_completed}")
 
+    from cocli.core.scrape_index import ScrapeIndex
+
+    scrape_index = ScrapeIndex()
+
     tiles_processed = 0
     scrape_tasks_created = 0
     errors = 0
@@ -138,6 +142,21 @@ def process_tile_queue(
                 if not tile_records:
                     logger.warning(f"Tile file has no records: {filename}")
                     errors += 1
+                    progress.advance(progress_task)
+                    continue
+
+                first_tile_id = tile_records[0].tile_id
+                if scrape_index.is_wilderness_tile(first_tile_id):
+                    logger.info(
+                        "Skipping wilderness tile %s (no gm-list tasks)",
+                        first_tile_id,
+                    )
+                    if not dry_run:
+                        completed_dir.mkdir(parents=True, exist_ok=True)
+                        completed_path = completed_dir / rel_path
+                        completed_path.parent.mkdir(parents=True, exist_ok=True)
+                        tile_path.rename(completed_path)
+                    tiles_processed += 1
                     progress.advance(progress_task)
                     continue
 

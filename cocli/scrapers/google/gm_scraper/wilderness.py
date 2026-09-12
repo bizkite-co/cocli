@@ -11,23 +11,32 @@ class WildernessManager:
         self.overlap_threshold = overlap_threshold
         self.ttl_days = ttl_days
 
-    def should_scrape(self, bounds: dict[str, float], query: str) -> bool:
+    def should_scrape(
+        self,
+        bounds: dict[str, float],
+        query: str,
+        tile_id: Optional[str] = None,
+    ) -> bool:
         """
         Determines if an area should be scraped for a specific query.
         Returns False if:
-        1. It overlaps significantly with a known Wilderness area (empty for ANY query).
-        2. It overlaps significantly with a previously scraped area for THIS query.
+        1. The grid tile is manually marked wilderness (all campaigns).
+        2. (Non-grid only) it overlaps a previously scraped area for THIS query.
         """
-        # 1. Check Wilderness (Global) - DISABLED
-        # is_wilderness = self.index.is_wilderness_area(bounds, self.overlap_threshold)
-        # if is_wilderness:
-        #     return False
-            
-        # 2. Check Scraped (Query Specific)
-        is_scraped = self.index.is_area_scraped(query, bounds, self.ttl_days, self.overlap_threshold)
+        if tile_id and self.index.is_wilderness_tile(tile_id):
+            return False
+
+        # Grid mode follows the tile plan; only the explicit wilderness
+        # mark skips work. Overlap/auto-empty is not wilderness.
+        if tile_id:
+            return True
+
+        is_scraped = self.index.is_area_scraped(
+            query, bounds, self.ttl_days, self.overlap_threshold
+        )
         if is_scraped:
             return False
-            
+
         return True
 
     def mark_scraped(self, bounds: dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float, tile_id: Optional[str] = None, processed_by: Optional[str] = None) -> None:

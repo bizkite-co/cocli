@@ -22,7 +22,21 @@ permalink: /kml-viewer.html
         .measure-panel button { margin-right: 4px; margin-top: 4px; }
         .measure-readout { margin-top: 6px; line-height: 1.4; white-space: pre-line; }
         .measure-hint { color: #666; margin-top: 4px; }
+        .wilderness-row { margin-top: 10px; font-size: 13px; }
+        .wilderness-status { color: #666; font-size: 11px; margin-top: 4px; }
     </style>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1500.0.min.js"></script>
+    <script>
+        window.COCLI_CONFIG = {
+            campaignName: "{{ campaign.name }}",
+            userPoolId: "{{ campaign.userPoolId }}",
+            userPoolClientId: "{{ campaign.userPoolClientId }}",
+            userPoolDomain: "{{ campaign.userPoolDomain }}",
+            identityPoolId: "{{ campaign.identityPoolId }}",
+            region: "{{ campaign.region }}",
+            commandQueueUrl: "{{ campaign.commandQueueUrl }}"
+        };
+    </script>
     <script async defer
         src="https://maps.googleapis.com/maps/api/js?key={% if campaign.googleMapsApiKey %}{{ campaign.googleMapsApiKey }}{% else %}AIzaSyCwMXoSea-O43V02XWegH-zW_LcSV3etS8{% endif %}&libraries=geometry&callback=initMap">
     </script>
@@ -88,7 +102,8 @@ permalink: /kml-viewer.html
                 '<div class="legend-row"><span class="swatch" style="background:#ff9800"></span> not scraped</div>',
                 '<div class="legend-row"><span class="swatch" style="background:#ffeb3b"></span> partial</div>',
                 '<div class="legend-row"><span class="swatch" style="background:#9e9e9e"></span> scraped, 0 items</div>',
-                '<div class="legend-row"><span class="swatch" style="background:#4caf50"></span> scraped, items found</div>'
+                '<div class="legend-row"><span class="swatch" style="background:#4caf50"></span> scraped, items found</div>',
+                '<div class="legend-row"><span class="swatch" style="background:#ffffff; opacity:0.8"></span> wilderness</div>'
             ].join('');
             controlDiv.appendChild(legend);
 
@@ -101,7 +116,7 @@ permalink: /kml-viewer.html
                 '<button type="button" id="measure-clear">Clear</button>',
                 '</div>',
                 '<div class="measure-readout" id="measure-readout">Off</div>',
-                '<div class="measure-hint">Click the map to add points. 3+ points also reports area.</div>'
+                '<div class="measure-hint">Click the map to add points. <br />3+ points also reports area.</div>'
             ].join('');
             controlDiv.appendChild(measurePanel);
 
@@ -179,33 +194,24 @@ permalink: /kml-viewer.html
                 updateMeasureReadout();
             }
 
-            function setMeasureActive(active) {
-                measureState.active = active;
-                const toggle = document.getElementById('measure-toggle');
-                toggle.textContent = active ? 'Done' : 'Start';
-                map.setOptions({
-                    draggableCursor: active ? 'crosshair' : null,
-                    disableDoubleClickZoom: active
-                });
-                if (active) {
-                    measureState.polyline.setMap(map);
-                }
-                updateMeasureReadout();
+            const geoJsonLayers = [];
+
+            function featureStyle(feature) {
+                const style = styleMapTile(feature);
+                // Polygons sit on overlayMouseTarget and would steal KML pin
+                // clicks (Prospects/Customers). Never hit-test tiles directly;
+                // map clicks fall through to KmlLayer, then we pick a tile.
+                style.clickable = false;
+                style.zIndex = feature.getProperty('kind') === 'target' ? 0 : 1;
+                return style;
             }
 
-            document.getElementById('measure-toggle').addEventListener('click', () => {
-                setMeasureActive(!measureState.active);
-            });
-            document.getElementById('measure-clear').addEventListener('click', () => {
-                clearMeasure();
-                if (measureState.active) {
-                    measureState.polyline.setMap(map);
-                }
-            });
+            function restyleGeoJsonLayers() {
+                geoJsonLayers.forEach((dataLayer) => dataLayer.setStyle(featureStyle));
+            }
 
-            map.addListener('click', (event) => {
-                if (!measureState.active) return;
-                const point = event.latLng;
+            function addMeasurePoint(point) {
+                if (!point) return;
                 measureState.path.push(point);
                 const marker = new google.maps.Marker({
                     position: point,
@@ -226,6 +232,144 @@ permalink: /kml-viewer.html
                     measureState.polygon.setMap(map);
                 }
                 updateMeasureReadout();
+            }
+
+            function setMeasureActive(active) {
+                measureState.active = active;
+                const toggle = document.getElementById('measure-toggle');
+                toggle.textContent = active ? 'Done' : 'Start';
+                map.setOptions({
+                    draggableCursor: active ? 'crosshair' : null,
+                    disableDoubleClickZoom: active
+                });
+                if (active) {
+                    closeAllPopups();
+                    measureState.polyline.setMap(map);
+                }
+                restyleGeoJsonLayers();
+                updateMeasureReadout();
+            }
+
+            document.getElementById('measure-toggle').addEventListener('click', () => {
+                setMeasureActive(!measureState.active);
+            });
+            document.getElementById('measure-clear').addEventListener('click', () => {
+                clearMeasure();
+                if (measureState.active) {
+                    measureState.polyline.setMap(map);
+                }
+            });
+
+            const popupWindow = new google.maps.InfoWindow();
+            let kmlHandledClick = false;
+
+            function closeAllPopups() {
+                popupWindow.close();
+            }
+
+            function featureContains(feature, latLng) {
+                const geom = feature.getGeometry();
+                if (!geom || geom.getType() !== 'Polygon') return false;
+                const rings = geom.getArray();
+                if (!rings.length) return false;
+                const polygon = new google.maps.Polygon({ paths: rings[0].getArray() });
+                return google.maps.geometry.poly.containsLocation(latLng, polygon);
+            }
+
+            function findTileHit(latLng) {
+                let hit = null;
+                geoJsonLayers.forEach((dataLayer) => {
+                    if (!dataLayer.getMap()) return;
+                    dataLayer.forEach((feature) => {
+                        if (!featureContains(feature, latLng)) return;
+                        const isTarget = feature.getProperty('kind') === 'target';
+                        if (!hit || (hit.feature.getProperty('kind') === 'target' && !isTarget)) {
+                            hit = { dataLayer: dataLayer, feature: feature };
+                        }
+                    });
+                });
+                return hit;
+            }
+
+            function openTilePopup(hit, latLng) {
+                const feature = hit.feature;
+                const dataLayer = hit.dataLayer;
+                const tileId = feature.getProperty('tile_id');
+                const status = feature.getProperty('status');
+                const items = feature.getProperty('total_items');
+                const phrases = feature.getProperty('phrases');
+                const isWilderness = !!feature.getProperty('wilderness');
+                popupWindow.setContent(
+                    `<div><b>Tile: ${tileId}</b><br>Status: ${status || 'target'}<br>Items: ${items == null ? '—' : items}<br><br>${phraseTable(phrases)}` +
+                    `<div class="wilderness-row"><label><input type="checkbox" id="wilderness-cb"${isWilderness ? ' checked' : ''}> Is wilderness tile</label>` +
+                    `<div class="wilderness-status" id="wilderness-status"></div></div></div>`
+                );
+                popupWindow.setPosition(latLng);
+                popupWindow.open(map);
+                google.maps.event.addListenerOnce(popupWindow, 'domready', () => {
+                    const cb = document.getElementById('wilderness-cb');
+                    const statusEl = document.getElementById('wilderness-status');
+                    if (!cb) return;
+                    cb.addEventListener('change', async () => {
+                        const marked = cb.checked;
+                        feature.setProperty('wilderness', marked);
+                        if (marked) {
+                            feature.setProperty('status', 'wilderness');
+                        } else if (feature.getProperty('scraped')) {
+                            feature.setProperty('status', 'scraped');
+                        } else if (feature.getProperty('kind') === 'target') {
+                            feature.setProperty('status', 'target');
+                        } else {
+                            feature.setProperty('status', 'unscraped');
+                        }
+                        dataLayer.overrideStyle(feature, featureStyle(feature));
+                        if (statusEl) statusEl.textContent = 'Saving…';
+                        try {
+                            await persistWilderness(tileId, marked);
+                            if (statusEl) statusEl.textContent = marked
+                                ? 'Marked wilderness (all campaigns).'
+                                : 'Wilderness mark removed.';
+                        } catch (err) {
+                            console.error(err);
+                            if (statusEl) statusEl.textContent = err.message || String(err);
+                        }
+                    });
+                });
+            }
+
+            function openLocationPopup(event) {
+                kmlHandledClick = true;
+                const data = event.featureData || {};
+                const html = data.infoWindowHtml
+                    || ('<div><b>' + (data.name || 'Location') + '</b>'
+                        + (data.description ? '<br>' + data.description : '') + '</div>');
+                popupWindow.setContent(html);
+                popupWindow.setPosition(event.latLng);
+                popupWindow.open(map);
+            }
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeAllPopups();
+                }
+            });
+
+            map.addListener('click', (event) => {
+                if (measureState.active) {
+                    closeAllPopups();
+                    addMeasurePoint(event.latLng);
+                    return;
+                }
+                const latLng = event.latLng;
+                window.setTimeout(() => {
+                    if (kmlHandledClick) {
+                        kmlHandledClick = false;
+                        return;
+                    }
+                    closeAllPopups();
+                    const hit = findTileHit(latLng);
+                    if (hit) openTilePopup(hit, latLng);
+                }, 0);
             });
 
             function cacheBust(url) {
@@ -233,6 +377,24 @@ permalink: /kml-viewer.html
             }
 
             function styleMapTile(feature) {
+                if (feature.getProperty('kind') === 'target') {
+                    return {
+                        fillColor: '#90caf9',
+                        fillOpacity: 0.05,
+                        strokeColor: '#90caf9',
+                        strokeWeight: 0.4,
+                        strokeOpacity: 0.7
+                    };
+                }
+                if (feature.getProperty('wilderness')) {
+                    return {
+                        fillColor: '#ffffff',
+                        fillOpacity: 0.2,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 1.5,
+                        strokeOpacity: 1
+                    };
+                }
                 const status = feature.getProperty('status');
                 const items = feature.getProperty('total_items') || 0;
                 let color = '#ff9800';
@@ -253,6 +415,77 @@ permalink: /kml-viewer.html
                 };
             }
 
+            const WILDERNESS_OVERLAY_KEY = 'cocli_wilderness_overlay';
+
+            function loadWildernessOverlay() {
+                try {
+                    return JSON.parse(localStorage.getItem(WILDERNESS_OVERLAY_KEY) || '{}');
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function saveWildernessOverlay(overlay) {
+                localStorage.setItem(WILDERNESS_OVERLAY_KEY, JSON.stringify(overlay));
+            }
+
+            function getIdToken() {
+                function readCookie(name) {
+                    const parts = ('; ' + document.cookie).split('; ' + name + '=');
+                    if (parts.length === 2) return parts.pop().split(';').shift();
+                    return null;
+                }
+                return localStorage.getItem('cocli_id_token')
+                    || readCookie('cognito_id_token')
+                    || readCookie('id_token');
+            }
+
+            async function sendCampaignCommand(command) {
+                const config = window.COCLI_CONFIG || {};
+                const idToken = getIdToken();
+                if (!idToken || !config.identityPoolId || !config.commandQueueUrl) {
+                    throw new Error('Sign in on the dashboard first to save wilderness marks.');
+                }
+                AWS.config.region = config.region || 'us-east-1';
+                const loginKey = 'cognito-idp.' + AWS.config.region + '.amazonaws.com/' + config.userPoolId;
+                AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+                    IdentityPoolId: config.identityPoolId,
+                    Logins: { [loginKey]: idToken }
+                });
+                await new Promise((resolve, reject) => {
+                    AWS.config.credentials.get((err) => err ? reject(err) : resolve());
+                });
+                const sqs = new AWS.SQS();
+                await sqs.sendMessage({
+                    QueueUrl: config.commandQueueUrl,
+                    MessageBody: JSON.stringify({
+                        command: command,
+                        timestamp: new Date().toISOString()
+                    })
+                }).promise();
+            }
+
+            async function persistWilderness(tileId, isWilderness) {
+                const overlay = loadWildernessOverlay();
+                overlay[tileId] = isWilderness;
+                saveWildernessOverlay(overlay);
+                const cmd = (isWilderness ? 'mark-wilderness ' : 'unmark-wilderness ') + tileId;
+                await sendCampaignCommand(cmd);
+            }
+
+            function applyWildernessOverlay(dataLayer, publishedIds) {
+                const overlay = loadWildernessOverlay();
+                dataLayer.forEach((feature) => {
+                    const tileId = feature.getProperty('tile_id');
+                    let marked = publishedIds.has(tileId);
+                    if (Object.prototype.hasOwnProperty.call(overlay, tileId)) {
+                        marked = !!overlay[tileId];
+                    }
+                    feature.setProperty('wilderness', marked);
+                    if (marked) feature.setProperty('status', 'wilderness');
+                });
+            }
+
             function phraseTable(phrases) {
                 if (!phrases) return '';
                 const rows = Object.keys(phrases).map((phrase) => {
@@ -267,7 +500,7 @@ permalink: /kml-viewer.html
             layers.forEach((layerData, index) => {
                 // Map Tiles / Scraped Areas cover the whole campaign grid, so
                 // don't zoom-to-fit them (they dwarf city-scale layers).
-                const excludeFromZoom = ["Scraped Areas", "Map Tiles"];
+                const excludeFromZoom = ["Scraped Areas", "Map Tiles", "Target Areas"];
                 const canTriggerZoom = !excludeFromZoom.includes(layerData.name);
                 
                 let preserve = true;
@@ -293,21 +526,11 @@ permalink: /kml-viewer.html
 
                 if (layerData.format === 'geojson') {
                     const dataLayer = new google.maps.Data();
-                    dataLayer.setStyle(styleMapTile);
-                    const infoWindow = new google.maps.InfoWindow();
-                    dataLayer.addListener('click', (event) => {
-                        if (measureState.active) return;
-                        const feature = event.feature;
-                        const tileId = feature.getProperty('tile_id');
-                        const status = feature.getProperty('status');
-                        const items = feature.getProperty('total_items');
-                        const phrases = feature.getProperty('phrases');
-                        infoWindow.setContent(
-                            `<div><b>Tile: ${tileId}</b><br>Status: ${status}<br>Items: ${items}<br><br>${phraseTable(phrases)}</div>`
-                        );
-                        infoWindow.setPosition(event.latLng);
-                        infoWindow.open(map);
-                    });
+                    dataLayer.setStyle(featureStyle);
+                    geoJsonLayers.push(dataLayer);
+                    const wildernessIdsP = fetch(cacheBust('kml/wilderness-tiles.json'))
+                        .then((response) => response.ok ? response.json() : [])
+                        .catch(() => []);
                     fetch(cacheBust(layerData.url))
                         .then((response) => {
                             if (!response.ok) {
@@ -315,8 +538,10 @@ permalink: /kml-viewer.html
                             }
                             return response.json();
                         })
-                        .then((geojson) => {
+                        .then(async (geojson) => {
                             dataLayer.addGeoJson(geojson);
+                            const published = await wildernessIdsP;
+                            applyWildernessOverlay(dataLayer, new Set(Array.isArray(published) ? published : []));
                             if (checkbox.checked) {
                                 dataLayer.setMap(map);
                             }
@@ -335,7 +560,12 @@ permalink: /kml-viewer.html
                     url: cacheBust(layerData.url),
                     map: layerData.default ? map : null,
                     preserveViewport: preserve,
-                    suppressInfoWindows: false
+                    suppressInfoWindows: true,
+                    zIndex: 1000
+                });
+
+                layer.addListener('click', (event) => {
+                    openLocationPopup(event);
                 });
 
                 checkbox.addEventListener('change', () => layer.setMap(checkbox.checked ? map : null));

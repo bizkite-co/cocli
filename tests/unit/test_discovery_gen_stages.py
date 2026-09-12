@@ -371,6 +371,7 @@ class TestFilterFrontier:
                 mock_index_instance.is_tile_scraped.return_value = None
                 # No area matches either
                 mock_index_instance.is_area_scraped.return_value = None
+                mock_index_instance.is_wilderness_tile.return_value = False
 
                 frontier = filter_frontier(
                     "test_campaign",

@@ -6,13 +6,6 @@ from pathlib import Path
 from typing import Optional, Any
 from rich.console import Console
 
-# Optional dependency for high-quality KML generation
-try:
-    import simplekml # type: ignore
-    SIMPLEKML_AVAILABLE = True
-except ImportError:
-    SIMPLEKML_AVAILABLE = False
-
 from ..core.sharding import get_grid_tile_id
 
 console = Console()
@@ -175,76 +168,79 @@ def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[list[
             
     return all_tiles
 
+def export_target_areas_geojson(tiles: list[dict[str, Any]], filename: str) -> None:
+    """Compact GeoJSON for the KML viewer (KmlLayer cannot load 10k+ polygons)."""
+    features: list[dict[str, Any]] = []
+    for tile in tiles:
+        sw_lat = float(tile["south_west_lat"])
+        sw_lon = float(tile["south_west_lon"])
+        ne_lat = float(tile["north_east_lat"])
+        ne_lon = float(tile["north_east_lon"])
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {"tile_id": tile["id"], "kind": "target"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [sw_lon, sw_lat],
+                            [ne_lon, sw_lat],
+                            [ne_lon, ne_lat],
+                            [sw_lon, ne_lat],
+                            [sw_lon, sw_lat],
+                        ]
+                    ],
+                },
+            }
+        )
+    Path(filename).write_text(
+        json.dumps(
+            {"type": "FeatureCollection", "features": features},
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    console.print(f"[green]Generated GeoJSON: {filename}[/green]")
+
+
 def export_to_kml(tiles: list[dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None) -> None:
     """
-    Exports grid tiles to a KML file.
-    
-    Args:
-        tiles: List of tile dictionaries.
-        filename: Destination path for the KML file.
-        campaign_name: Name of the campaign.
-        color: Optional KML color (AABBGGRR).
+    Exports grid tiles to a compact KML (shared style) plus a GeoJSON sidecar.
+
+    simplekml emits a unique <Style> per polygon and produced a 14MB file
+    that Google Maps KmlLayer rejects as INVALID_DOCUMENT.
     """
-    if SIMPLEKML_AVAILABLE:
-        kml = simplekml.Kml()
-        kml.document.name = f"{campaign_name} - Coverage Grid"
-        
-        for tile in tiles:
-            pol = kml.newpolygon(name=tile["id"])
-            pol.outerboundaryis = [
-                (tile["south_west_lon"], tile["south_west_lat"]),
-                (tile["north_east_lon"], tile["south_west_lat"]),
-                (tile["north_east_lon"], tile["north_east_lat"]),
-                (tile["south_west_lon"], tile["north_east_lat"]),
-                (tile["south_west_lon"], tile["south_west_lat"])
-            ]
-            
-            if color:
-                pol.style.polystyle.color = color
-            else:
-                pol.style.polystyle.color = simplekml.Color.changealphaint(100, simplekml.Color.blue)
-                
-            pol.style.linestyle.width = 2
-            
-            desc = (
-                f"ID: {tile['id']}\n"
-                f"Grid Step: {tile['step_deg']} deg\n"
-                f"Approx Size: {tile['est_width_miles']}mi (W) x {tile['est_height_miles']}mi (H)\n"
-                f"Center: {tile['center_lat']}, {tile['center_lon']}"
-            )
-            pol.description = desc
-        
-        kml.save(filename)
-    else:
-        # Compact Manual KML Build
-        kml_color = color if color else "64ff0000" # default 40% blue
-        placemarks = []
-        for tile in tiles:
-            coords = (
-                f"{tile['south_west_lon']},{tile['south_west_lat']},0 "
-                f"{tile['north_east_lon']},{tile['south_west_lat']},0 "
-                f"{tile['north_east_lon']},{tile['north_east_lat']},0 "
-                f"{tile['south_west_lon']},{tile['north_east_lat']},0 "
-                f"{tile['south_west_lon']},{tile['south_west_lat']},0"
-            )
-            pm = f"<Placemark><name>{tile['id']}</name><styleUrl>#s</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>{coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>"
-            placemarks.append(pm)
-            
-        kml_content = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<kml xmlns=\"http://www.opengis.net/kml/2.2\">
-<Document>
-    <name>{campaign_name} - All Targets Global Grid</name>
-    <Style id=\"s\">
-        <LineStyle><color>ff00ff00</color><width>1</width></LineStyle>
-        <PolyStyle><color>{kml_color}</color></PolyStyle>
-    </Style>
-    {"" .join(placemarks)}
-</Document>
-</kml>"""
-        with open(filename, 'w') as f:
-            f.write(kml_content)
-            
+    kml_color = color if color else "64ff0000"
+    placemarks = []
+    for tile in tiles:
+        coords = (
+            f"{tile['south_west_lon']},{tile['south_west_lat']},0 "
+            f"{tile['north_east_lon']},{tile['south_west_lat']},0 "
+            f"{tile['north_east_lon']},{tile['north_east_lat']},0 "
+            f"{tile['south_west_lon']},{tile['north_east_lat']},0 "
+            f"{tile['south_west_lon']},{tile['south_west_lat']},0"
+        )
+        placemarks.append(
+            f"<Placemark><name>{tile['id']}</name><styleUrl>#s</styleUrl>"
+            f"<Polygon><outerBoundaryIs><LinearRing><coordinates>{coords}"
+            f"</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>"
+        )
+
+    kml_content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        f"<name>{campaign_name} - All Targets Global Grid</name>"
+        "<Style id=\"s\"><LineStyle><color>ff00ff00</color><width>1</width></LineStyle>"
+        f"<PolyStyle><color>{kml_color}</color></PolyStyle></Style>"
+        f"{''.join(placemarks)}</Document></kml>"
+    )
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(kml_content)
     console.print(f"[green]Generated KML: {filename}[/green]")
+
+    geojson_path = str(Path(filename).with_suffix(".geojson"))
+    export_target_areas_geojson(tiles, geojson_path)
 
 if __name__ == "__main__":
     # Example Usage: Austin, TX

@@ -400,11 +400,16 @@ def filter_frontier(
     pending_tasks = []
     match_count = 0
     skipped_unproductive = 0
+    skipped_wilderness = 0
 
     for task in mission_tasks:
         match = scrape_index.is_tile_scraped(
             task.search_phrase, task.tile_id, ttl_days=ttl_days
         )
+
+        if scrape_index.is_wilderness_tile(task.tile_id):
+            skipped_wilderness += 1
+            continue
 
         if not match:
             forever_match = scrape_index.is_tile_scraped(
@@ -439,6 +444,8 @@ def filter_frontier(
             match_count += 1
 
     logger.info(f"  Identified {match_count} previously scraped tiles")
+    if skipped_wilderness > 0:
+        logger.info(f"  Skipped {skipped_wilderness} wilderness tiles")
     if skipped_unproductive > 0:
         logger.info(f"  Skipped {skipped_unproductive} unproductive tiles (0 results)")
     logger.info(f"  Frontier: {len(pending_tasks)} pending tasks")

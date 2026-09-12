@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import toml
@@ -75,3 +76,62 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
         csv_call.kwargs["ExtraArgs"]["ContentDisposition"]
         == 'attachment; filename="test-campaign-emails.csv"'
     )
+
+
+def test_web_deploy_shell_only_skips_emails_reports_and_kml(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from cocli.commands.web import app as web_app
+
+    campaign_dir = tmp_path / "campaigns" / "ship"
+    campaign_dir.mkdir(parents=True)
+    (campaign_dir / "config.toml").write_text("")
+
+    mock_web = MagicMock()
+    mock_web.resolve_deployment_config.return_value = {
+        "profile": "p",
+        "domain": "cocli.example.com",
+        "bucket_name": "web-bucket",
+    }
+    mock_web.fetch_cdk_outputs.return_value = {}
+    mock_services = MagicMock()
+    mock_services.web_service = mock_web
+
+    mock_session = MagicMock()
+    mock_s3 = MagicMock()
+    mock_cf = MagicMock()
+    mock_session.client.side_effect = lambda name: mock_s3 if name == "s3" else mock_cf
+    mock_cf.list_distributions.return_value = {
+        "DistributionList": {
+            "Items": [{"Id": "DIST1", "Aliases": {"Items": ["cocli.example.com"]}}]
+        }
+    }
+
+    runner = CliRunner()
+    with patch("cocli.commands.web.get_campaign", return_value="ship"), patch(
+        "cocli.commands.web.get_campaign_dir", return_value=campaign_dir
+    ), patch(
+        "cocli.commands.web.ServiceContainer", return_value=mock_services
+    ), patch(
+        "cocli.commands.web.boto3.Session", return_value=mock_session
+    ), patch(
+        "cocli.commands.web.subprocess.run"
+    ) as mock_run:
+        result = runner.invoke(
+            web_app,
+            ["deploy", "--shell-only", "--campaign", "ship"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Shell-only deploy complete" in result.output
+    mock_web.export_and_upload_emails_csv.assert_not_called()
+    mock_web.get_campaign_reports.assert_not_called()
+    kml_calls = [
+        c
+        for c in mock_run.call_args_list
+        if c.args and "publish-kml" in c.args[0]
+    ]
+    assert kml_calls == []
+    mock_cf.create_invalidation.assert_called_once()
+    paths = mock_cf.create_invalidation.call_args.kwargs["InvalidationBatch"]["Paths"]["Items"]
+    assert paths == ["/kml-viewer.html"]

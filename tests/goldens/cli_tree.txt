@@ -190,6 +190,9 @@ cocli
             campaign_name (text)
         list - List local campaigns with descriptions.
             --paths (boolean)
+        mark-wilderness - Mark (or unmark) a global wilderness tile used by every campaign's scrapes.
+            tile_id (text) [required]
+            --unmark (boolean)
         monitor-batch - Monitor the progress of a discovery batch.
             campaign_name (text)
             --name (text)
@@ -221,6 +224,7 @@ cocli
             --bucket (text)
             --domain (text)
             --profile (text)
+            --skip-generate (boolean)
         queue-batch - Enqueues or exports a batch of scrape tasks for the campaign.
             campaign_name (text)
             --limit (integer)
@@ -300,7 +304,7 @@ cocli
             --turboship-kml-exports-path (path)
             --filename (text)
             --type (text)
-        visualize-coverage - Generates KML files to visualize the scraped areas for a campaign.
+        visualize-coverage - Generates KML/GeoJSON for the campaign map-tile grid (item counts + scrape status).
             campaign_name (text)
         visualize-legacy-scrapes - Generates a KML file for all legacy (non-grid-aligned) scraped areas.
             campaign_name (text)
@@ -628,6 +632,11 @@ cocli
             --workers (integer)
             --full (boolean)
             --force (boolean)
+        wilderness-tiles
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
     stations - Stations substrate tools (read-only inspect via the stations package).
         inspect - Render a campaign station root via stations inspect (read-only).
             queue (text)
@@ -753,6 +762,7 @@ cocli
             --profile (text)
             --bucket (text)
             --domain (text)
+            --shell-only (boolean)
         export-emails - Refreshes and uploads just the customer-facing enriched-emails CSV/USV -
             --campaign-name/--campaign (text)
             --profile (text)

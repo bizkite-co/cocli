@@ -326,6 +326,8 @@ class ReportingService:
 
     @staticmethod
     def _tile_status(data: dict[str, Any]) -> str:
+        if data.get("wilderness"):
+            return "wilderness"
         scraped_count = int(data.get("scraped_count") or 0)
         phrase_count = int(data.get("phrase_count") or 0)
         if phrase_count > 0 and scraped_count >= phrase_count:
@@ -346,6 +348,8 @@ class ReportingService:
     def _tile_fill_color(data: dict[str, Any]) -> str:
         """KML PolyStyle color (aabbggrr) for scrape status + item count."""
         status = ReportingService._tile_status(data)
+        if status == "wilderness":
+            return "33ffffff"
         if status == "unscraped":
             return "4000a5ff"
         if status == "partial":
@@ -395,6 +399,7 @@ class ReportingService:
                         "tile_id": tile_id,
                         "status": status,
                         "scraped": status == "scraped",
+                        "wilderness": bool(data.get("wilderness")),
                         "total_items": int(data.get("total_items") or 0),
                         "phrases": data.get("phrases") or {},
                     },
@@ -476,6 +481,7 @@ class ReportingService:
                     "phrases": phrases_map,
                     "scraped_count": scraped_count,
                     "phrase_count": len(search_phrases),
+                    "wilderness": scrape_index.is_wilderness_tile(tile_id),
                 }
         else:
             scraped_areas = scrape_index.get_all_areas_for_phrases(search_phrases)
@@ -495,6 +501,7 @@ class ReportingService:
                         "phrases": {},
                         "scraped_count": 0,
                         "phrase_count": 0,
+                        "wilderness": scrape_index.is_wilderness_tile(tile_id),
                     }
                 tile = aggregated_tiles[tile_id]
                 tile["total_items"] = int(tile["total_items"]) + area.items_found
@@ -506,6 +513,11 @@ class ReportingService:
                 areas_by_phrase.setdefault(area.phrase, []).append(
                     (tile_id, lat, lon)
                 )
+
+        for tile_id, data in aggregated_tiles.items():
+            data["wilderness"] = bool(
+                data.get("wilderness") or scrape_index.is_wilderness_tile(tile_id)
+            )
 
         if not aggregated_tiles:
             return VizExportResult(
@@ -551,11 +563,15 @@ class ReportingService:
             )
             description = self._tile_description(tile_id, data)
             color = self._tile_fill_color(data)
+            if self._tile_status(data) == "wilderness":
+                line_style = "<LineStyle><color>ffffffff</color><width>1.5</width></LineStyle>"
+            else:
+                line_style = "<LineStyle><width>0</width></LineStyle>"
             placemark = f'''        <Placemark>
             <name>{tile_id}</name>
             <description><![CDATA[{description}]]></description>
             <Style>
-                <LineStyle><width>0</width></LineStyle>
+                {line_style}
                 <PolyStyle><color>{color}</color></PolyStyle>
             </Style>
             <Polygon>
@@ -577,6 +593,12 @@ class ReportingService:
             json.dumps(self._tiles_to_geojson(aggregated_tiles), indent=2)
         )
         written.append(geojson_path)
+
+        wilderness_path = export_dir / "wilderness-tiles.json"
+        wilderness_path.write_text(
+            json.dumps(sorted(scrape_index.list_wilderness_tile_ids()), indent=2)
+        )
+        written.append(wilderness_path)
 
         return VizExportResult(
             campaign_name=name,
@@ -738,9 +760,19 @@ class ReportingService:
                 "application/geo+json",
             ),
             (
+                campaign_dir / "exports" / "wilderness-tiles.json",
+                "kml/wilderness-tiles.json",
+                "application/json",
+            ),
+            (
                 campaign_dir / "exports" / "coverage_grid_aggregated.kml",
                 f"kml/{name}_aggregated.kml",
                 kml_type,
+            ),
+            (
+                campaign_dir / "exports" / "target-areas.geojson",
+                f"kml/{name}_targets.geojson",
+                "application/geo+json",
             ),
             (
                 campaign_dir / "exports" / "target-areas.kml",
@@ -769,8 +801,9 @@ class ReportingService:
         layers = [
             {
                 "name": "Target Areas",
-                "url": f"https://{domain}/kml/{name}_targets.kml",
-                "default": True,
+                "url": f"https://{domain}/kml/{name}_targets.geojson",
+                "default": False,
+                "format": "geojson",
             },
             {
                 "name": "Map Tiles",

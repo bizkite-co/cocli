@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, UTC
 from typing import Optional, NamedTuple, Iterator, Any
 from pathlib import Path
 
-from .config import get_scraped_areas_index_dir
+from .config import get_scraped_areas_index_dir, get_wilderness_tiles_index_dir
 from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ class ScrapeIndex:
         self.index_dir = get_scraped_areas_index_dir()
         from .config import get_scraped_tiles_index_dir
         self.witness_dir = get_scraped_tiles_index_dir()
+        self.wilderness_dir = get_wilderness_tiles_index_dir()
 
     def _get_grid_key(self, lat: float, lon: float) -> str:
         """Returns the grid key for spatial partitioning (1x1 degree) using floor."""
@@ -343,6 +344,62 @@ class ScrapeIndex:
     def get_wilderness_areas(self) -> list[ScrapedArea]:
         """Loads all wilderness areas."""
         return self.get_all_areas_for_phrases(["wilderness"])
+
+    def wilderness_tile_path(self, tile_id: str) -> Optional[Path]:
+        parts = tile_id.split("_")
+        if len(parts) < 2:
+            return None
+        try:
+            lat_f = round(float(parts[0]), 1)
+            lon_f = round(float(parts[1]), 1)
+        except ValueError:
+            return None
+        lat_str, lon_str = f"{lat_f:.1f}", f"{lon_f:.1f}"
+        return self.wilderness_dir / lat_str / lon_str / "wilderness.usv"
+
+    def is_wilderness_tile(self, tile_id: str) -> bool:
+        """True if this 0.1-degree tile is marked wilderness (all campaigns)."""
+        path = self.wilderness_tile_path(tile_id)
+        return bool(path and path.exists())
+
+    def mark_wilderness_tile(
+        self, tile_id: str, marked_by: str = "web"
+    ) -> Optional[Path]:
+        """Mark a grid tile as wilderness. Presence of the file is the flag."""
+        path = self.wilderness_tile_path(tile_id)
+        if path is None:
+            logger.warning("Cannot mark wilderness: invalid tile_id %s", tile_id)
+            return None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        from cocli.utils.usv_utils import USVWriter
+
+        with open(path, "w", encoding="utf-8") as wf:
+            writer = USVWriter(wf)
+            writer.writerow([datetime.now(UTC).isoformat(), marked_by])
+        logger.info("Marked wilderness tile %s at %s", tile_id, path)
+        return path
+
+    def unmark_wilderness_tile(self, tile_id: str) -> bool:
+        """Remove the wilderness mark for a grid tile."""
+        path = self.wilderness_tile_path(tile_id)
+        if path is None or not path.exists():
+            return False
+        path.unlink()
+        logger.info("Unmarked wilderness tile %s", tile_id)
+        return True
+
+    def list_wilderness_tile_ids(self) -> list[str]:
+        """All marked wilderness tile ids (``lat_lon`` southwest-corner form)."""
+        ids: list[str] = []
+        if not self.wilderness_dir.exists():
+            return ids
+        for usv_path in self.wilderness_dir.rglob("wilderness.usv"):
+            rel = usv_path.relative_to(self.wilderness_dir).parts
+            if len(rel) != 3:
+                continue
+            lat, lon, _name = rel
+            ids.append(f"{lat}_{lon}")
+        return ids
 
     def get_all_areas_for_phrases(self, phrases: list[str]) -> list[ScrapedArea]:
         """

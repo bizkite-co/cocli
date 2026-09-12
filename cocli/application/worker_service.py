@@ -761,6 +761,37 @@ class WorkerService:
                 await asyncio.sleep(5)
 
 
+    def _apply_wilderness_mark(
+        self, tile_id: str, mark: bool, s3_client: Any
+    ) -> None:
+        """Write/delete the global wilderness-tile index and mirror to campaign S3."""
+        from cocli.core.scrape_index import ScrapeIndex
+
+        index = ScrapeIndex()
+        if mark:
+            local_path = index.mark_wilderness_tile(tile_id, marked_by="web")
+        else:
+            index.unmark_wilderness_tile(tile_id)
+            local_path = index.wilderness_tile_path(tile_id)
+
+        if s3_client is None or local_path is None:
+            return
+        parsed = tile_id.split("_")
+        if len(parsed) < 2:
+            return
+        key = (
+            f"campaigns/{self.campaign_name}/indexes/wilderness-tiles/"
+            f"{local_path.parent.parent.name}/{local_path.parent.name}/{local_path.name}"
+        )
+        bucket = f"cocli-data-{self.campaign_name}"
+        try:
+            if mark and local_path.exists():
+                s3_client.upload_file(str(local_path), bucket, key)
+            else:
+                s3_client.delete_object(Bucket=bucket, Key=key)
+        except Exception:
+            logger.exception("Failed to sync wilderness tile %s to S3", tile_id)
+
     async def _run_command_poller_loop(self, command_queue: Any, s3_client: Any) -> None:
         from ..application.campaign_service import CampaignService
         import shlex
@@ -772,6 +803,24 @@ class WorkerService:
                     parts = shlex.split(cmd.command)
                     if "add-exclude" in cmd.command:
                         await asyncio.to_thread(campaign_service.add_exclude, parts[parts.index("add-exclude")+1])
+                    elif "unmark-wilderness" in cmd.command:
+                        idx = parts.index("unmark-wilderness")
+                        if idx + 1 < len(parts):
+                            await asyncio.to_thread(
+                                self._apply_wilderness_mark,
+                                parts[idx + 1],
+                                False,
+                                s3_client,
+                            )
+                    elif "mark-wilderness" in cmd.command:
+                        idx = parts.index("mark-wilderness")
+                        if idx + 1 < len(parts):
+                            await asyncio.to_thread(
+                                self._apply_wilderness_mark,
+                                parts[idx + 1],
+                                True,
+                                s3_client,
+                            )
                     await asyncio.to_thread(command_queue.ack, cmd)
             except asyncio.CancelledError:
                 break
@@ -1166,6 +1215,22 @@ class WorkerService:
 
         # Start Heartbeat Loop
         asyncio.create_task(self._heartbeat_loop())
+
+        try:
+            s3_client = self.get_s3_client()
+            command_queue = get_queue_manager(
+                "command",
+                use_cloud=True,
+                queue_type="command",
+                campaign_name=self.campaign_name,
+                s3_client=s3_client,
+            )
+            asyncio.create_task(
+                self._run_command_poller_loop(command_queue, s3_client)
+            )
+            logger.info("Command poller started (mark-wilderness / config commands)")
+        except Exception:
+            logger.exception("Could not start command poller")
 
         logger.info(f"Orchestrating {len(worker_definitions)} worker definition(s)")
 

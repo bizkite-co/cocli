@@ -82,6 +82,30 @@ def visualize_legacy_scrapes(
     console.print(f"[bold green]{result.message}[/bold green]")
 
 
+@app.command(name="mark-wilderness")
+def mark_wilderness(
+    tile_id: str = typer.Argument(..., help="Southwest-corner tile id, e.g. 33.5_-116.0"),
+    unmark: bool = typer.Option(
+        False, "--unmark", help="Remove the wilderness mark instead of adding it."
+    ),
+) -> None:
+    """Mark (or unmark) a global wilderness tile used by every campaign's scrapes."""
+    from cocli.core.scrape_index import ScrapeIndex
+
+    index = ScrapeIndex()
+    if unmark:
+        if index.unmark_wilderness_tile(tile_id):
+            console.print(f"[green]Unmarked wilderness tile {tile_id}[/green]")
+        else:
+            console.print(f"[yellow]Tile {tile_id} was not marked wilderness.[/yellow]")
+        return
+    path = index.mark_wilderness_tile(tile_id, marked_by="cli")
+    if path is None:
+        console.print(f"[red]Invalid tile id: {tile_id}[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]Marked wilderness tile {tile_id}[/green]")
+
+
 @app.command("publish-kml")
 def publish_kml(
     campaign_name: Annotated[
@@ -98,6 +122,11 @@ def publish_kml(
     ),
     profile: Optional[str] = typer.Option(
         None, "--profile", help="AWS profile to use."
+    ),
+    skip_generate: bool = typer.Option(
+        False,
+        "--skip-generate",
+        help="Upload already-generated exports only (skip grid/coverage/prospects rebuild).",
     ),
 ) -> None:
     """
@@ -122,6 +151,7 @@ def publish_kml(
             domain=domain,
             campaign_name=name,
             log_callback=log_cb,
+            generate=not skip_generate,
         )
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")

@@ -109,10 +109,11 @@ class ScrapeCoordinator:
                 
                 # Scrape each query
                 for query in search_phrases:
-                    # In Grid Mode (tile_id present), we bypass the wilderness/overlap check
-                    # to strictly follow the grid plan.
-                    if not tile_id and not self.wilderness.should_scrape(bounds, query):
-                        logger.info(f"Skipping '{query}' at {lat},{lon} (Already covered/wilderness).")
+                    if not self.wilderness.should_scrape(bounds, query, tile_id=tile_id):
+                        logger.info(
+                            f"Skipping '{query}' at {lat},{lon} "
+                            f"(already covered or wilderness tile {tile_id})."
+                        )
                         continue
                         
                     # Navigate with CORRECT ZOOM
