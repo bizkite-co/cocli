@@ -27,31 +27,34 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # The only file allowed to import the 1Password SDK directly.
 ONEPASSWORD_SDK_ALLOWED = {"cocli/utils/op_utils.py"}
 
-# Pre-existing call sites that predate this guard. Do NOT add to this list -
-# fix the call site to go through cocli.core.reporting.get_boto3_session()
-# instead. If a new file genuinely cannot use get_boto3_session, that is a
-# design conversation, not a quiet addition here.
+# Pre-existing call sites that predate this guard, keyed by file with the
+# exact number of boto3.Session(...) call expressions AST currently finds
+# there (a ternary like `Session(...) if x else Session()` counts as two).
+# Do NOT bump a count or add a new key - fix the call site to go through
+# cocli.core.reporting.get_boto3_session() instead, and lower the count (or
+# drop the key entirely) as you fix each one. If a new file genuinely cannot
+# use get_boto3_session, that's a design conversation, not a quiet edit here.
 BOTO3_SESSION_ALLOWED = {
-    "cocli/core/reporting.py",
-    "cocli/application/email_service.py",
-    "cocli/application/web_service.py",
-    "cocli/application/reporting_service.py",
-    "cocli/application/ses_suppression_service.py",
-    "cocli/application/data_sync_service.py",
-    "cocli/core/domain_index_manager.py",
-    "cocli/core/queue/gm_item_sqs_queue.py",
-    "cocli/commands/web.py",
-    "scripts/create_cognito_user.py",
-    "scripts/update_campaign_infra_config.py",
-    "scripts/count_enriched_domains.py",
-    "scripts/migrate_filesystem_queue_v2.py",
-    "scripts/provision_pi_iot.py",
-    "scripts/push_queue.py",
-    "scripts/migrate_s3_paths.py",
-    "scripts/deploy_rpi_creds.py",
-    "scripts/manage_campaign_identity.py",
-    "scripts/migrate_s3_domain_keys.py",
-    "scripts/debug_s3_container.py",
+    "cocli/core/reporting.py": 9,
+    "cocli/application/email_service.py": 2,
+    "cocli/application/web_service.py": 1,
+    "cocli/application/reporting_service.py": 1,
+    "cocli/application/ses_suppression_service.py": 2,
+    "cocli/application/data_sync_service.py": 1,
+    "cocli/core/domain_index_manager.py": 1,
+    "cocli/core/queue/gm_item_sqs_queue.py": 2,
+    "cocli/commands/web.py": 3,
+    "scripts/create_cognito_user.py": 1,
+    "scripts/update_campaign_infra_config.py": 1,
+    "scripts/count_enriched_domains.py": 1,
+    "scripts/migrate_filesystem_queue_v2.py": 1,
+    "scripts/provision_pi_iot.py": 1,
+    "scripts/push_queue.py": 1,
+    "scripts/migrate_s3_paths.py": 1,
+    "scripts/deploy_rpi_creds.py": 1,
+    "scripts/manage_campaign_identity.py": 1,
+    "scripts/migrate_s3_domain_keys.py": 1,
+    "scripts/debug_s3_container.py": 2,
 }
 
 
@@ -94,30 +97,53 @@ def test_onepassword_sdk_import_confined_to_op_utils() -> None:
     )
 
 
+def _count_boto3_session_calls(path: Path) -> list[int]:
+    lines = []
+    for node in ast.walk(_parse(path)):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "Session"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "boto3"
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
 def test_no_new_direct_boto3_session_construction() -> None:
-    violations = []
+    unexpected = []
     for path in _iter_python_files():
         rel = _rel(path)
-        if rel in BOTO3_SESSION_ALLOWED:
-            continue
-        for node in ast.walk(_parse(path)):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            if (
-                isinstance(func, ast.Attribute)
-                and func.attr == "Session"
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "boto3"
-            ):
-                violations.append(f"{rel}:{node.lineno}")
+        allowed = BOTO3_SESSION_ALLOWED.get(rel, 0)
+        found = _count_boto3_session_calls(path)
+        if len(found) > allowed:
+            unexpected.append(
+                f"{rel}: found {len(found)} boto3.Session(...) call(s) at "
+                f"lines {found}, only {allowed} grandfathered"
+            )
 
-    assert not violations, (
+    assert not unexpected, (
         "New code must build AWS sessions via "
         "cocli.core.reporting.get_boto3_session(config, profile_name=...), "
         "not boto3.Session(...) directly - direct construction bypasses the "
         "1Password-routed credential resolution and silently falls back to "
         "boto3's native (and much more fragile) credential_process handling. "
-        "Violations (not grandfathered - fix the call site, don't extend "
-        "BOTO3_SESSION_ALLOWED in this test):\n" + "\n".join(violations)
+        "A grandfathered file gained a NEW call site, or a new file added "
+        "one - fix the call site rather than raising its count in "
+        "BOTO3_SESSION_ALLOWED:\n" + "\n".join(unexpected)
     )
+
+
+def test_boto3_session_allowlist_has_no_stale_entries() -> None:
+    """Catches counts left too high after a call site is fixed/removed."""
+    stale = []
+    for rel, allowed in BOTO3_SESSION_ALLOWED.items():
+        path = REPO_ROOT / rel
+        found = len(_count_boto3_session_calls(path)) if path.exists() else 0
+        if found < allowed:
+            stale.append(f"{rel}: allowlisted for {allowed}, only {found} remain - lower the count")
+
+    assert not stale, "\n".join(stale)
