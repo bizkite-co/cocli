@@ -148,6 +148,14 @@ def status(
 
     if report.lock.error:
         console.print(f"Lock: [red]Error checking lock: {report.lock.error}[/red]")
+        if any(
+            err_kw in report.lock.error
+            for err_kw in ["1Password", "Credential", "authorization", "expired", "AWS"]
+        ):
+            console.print(
+                "[yellow]Hint: Unlock 1Password (Developer → Integrate with "
+                "1Password CLI) or refresh AWS credentials, then retry.[/yellow]"
+            )
     elif report.lock.active:
         console.print(
             f"[bold yellow]LOCK ACTIVE[/bold yellow]: Run ID {report.lock.run_id} "

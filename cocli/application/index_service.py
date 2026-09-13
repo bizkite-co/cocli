@@ -223,9 +223,24 @@ class IndexService:
             campaign_name=self.campaign_name, index_name=index_name
         )
 
+        # Resolve the client once. ``except manager.s3.exceptions.NoSuchKey``
+        # re-enters the s3 property; a 1Password/credential failure there
+        # becomes an uncaught traceback (2026-09-11 ``cocli index status``).
+        try:
+            s3 = manager.s3
+        except Exception as e:
+            logger.warning("Error creating S3 client for index status: %s", e)
+            err = str(e)
+            report.lock = IndexLockStatus(active=False, error=err)
+            report.checkpoint = IndexCheckpointStatus(found=False, error=err)
+            return report
+
+        no_such = getattr(getattr(s3, "exceptions", None), "NoSuchKey", ())
+        paginator = s3.get_paginator("list_objects_v2")
+
         # 1. Lock
         try:
-            lock_obj = manager.s3.get_object(
+            lock_obj = s3.get_object(
                 Bucket=manager._bucket, Key=manager.s3_lock_key
             )
             lock_data = json.loads(lock_obj["Body"].read().decode("utf-8"))
@@ -235,46 +250,53 @@ class IndexService:
                 created_at=lock_data.get("created_at"),
                 host=lock_data.get("host"),
             )
-        except manager.s3.exceptions.NoSuchKey:
+        except no_such:
             report.lock = IndexLockStatus(active=False)
         except Exception as e:
             logger.warning("Error checking index lock: %s", e)
             report.lock = IndexLockStatus(active=False, error=str(e))
 
         # 2. WAL backlog
-        wal_count = 0
-        paginator = manager.s3.get_paginator("list_objects_v2")
-        pages = paginator.paginate(Bucket=manager._bucket, Prefix=manager.s3_wal_prefix)
-        for page in pages:
-            if "Contents" in page:
-                wal_count += len(
-                    [
-                        obj
-                        for obj in page["Contents"]
-                        if obj["Key"].endswith((".usv", ".csv"))
-                    ]
-                )
-        report.wal_backlog_count = wal_count
+        try:
+            wal_count = 0
+            pages = paginator.paginate(
+                Bucket=manager._bucket, Prefix=manager.s3_wal_prefix
+            )
+            for page in pages:
+                if "Contents" in page:
+                    wal_count += len(
+                        [
+                            obj
+                            for obj in page["Contents"]
+                            if obj["Key"].endswith((".usv", ".csv"))
+                        ]
+                    )
+            report.wal_backlog_count = wal_count
+        except Exception as e:
+            logger.warning("Error listing WAL for index status: %s", e)
 
         # 3. Processing (staging)
-        proc_prefix = manager.s3_index_prefix + "processing/"
-        proc_count = 0
-        for page in paginator.paginate(Bucket=manager._bucket, Prefix=proc_prefix):
-            if "Contents" in page:
-                proc_count += len(page["Contents"])
-        report.processing_file_count = proc_count
+        try:
+            proc_prefix = manager.s3_index_prefix + "processing/"
+            proc_count = 0
+            for page in paginator.paginate(Bucket=manager._bucket, Prefix=proc_prefix):
+                if "Contents" in page:
+                    proc_count += len(page["Contents"])
+            report.processing_file_count = proc_count
+        except Exception as e:
+            logger.warning("Error listing processing/ for index status: %s", e)
 
         # 4. Checkpoint
         checkpoint_key = manager.s3_index_prefix + manager.checkpoint_filename
 
         try:
-            head = manager.s3.head_object(Bucket=manager._bucket, Key=checkpoint_key)
+            head = s3.head_object(Bucket=manager._bucket, Key=checkpoint_key)
             size_mb = head["ContentLength"] / 1024 / 1024
             last_modified = head["LastModified"].strftime("%Y-%m-%d %H:%M:%S")
             report.checkpoint = IndexCheckpointStatus(
                 found=True, size_mb=size_mb, last_modified=last_modified
             )
-        except manager.s3.exceptions.NoSuchKey:
+        except no_such:
             report.checkpoint = IndexCheckpointStatus(found=False)
         except Exception as e:
             logger.warning("Error checking checkpoint: %s", e)

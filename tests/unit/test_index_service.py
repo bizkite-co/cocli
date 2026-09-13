@@ -189,6 +189,23 @@ def _make_compact_manager_mock(
     return manager
 
 
+def test_get_status_s3_client_failure_is_report_not_traceback() -> None:
+    """Resolving CompactManager.s3 (get_boto3_session / 1Password) must not
+    crash ``cocli index status`` via except manager.s3.exceptions.NoSuchKey."""
+    manager = MagicMock()
+    type(manager).s3 = property(
+        lambda _self: (_ for _ in ()).throw(RuntimeError("1Password CLI error"))
+    )
+    service = IndexService(campaign_name="turboship")
+    with patch("cocli.core.compact.CompactManager", return_value=manager):
+        report = service.get_status("google_maps_prospects")
+
+    assert report.lock.active is False
+    assert "1Password" in (report.lock.error or "")
+    assert report.checkpoint.found is False
+    assert "1Password" in (report.checkpoint.error or "")
+
+
 def test_get_status_empty_index() -> None:
     manager = _make_compact_manager_mock()
     service = IndexService(campaign_name="roadmap")

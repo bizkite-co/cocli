@@ -1,9 +1,13 @@
 from __future__ import annotations
-import os
+
+import configparser
 import json
-import boto3
 import logging
-from typing import Any, cast, Optional
+import os
+import shlex
+from typing import Any, Optional, cast
+
+import boto3
 from rich.console import Console
 from datetime import datetime, UTC
 
@@ -16,6 +20,110 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 __all__ = ["get_campaign_stats", "get_boto3_session", "get_s3_client", "get_data_bucket_name", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
+
+
+def _aws_config_path() -> str:
+    return os.environ.get("AWS_CONFIG_FILE") or os.path.expanduser("~/.aws/config")
+
+
+def _aws_profile_items(profile_name: str) -> dict[str, str]:
+    parser = configparser.RawConfigParser()
+    parser.read(_aws_config_path())
+    section = "default" if profile_name in ("", "default") else f"profile {profile_name}"
+    if not parser.has_section(section):
+        return {}
+    return {key: value for key, value in parser.items(section)}
+
+
+def _uses_op_credential_process(
+    profile_name: str, *, _seen: Optional[set[str]] = None
+) -> bool:
+    seen = _seen if _seen is not None else set()
+    if profile_name in seen:
+        return False
+    seen.add(profile_name)
+    items = _aws_profile_items(profile_name)
+    if "1password-aws-credentials" in items.get("credential_process", ""):
+        return True
+    source = items.get("source_profile")
+    if not source:
+        return False
+    return _uses_op_credential_process(source, _seen=seen)
+
+
+def _op_refs_from_credential_process(command: str) -> Optional[tuple[str, str]]:
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return None
+    refs = [part for part in parts if part.startswith("op://")]
+    if len(refs) < 2:
+        return None
+    return refs[0], refs[1]
+
+
+def _static_keys_via_op(profile_name: str, *, _seen: Optional[set[str]] = None) -> Optional[tuple[str, str, str]]:
+    """Resolve IAM keys for a profile through ``get_op_secret``, not cmd.exe.
+
+    Follows ``source_profile`` so ``bizkite-support`` (role_arn + source mark)
+    still works. Returns (access_key, secret_key, region) for the *source*
+    that holds credential_process op:// refs.
+    """
+    seen = _seen if _seen is not None else set()
+    if profile_name in seen:
+        return None
+    seen.add(profile_name)
+    items = _aws_profile_items(profile_name)
+    cred_proc = items.get("credential_process", "")
+    if cred_proc and "1password-aws-credentials" in cred_proc:
+        refs = _op_refs_from_credential_process(cred_proc)
+        if refs is None:
+            return None
+        from cocli.core.secrets import get_secret_provider
+
+        values = get_secret_provider().get_secrets(refs[0], refs[1])
+        if len(values) < 2 or not values[0] or not values[1]:
+            return None
+        access, secret = values[0], values[1]
+        region = items.get("region") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+        return access, secret, region
+    source = items.get("source_profile")
+    if source:
+        return _static_keys_via_op(source, _seen=seen)
+    return None
+
+
+def _boto3_session_via_op_utils(profile_name: str) -> Optional[boto3.Session]:
+    """Build a session through SecretProvider (same plugin as the rest of cocli)."""
+    resolved = _static_keys_via_op(profile_name)
+    if resolved is None:
+        return None
+    access, secret, region = resolved
+    items = _aws_profile_items(profile_name)
+    session = boto3.Session(
+        aws_access_key_id=access,
+        aws_secret_access_key=secret,
+        region_name=items.get("region") or region,
+    )
+    role_arn = items.get("role_arn")
+    if not role_arn:
+        logger.debug("AWS session for %s via get_op_secret", profile_name)
+        return session
+    try:
+        assumed = session.client("sts").assume_role(
+            RoleArn=role_arn,
+            RoleSessionName="cocli",
+        )["Credentials"]
+    except Exception as exc:
+        logger.warning("assume_role for %s failed after op keys: %s", profile_name, exc)
+        return None
+    logger.debug("AWS session for %s via get_op_secret + assume_role", profile_name)
+    return boto3.Session(
+        aws_access_key_id=assumed["AccessKeyId"],
+        aws_secret_access_key=assumed["SecretAccessKey"],
+        aws_session_token=assumed["SessionToken"],
+        region_name=items.get("region") or region,
+    )
 
 
 def get_data_bucket_name(config: dict[str, Any], campaign_name: str) -> str:
@@ -70,6 +178,9 @@ def get_boto3_session(config: dict[str, Any], max_pool_connections: int = 10, pr
             os.environ["AWS_SECRET_ACCESS_KEY"] = "test"
 
     if profile_name:
+        op_session = _boto3_session_via_op_utils(profile_name)
+        if op_session is not None:
+            return op_session
         try:
             return boto3.Session(profile_name=profile_name)
         except Exception:
@@ -125,12 +236,28 @@ def get_boto3_session(config: dict[str, Any], max_pool_connections: int = 10, pr
                 f"{campaign_name!r}'s configured profile {profile_name!r}; "
                 f"using the campaign's profile."
             )
+        op_session = _boto3_session_via_op_utils(profile_name)
+        if op_session is not None:
+            return op_session
+        if _uses_op_credential_process(profile_name):
+            raise RuntimeError(
+                "Could not read AWS keys from 1Password via op-read-paused "
+                "(Windows Hello). Unlock 1Password desktop and retry."
+            )
         try:
             return boto3.Session(profile_name=profile_name)
         except Exception:
             pass
 
     if env_profile:
+        op_session = _boto3_session_via_op_utils(env_profile)
+        if op_session is not None:
+            return op_session
+        if _uses_op_credential_process(env_profile):
+            raise RuntimeError(
+                "Could not read AWS keys from 1Password via op-read-paused "
+                "(Windows Hello). Unlock 1Password desktop and retry."
+            )
         try:
             return boto3.Session(profile_name=env_profile)
         except Exception:
