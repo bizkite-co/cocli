@@ -50,7 +50,6 @@ BOTO3_SESSION_ALLOWED = {
     "scripts/migrate_filesystem_queue_v2.py": 1,
     "scripts/push_queue.py": 1,
     "scripts/migrate_s3_paths.py": 1,
-    "scripts/deploy_rpi_creds.py": 1,
     "scripts/manage_campaign_identity.py": 1,
     "scripts/migrate_s3_domain_keys.py": 1,
     "scripts/debug_s3_container.py": 2,

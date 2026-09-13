@@ -6,6 +6,8 @@ from pathlib import Path
 
 import boto3
 
+from cocli.core.reporting import get_boto3_session
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deploy AWS credentials for a specific profile to a Raspberry Pi.")
     parser.add_argument("--profile", help="Local AWS profile name to extract.")
@@ -36,7 +38,12 @@ def main() -> None:
             region = secret_data.get("region", "us-east-1")
             token = secret_data.get("aws_session_token")
         else:
-            session = boto3.Session(profile_name=args.profile)
+            # get_boto3_session (not boto3.Session directly) resolves
+            # 1Password-backed profiles through cocli's op_utils path
+            # instead of boto3's native (and more fragile)
+            # credential_process handling. profile_name short-circuits its
+            # campaign-config lookup, so an empty config dict is correct.
+            session = get_boto3_session({}, profile_name=args.profile)
             raw_creds = session.get_credentials()
             if not raw_creds:
                 print(f"Error: No credentials found for profile '{args.profile}'")
