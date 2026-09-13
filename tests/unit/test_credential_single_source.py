@@ -48,7 +48,6 @@ BOTO3_SESSION_ALLOWED = {
     "scripts/update_campaign_infra_config.py": 1,
     "scripts/count_enriched_domains.py": 1,
     "scripts/migrate_filesystem_queue_v2.py": 1,
-    "scripts/provision_pi_iot.py": 1,
     "scripts/push_queue.py": 1,
     "scripts/migrate_s3_paths.py": 1,
     "scripts/deploy_rpi_creds.py": 1,

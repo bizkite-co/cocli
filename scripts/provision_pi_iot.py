@@ -3,9 +3,10 @@ import argparse
 import json
 import subprocess
 from pathlib import Path
-import boto3
 import sys
 import requests
+
+from cocli.core.reporting import get_boto3_session
 
 def _generate_get_tokens_script() -> str:
     return """#!/bin/bash
@@ -124,7 +125,13 @@ def main() -> None:
     
     args = parser.parse_args()
     
-    session = boto3.Session(profile_name=args.profile)
+    # get_boto3_session (not boto3.Session directly) resolves 1Password-backed
+    # profiles (e.g. bizkite-support -> mark) through cocli's own op_utils
+    # path, which has a WSL-interop-safe fallback that the external
+    # ~/.aws/scripts/1password-aws-credentials.sh credential_process lacks.
+    # An empty config dict is correct here: passing profile_name explicitly
+    # short-circuits get_boto3_session's campaign-config lookup entirely.
+    session = get_boto3_session({}, profile_name=args.profile)
     iot = session.client("iot")
     
     role_title = args.role.capitalize()
