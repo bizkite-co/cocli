@@ -102,7 +102,7 @@ def export_enriched_emails(
     """
     import duckdb
 
-    from cocli.core.email_index_manager import EmailIndexManager
+    from cocli.core.email_index_manager import EmailIndexManager, filter_safe_usv_paths
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
 
     exclusion_manager = ExclusionManager(campaign_name)
@@ -132,9 +132,10 @@ def export_enriched_emails(
     """)
 
     email_manager = EmailIndexManager(campaign_name)
-    email_files = [str(p) for p in email_manager.shards_dir.glob("*.usv")] + [
-        str(p) for p in email_manager.inbox_dir.rglob("*.usv")
-    ]
+    email_files = filter_safe_usv_paths(
+        [str(p) for p in email_manager.shards_dir.glob("*.usv")]
+        + [str(p) for p in email_manager.inbox_dir.rglob("*.usv")]
+    )
     if email_files:
         con.execute(f"""
             CREATE TABLE emails AS SELECT * FROM read_csv({email_files!r},
