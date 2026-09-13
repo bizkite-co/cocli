@@ -3,10 +3,11 @@ import argparse
 import configparser
 import json
 from pathlib import Path
-import boto3
 import sys
 
 from typing import Any
+
+from cocli.core.reporting import get_boto3_session
 
 def get_limited_policy(bucket_name: str) -> dict[str, Any]:
     return {
@@ -108,7 +109,12 @@ def main() -> None:
     print(f"--- Initializing Identity for {args.campaign} ---")
     
     try:
-        session = boto3.Session(profile_name=args.admin_profile)
+        # get_boto3_session (not boto3.Session directly) resolves
+        # 1Password-backed profiles through cocli's op_utils path instead
+        # of boto3's native (and more fragile) credential_process handling.
+        # profile_name short-circuits its campaign-config lookup, so an
+        # empty config dict is correct.
+        session = get_boto3_session({}, profile_name=args.admin_profile)
         iam = session.client("iam")
         sm = session.client("secretsmanager")
         
