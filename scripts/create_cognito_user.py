@@ -1,8 +1,8 @@
 from __future__ import annotations
 import sys
-import boto3
 from typing import Optional
 from cocli.application.services import ServiceContainer
+from cocli.core.reporting import get_boto3_session
 
 def main() -> None:
     if len(sys.argv) < 2:
@@ -37,7 +37,12 @@ def main() -> None:
         print("Error: Could not resolve one or more credentials from 1Password.")
         sys.exit(1)
     
-    session = boto3.Session(profile_name=profile, region_name=region)
+    # get_boto3_session (not boto3.Session directly) resolves 1Password-backed
+    # profiles through cocli's op_utils path instead of boto3's native (and
+    # more fragile) credential_process handling. Region now comes from the
+    # AWS profile's own config rather than campaign config.toml - every
+    # profile and campaign in this repo agrees on us-east-1 today.
+    session = get_boto3_session({}, profile_name=profile)
     client = session.client("cognito-idp")
     
     print(f"Provisioning user {username} in pool {user_pool_id}...")

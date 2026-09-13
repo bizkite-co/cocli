@@ -1,10 +1,10 @@
 from __future__ import annotations
 import typer
-import boto3
 import toml
 from typing import Optional
 from rich.console import Console
 from cocli.core.config import get_campaign, load_campaign_config, get_campaigns_dir
+from cocli.core.reporting import get_boto3_session
 
 app = typer.Typer()
 console = Console()
@@ -57,7 +57,12 @@ def update_config(
 
     # 2. Query CloudFormation
     try:
-        session = boto3.Session(profile_name=profile, region_name=region)
+        # get_boto3_session (not boto3.Session directly) resolves
+        # 1Password-backed profiles through cocli's op_utils path instead
+        # of boto3's native (and more fragile) credential_process
+        # handling. Region now comes from the AWS profile's own config
+        # rather than campaign config.toml.
+        session = get_boto3_session({}, profile_name=profile)
         cf = session.client("cloudformation")
         response = cf.describe_stacks(StackName=effective_stack_name)
         outputs = response['Stacks'][0].get('Outputs', [])

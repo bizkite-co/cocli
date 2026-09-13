@@ -113,7 +113,7 @@ def test_web_deploy_shell_only_skips_emails_reports_and_kml(tmp_path: Path) -> N
     ), patch(
         "cocli.commands.web.ServiceContainer", return_value=mock_services
     ), patch(
-        "cocli.commands.web.boto3.Session", return_value=mock_session
+        "cocli.commands.web.get_boto3_session", return_value=mock_session
     ), patch(
         "cocli.commands.web.subprocess.run"
     ) as mock_run:

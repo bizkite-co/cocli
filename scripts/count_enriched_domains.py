@@ -1,6 +1,6 @@
-import boto3
 from datetime import datetime, timezone, timedelta
 from cocli.core.config import load_campaign_config, get_campaign
+from cocli.core.reporting import get_boto3_session
 
 def main() -> None:
     campaign_name = get_campaign()
@@ -23,7 +23,10 @@ def main() -> None:
     
     prefix = "indexes/domains/"
     
-    session = boto3.Session(profile_name=aws_config.get("profile"))
+    # get_boto3_session (not boto3.Session directly) resolves 1Password-backed
+    # profiles through cocli's op_utils path instead of boto3's native (and
+    # more fragile) credential_process handling.
+    session = get_boto3_session({}, profile_name=aws_config.get("profile"))
     s3 = session.client("s3")
     
     paginator = s3.get_paginator("list_objects_v2")

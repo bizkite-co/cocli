@@ -3,12 +3,12 @@ import typer
 import json
 import subprocess
 import os
-import boto3
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from cocli.core.config import get_campaign, get_campaign_dir
+from cocli.core.reporting import get_boto3_session
 from ..application.services import ServiceContainer
 
 app = typer.Typer(no_args_is_help=True, help="Manage web deployment.")
@@ -74,7 +74,11 @@ def deploy(
             env["CAMPAIGN"] = campaign_name
             env["AWS_PROFILE"] = profile
             
-            session = boto3.Session(profile_name=profile)
+            # get_boto3_session (not boto3.Session directly) resolves
+            # 1Password-backed profiles through cocli's op_utils path
+            # instead of boto3's native (and more fragile)
+            # credential_process handling.
+            session = get_boto3_session({}, profile_name=profile)
             env["AWS_REGION"] = session.region_name or "us-east-1"
 
             # Fetch CDK outputs from CloudFormation
@@ -88,7 +92,7 @@ def deploy(
     else:
         console.print(f"[yellow]Source web directory {source_web_dir} not found. Skipping build.[/yellow]")
 
-    session = boto3.Session(profile_name=profile)
+    session = get_boto3_session({}, profile_name=profile)
     s3 = session.client("s3")
 
     # 1. Sync Static Assets (Shell)
@@ -256,7 +260,7 @@ def export_emails(
 
     console.print(f"[bold blue]Exporting emails CSV for:[/bold blue] {campaign_name} -> s3://{bucket_name}")
 
-    session = boto3.Session(profile_name=profile)
+    session = get_boto3_session({}, profile_name=profile)
     s3 = session.client("s3")
 
     def log_cb(msg: str) -> None:

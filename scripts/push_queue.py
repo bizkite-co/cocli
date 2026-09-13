@@ -1,5 +1,4 @@
 import typer
-import boto3
 import os
 from pathlib import Path
 from rich.console import Console
@@ -7,6 +6,7 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRe
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
+from cocli.core.reporting import get_boto3_session
 
 console = Console()
 app = typer.Typer()
@@ -49,7 +49,10 @@ def main(
     bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign}"
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
 
-    session = boto3.Session(profile_name=profile_name)
+    # get_boto3_session (not boto3.Session directly) resolves 1Password-backed
+    # profiles through cocli's op_utils path instead of boto3's native (and
+    # more fragile) credential_process handling.
+    session = get_boto3_session({}, profile_name=profile_name)
     s3 = session.client("s3")
 
     # Local Path
