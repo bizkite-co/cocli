@@ -428,20 +428,20 @@ class CompanyDetail(MarkPrefixMixin, Container):
         screenshot_path = self._screenshot_path()
 
         if screenshot_path and screenshot_path.exists():
-            # `Image`, not `AutoImage`: when Sixel is the detected backend,
-            # AutoImage renders nothing - textual_image's own widget/sixel.py
-            # comment explains why ("Rendering the Sixel renderable doesn't
-            # work with Textual as it relies on printable segments. Instead,
-            # Sixel data is injected into the rendering process" via a
-            # dedicated compose()-based child widget). `Image` is the alias
-            # that resolves to the working SixelImage when Sixel is
-            # detected, and to AutoImage otherwise (2026-08-30).
-            from textual_image.widget import Image as ScreenshotImage
+            # Backend selection (default: terminal detection - Sixel graphics
+            # where supported, text otherwise) lives in
+            # cocli.utils.textual_utils.get_image_widget_class, including the
+            # self-healing full repaint that keeps Sixel-desynced terminals
+            # (Windows Terminal) from doubling pane/table headers
+            # (2026-09-13 investigation). COCLI_IMAGE_BACKEND overrides.
+            from ...utils.textual_utils import get_image_widget_class
 
-            return Container(
-                ScreenshotImage(str(screenshot_path), id="screenshot-image"),
-                id="screenshot-panel",
-            )
+            image_cls = get_image_widget_class()
+            if image_cls is not None:
+                return Container(
+                    image_cls(str(screenshot_path), id="screenshot-image"),
+                    id="screenshot-panel",
+                )
 
         return Container(
             Label("[dim]No screenshot[/]", classes="panel-header"),

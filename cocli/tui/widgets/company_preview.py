@@ -129,16 +129,22 @@ class CompanyPreview(CocliPanel):
 
         screenshot_path = company.get_local_path() / "enrichments" / "screenshot.png"
         if screenshot_path.exists():
-            # Use Image rather than AutoImage so Sixel terminals render correctly.
-            from textual_image.widget import Image as ScreenshotImage
+            # Backend selection (default: terminal detection - Sixel graphics
+            # where supported, text otherwise) lives in
+            # cocli.utils.textual_utils.get_image_widget_class, including the
+            # self-healing full repaint that keeps Sixel-desynced terminals
+            # (Windows Terminal) from doubling pane headers.
+            from cocli.utils.textual_utils import get_image_widget_class
 
-            preview_widgets.append(
-                Container(
-                    ScreenshotImage(
-                        str(screenshot_path), id="preview-screenshot-image"
-                    ),
-                    id="preview-screenshot-panel",
+            image_cls = get_image_widget_class()
+            if image_cls is not None:
+                preview_widgets.append(
+                    Container(
+                        image_cls(
+                            str(screenshot_path), id="preview-screenshot-image"
+                        ),
+                        id="preview-screenshot-panel",
+                    )
                 )
-            )
 
         await content.mount(*preview_widgets)
