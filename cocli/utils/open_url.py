@@ -43,6 +43,25 @@ def open_url(url: str) -> bool:
     return False
 
 
+def _escape_for_cmd_exe(url: str) -> str:
+    """Escape cmd.exe metacharacters in a URL passed via ``cmd /c``.
+
+    cmd.exe's own command-line parser treats & | < > ( ) as operators even
+    inside an argv element that arrived quoted from the calling process -
+    the OS-level argv boundary doesn't protect against cmd.exe's *own*
+    reparsing of the reconstructed command line. An unescaped `&` (common
+    in any URL with more than one query parameter) silently truncates the
+    URL at that point and runs whatever follows as a separate command -
+    confirmed 2026-09-14: this dropped the phone-number parameter from
+    Google Voice call URLs (`?authuser=...&a=nc,+15551234567`), so Google
+    Voice opened to the right account but never pre-filled the number.
+    ``^`` is cmd.exe's escape character, so it must be escaped first.
+    """
+    for ch in "^&|<>()":
+        url = url.replace(ch, "^" + ch)
+    return url
+
+
 def _candidate_commands(url: str) -> list[list[str]]:
     commands: list[list[str]] = []
     if sys.platform == "darwin":
@@ -54,7 +73,7 @@ def _candidate_commands(url: str) -> list[list[str]]:
     if sys.platform == "win32":
         cmd_exe = shutil.which("cmd") or shutil.which("cmd.exe")
         if cmd_exe:
-            commands.append([cmd_exe, "/c", "start", "", url])
+            commands.append([cmd_exe, "/c", "start", "", _escape_for_cmd_exe(url)])
         return commands
 
     if is_wsl():
@@ -63,7 +82,7 @@ def _candidate_commands(url: str) -> list[list[str]]:
             commands.append([wslview, url])
         cmd_exe = shutil.which("cmd.exe")
         if cmd_exe:
-            commands.append([cmd_exe, "/c", "start", "", url])
+            commands.append([cmd_exe, "/c", "start", "", _escape_for_cmd_exe(url)])
         explorer = shutil.which("explorer.exe")
         if explorer:
             commands.append([explorer, url])

@@ -1,10 +1,12 @@
 from __future__ import annotations
 from typing import Optional
 
-from cocli.utils.open_url import _candidate_commands, open_url
+from cocli.utils.open_url import _candidate_commands, _escape_for_cmd_exe, open_url
 
 
 URL = "http://acme.example"
+# Real shape from google_voice_url.py - the case that actually broke.
+GV_URL = "https://voice.google.com/u/0/calls?authuser=a%40b.com&a=nc,%2B15551234567"
 
 
 def _which_map(mapping: dict[str, str]):
@@ -53,6 +55,47 @@ def test_wsl_without_wslview_uses_cmd_start(monkeypatch) -> None:
 
     cmds = _candidate_commands(URL)
     assert cmds[0] == ["/mnt/c/WINDOWS/system32/cmd.exe", "/c", "start", "", URL]
+
+
+def test_cmd_exe_command_escapes_ampersand(monkeypatch) -> None:
+    """2026-09-14 production bug: cmd.exe's own command-line parser treats
+    an unescaped `&` as a command separator even though the URL arrived as
+    a single argv element - it silently truncated Google Voice call URLs
+    at the `&`, dropping the phone-number parameter. Google Voice opened
+    to the right account but never pre-filled the number to call."""
+    monkeypatch.setattr("cocli.utils.open_url.is_wsl", lambda: True)
+    monkeypatch.setattr("cocli.utils.open_url.sys.platform", "linux")
+    monkeypatch.setattr(
+        "cocli.utils.open_url.shutil.which",
+        _which_map({"cmd.exe": "/mnt/c/WINDOWS/system32/cmd.exe"}),
+    )
+
+    cmds = _candidate_commands(GV_URL)
+
+    assert cmds[0] == [
+        "/mnt/c/WINDOWS/system32/cmd.exe", "/c", "start", "", _escape_for_cmd_exe(GV_URL),
+    ]
+    assert cmds[0][4] == (
+        "https://voice.google.com/u/0/calls?authuser=a%40b.com^&a=nc,%2B15551234567"
+    )
+
+
+def test_escape_for_cmd_exe_round_trips_through_real_cmd_exe() -> None:
+    """Only meaningful on WSL with cmd.exe present - skips elsewhere."""
+    import shutil
+    import subprocess
+
+    cmd_exe = shutil.which("cmd.exe")
+    if not cmd_exe:
+        import pytest
+
+        pytest.skip("cmd.exe not available in this environment")
+
+    escaped = _escape_for_cmd_exe(GV_URL)
+    result = subprocess.run(
+        [cmd_exe, "/c", "echo", escaped], capture_output=True, text=True, timeout=30
+    )
+    assert result.stdout.strip().splitlines()[-1] == GV_URL
 
 
 def test_linux_non_wsl_uses_xdg_open(monkeypatch) -> None:
