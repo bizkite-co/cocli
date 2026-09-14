@@ -78,6 +78,52 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
     )
 
 
+def test_upload_lead_filter_exports_uploads_existing_files_only(tmp_path):
+    """Publish-only, no regeneration: upload whatever's already in exports/
+    and silently skip anything not generated yet (the filter is optional
+    per-campaign, not every campaign has run it) - never an error just
+    because e.g. the criteria doc hasn't been written for this campaign."""
+    paths.root = tmp_path
+    campaign_name = "test-campaign"
+    exports_dir = tmp_path / "campaigns" / campaign_name / "exports"
+    exports_dir.mkdir(parents=True)
+    (exports_dir / "enriched_emails_test-campaign_filter_IN.csv").write_text("in-data")
+    (exports_dir / "enriched_emails_test-campaign_filter_OUT.csv").write_text("out-data")
+    # Deliberately no filter-criteria-v1.md, to exercise the skip path.
+
+    service = WebService(campaign_name=campaign_name)
+    mock_s3 = MagicMock()
+
+    uploaded = service.upload_lead_filter_exports(mock_s3, "test-bucket")
+
+    assert uploaded == [
+        "exports/test-campaign-leadfilter-in.csv",
+        "exports/test-campaign-leadfilter-out.csv",
+    ]
+    assert mock_s3.upload_file.call_count == 2
+
+    in_call = mock_s3.upload_file.call_args_list[0]
+    assert in_call.args[1:] == ("test-bucket", "exports/test-campaign-leadfilter-in.csv")
+    assert in_call.kwargs["ExtraArgs"]["ContentType"] == "text/csv"
+
+    out_call = mock_s3.upload_file.call_args_list[1]
+    assert out_call.args[1:] == ("test-bucket", "exports/test-campaign-leadfilter-out.csv")
+
+
+def test_upload_lead_filter_exports_handles_nothing_generated_yet(tmp_path):
+    paths.root = tmp_path
+    campaign_name = "empty-campaign"
+    (tmp_path / "campaigns" / campaign_name / "exports").mkdir(parents=True)
+
+    service = WebService(campaign_name=campaign_name)
+    mock_s3 = MagicMock()
+
+    uploaded = service.upload_lead_filter_exports(mock_s3, "test-bucket")
+
+    assert uploaded == []
+    mock_s3.upload_file.assert_not_called()
+
+
 def test_web_deploy_shell_only_skips_emails_reports_and_kml(tmp_path: Path) -> None:
     from typer.testing import CliRunner
 

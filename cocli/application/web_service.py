@@ -229,3 +229,56 @@ class WebService:
         log(f"Uploaded exports/{self.campaign_name}-emails.{{usv,csv}} to s3://{bucket_name}")
 
         return export_result
+
+    def upload_lead_filter_exports(
+        self,
+        s3_client: Any,
+        bucket_name: str,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> list[str]:
+        """Push the campaign's already-generated lead-filter CSVs (and the
+        criteria doc that explains them) to S3 - does NOT regenerate them.
+
+        Regenerating the filter (re-scanning witness HTML on the worker
+        nodes, reclassifying) is a separate, heavier, occasional action a
+        human runs deliberately when refining the rule itself; this is
+        just "publish whatever's currently in exports/", the same split
+        export_and_upload_emails_csv already makes between refreshing data
+        and deploying the site shell (see its own docstring).
+
+        Returns the list of exports/ keys actually uploaded (some files
+        may not exist yet - the filter hasn't necessarily been run for
+        every campaign - and are silently skipped, not an error).
+        """
+        from cocli.core.paths import paths
+
+        def log(msg: str) -> None:
+            if log_callback:
+                log_callback(msg)
+
+        exports_dir = paths.campaign(self.campaign_name).path / "exports"
+        prefix = f"enriched_emails_{self.campaign_name}_filter"
+        uploads = [
+            (exports_dir / f"{prefix}_IN.csv", f"exports/{self.campaign_name}-leadfilter-in.csv", "text/csv"),
+            (exports_dir / f"{prefix}_OUT.csv", f"exports/{self.campaign_name}-leadfilter-out.csv", "text/csv"),
+            (exports_dir / "filter-criteria-v1.md", f"exports/{self.campaign_name}-leadfilter-criteria.md", "text/markdown"),
+        ]
+
+        uploaded_keys = []
+        for local_path, s3_key, content_type in uploads:
+            if not local_path.exists():
+                log(f"Skipping {local_path.name} (not generated yet)")
+                continue
+            s3_client.upload_file(
+                str(local_path),
+                bucket_name,
+                s3_key,
+                ExtraArgs={
+                    "ContentType": content_type,
+                    "CacheControl": "no-cache, must-revalidate",
+                },
+            )
+            log(f"Uploaded {s3_key} to s3://{bucket_name}")
+            uploaded_keys.append(s3_key)
+
+        return uploaded_keys

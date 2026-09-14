@@ -770,6 +770,10 @@ cocli
         report - Generates a JSON report for the campaign.
             --campaign-name/--campaign (text)
             --output (path)
+        upload-lead-filter - Uploads the campaign's already-generated lead-filter CSVs (In/Out) and
+            --campaign-name/--campaign (text)
+            --profile (text)
+            --bucket (text)
     worker
         enrichment - Starts a worker node that polls for enrichment tasks (Domains) and scrapes them.
             --campaign/-c (text)

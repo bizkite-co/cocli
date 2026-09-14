@@ -133,6 +133,13 @@ class WebServiceProvider(Protocol):
         log_callback: Optional[Callable[[str], None]] = None,
     ) -> Any:
         ...
+    def upload_lead_filter_exports(
+        self,
+        s3_client: Any,
+        bucket_name: str,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> list[str]:
+        ...
 
 
 class IndexServiceProvider(Protocol):

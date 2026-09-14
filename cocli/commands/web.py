@@ -269,6 +269,53 @@ def export_emails(
     export_result = services.web_service.export_and_upload_emails_csv(s3, bucket_name, log_callback=log_cb)
     console.print(f"[bold green]Done. Exported {export_result.exported_count} companies.[/bold green]")
 
+@app.command(name="upload-lead-filter")
+def upload_lead_filter(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign-name", "--campaign", help="Campaign name. Defaults to current context."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="AWS profile to use. Defaults to 'aws-profile' in config.toml."),
+    bucket_name: Optional[str] = typer.Option(None, "--bucket", help="S3 bucket name. Defaults to cocli-web-assets-<domain-slug>."),
+) -> None:
+    """
+    Uploads the campaign's already-generated lead-filter CSVs (In/Out) and
+    criteria doc to S3, for the web dashboard's download buttons.
+
+    Does NOT regenerate the filter - run the filter script itself first if
+    you want fresh results; this only publishes whatever's currently in
+    exports/. Needs AWS/1Password auth, so this is a manual command.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified and no context set.[/red]")
+        raise typer.Exit(1)
+
+    services = ServiceContainer(campaign_name=campaign_name)
+    try:
+        cfg = services.web_service.resolve_deployment_config(
+            profile=profile,
+            bucket_name=bucket_name,
+        )
+        profile = cfg["profile"]
+        bucket_name = cfg["bucket_name"]
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold blue]Uploading lead-filter exports for:[/bold blue] {campaign_name} -> s3://{bucket_name}")
+
+    session = get_boto3_session({}, profile_name=profile)
+    s3 = session.client("s3")
+
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
+
+    uploaded = services.web_service.upload_lead_filter_exports(s3, bucket_name, log_callback=log_cb)
+    if not uploaded:
+        console.print("[yellow]Nothing uploaded - run the lead-filter script first.[/yellow]")
+    else:
+        console.print(f"[bold green]Done. Uploaded {len(uploaded)} file(s).[/bold green]")
+
 @app.command()
 def report(
     campaign_name: Optional[str] = typer.Option(None, "--campaign-name", "--campaign", help="Campaign name. Defaults to current context."),
