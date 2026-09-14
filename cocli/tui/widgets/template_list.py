@@ -40,6 +40,8 @@ class TemplateList(CocliPanel):
             ListItem(Label("Missing Address"), id="tpl_no_address"),
             ListItem(Label("Top Rated"), id="tpl_top_rated"),
             ListItem(Label("Most Reviewed"), id="tpl_most_reviewed"),
+            ListItem(Label("Lead Filter: In"), id="tpl_filter_in"),
+            ListItem(Label("Lead Filter: Out"), id="tpl_filter_out"),
             id="template_list",
         )
 

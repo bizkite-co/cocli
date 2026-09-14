@@ -35,6 +35,10 @@ def reset_search_state() -> Iterator[None]:
         search_service._last_to_call_invalid_mtime = -1.0
     if hasattr(search_service, "_last_email_mtime"):
         search_service._last_email_mtime = -1.0
+    if hasattr(search_service, "_last_filter_in_mtime"):
+        search_service._last_filter_in_mtime = -1.0
+    if hasattr(search_service, "_last_filter_out_mtime"):
+        search_service._last_filter_out_mtime = -1.0
     yield
     search_service._con = None
     search_service._counts_cache.clear()
@@ -267,6 +271,48 @@ def test_template_counts_cover_all_company_templates(templates_env: str) -> None
     assert counts["tpl_most_reviewed"] == 4  # reviews >= 10
     assert counts.get("tpl_to_call", 0) == 0
     assert counts.get("tpl_invalid", 0) == 0
+
+
+def test_lead_filter_templates_read_static_index_not_company_data(
+    templates_env: str,
+) -> None:
+    """Lead-filter templates are membership lists (same shape as
+    items_to_call), not tags written onto company records - regenerating
+    the index file is how a filter re-run updates "current" state, and it
+    must not require touching any company's own data. 2026-09-13: this
+    replaced an earlier, rejected design that would have written filter
+    verdicts into shared company tags."""
+    campaign_node = paths.campaign(templates_env)
+    lead_filter_dir = campaign_node.index("lead-filter").path
+    lead_filter_dir.mkdir(parents=True, exist_ok=True)
+    (lead_filter_dir / "in.usv").write_text("email-co\ninbox-co\n", encoding="utf-8")
+    (lead_filter_dir / "out.usv").write_text("no-email-co\n", encoding="utf-8")
+
+    counts = get_template_counts(campaign_name=templates_env)
+    assert counts["tpl_filter_in"] == 2
+    assert counts["tpl_filter_out"] == 1
+
+    in_results = get_fuzzy_search_results(
+        "", campaign_name=templates_env, filters={"filter_in": True},
+        force_rebuild_cache=True,
+    )
+    assert {r.slug for r in in_results} == {"email-co", "inbox-co"}
+
+    out_results = get_fuzzy_search_results(
+        "", campaign_name=templates_env, filters={"filter_out": True},
+        force_rebuild_cache=True,
+    )
+    assert {r.slug for r in out_results} == {"no-email-co"}
+
+    # Regenerating the index (simulating a filter re-run) changes results
+    # without touching any company's own data at all.
+    (lead_filter_dir / "in.usv").write_text("email-co\n", encoding="utf-8")
+    search_service._last_filter_in_mtime = -1.0
+    updated = get_fuzzy_search_results(
+        "", campaign_name=templates_env, filters={"filter_in": True},
+        force_rebuild_cache=True,
+    )
+    assert {r.slug for r in updated} == {"email-co"}
 
 
 def test_invalid_template_lists_excluded_invalid_companies(

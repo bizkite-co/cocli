@@ -96,6 +96,10 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self.current_filters = {"to_call": True}
         elif tpl_id == "tpl_invalid":
             self.current_filters = {"invalid": True}
+        elif tpl_id == "tpl_filter_in":
+            self.current_filters = {"filter_in": True}
+        elif tpl_id == "tpl_filter_out":
+            self.current_filters = {"filter_out": True}
 
         # Clear search without triggering redundant update
         search_inputs = self.query("#company_search_input")
