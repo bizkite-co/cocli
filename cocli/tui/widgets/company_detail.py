@@ -322,7 +322,6 @@ class CompanyDetail(MarkPrefixMixin, Container):
         Binding("g", "open_gmb", "Google Maps"),
         Binding("V", "view_enrichment", "Enrichment"),
         Binding("m", "open_mark_menu", "Mark"),
-        Binding("x", "mark_invalid", "Invalid"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),

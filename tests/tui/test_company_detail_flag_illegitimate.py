@@ -1,4 +1,9 @@
-"""CompanyDetail mark prefix: ``m`` then ``i`` / ``h``, and ``x`` = invalid."""
+"""CompanyDetail mark prefix: ``m`` then ``i`` / ``v`` / ``h``.
+
+``x`` used to be a duplicate direct shortcut for ``m,i`` (same underlying
+mark_to_call_invalid() call, no reciprocal undo of its own) - removed
+2026-09-14 as a redundant keybinding now that `m` is the one canonical,
+self-documenting entry point (its hint bar shows i/v/h)."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -29,7 +34,9 @@ def mock_company_data(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_x_marks_invalid_immediately(mock_company_data):
+async def test_x_no_longer_bound_to_mark_invalid(mock_company_data):
+    """x was a redundant duplicate of m,i - confirm it's inert now, not
+    silently rebound to something else that would surprise a typing user."""
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
         detail = CompanyDetail(mock_company_data)
@@ -38,18 +45,11 @@ async def test_x_marks_invalid_immediately(mock_company_data):
 
         with patch(
             "cocli.application.to_call_disposition_service.mark_to_call_invalid"
-        ) as mock_mark, patch(
-            "cocli.core.config.get_campaign", return_value="turboship"
-        ):
+        ) as mock_mark:
             await pilot.press("x")
             await pilot.pause()
 
-            mock_mark.assert_called_once_with(
-                campaign="turboship",
-                slug="nemeth-family-interiors",
-                domain="nemethfamilyinteriors.com",
-                reason="to-call-nonconforming",
-            )
+            mock_mark.assert_not_called()
 
 
 @pytest.mark.asyncio
