@@ -152,6 +152,35 @@ def test_found_keywords_alone_satisfies_category_requirement(tmp_path: Path) -> 
     assert "vinyl" in content and "epoxy" in content
 
 
+def test_slug_services_products_are_written_to_output(tmp_path: Path) -> None:
+    """slug was computed internally but never written to the output row,
+    and services/products were hardcoded to "" even when website.md had
+    real data - found 2026-09-13 investigating why a downstream filter
+    couldn't join reliably (no slug) and why services/products always
+    looked empty (never wired up, independent of extraction quality)."""
+    _setup(tmp_path)
+    _write_checkpoint(tmp_path, [
+        _prospect("ChIJHHHHHHHHHHHHHHHHHHHHHHH", "full-corp", "Full Corp", "fullcorp.com", category="Flooring contractor"),
+    ])
+    _write_email_shard(tmp_path, "info@fullcorp.com", "fullcorp.com", "full-corp")
+
+    company_dir = tmp_path / "companies" / "full-corp" / "enrichments"
+    company_dir.mkdir(parents=True)
+    (company_dir / "website.md").write_text(
+        "---\nurl: https://fullcorp.com\nservices:\n  - installation\nproducts:\n  - sheet vinyl\n---\n",
+        encoding="utf-8",
+    )
+
+    result = export_enriched_emails(CAMPAIGN)
+
+    assert result.exported_count == 1
+    assert result.output_csv is not None
+    content = result.output_csv.read_text()
+    assert "full-corp" in content
+    assert "installation" in content
+    assert "sheet vinyl" in content
+
+
 def test_no_category_and_no_keywords_is_skipped(tmp_path: Path) -> None:
     _setup(tmp_path)
     _write_checkpoint(tmp_path, [

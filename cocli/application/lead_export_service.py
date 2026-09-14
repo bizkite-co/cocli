@@ -33,7 +33,7 @@ from cocli.models.wal.record import US
 logger = logging.getLogger(__name__)
 
 FIELDNAMES = [
-    "company", "domain", "emails", "phone", "website", "city", "state",
+    "company", "domain", "slug", "emails", "phone", "website", "city", "state",
     "categories", "services", "products", "tags", "gmb_url", "rating", "reviews",
 ]
 
@@ -245,14 +245,15 @@ def export_enriched_emails(
         results.append({
             "company": name,
             "domain": domain,
+            "slug": slug or "",
             "emails": emails or "",
             "phone": phone,
             "website": domain,
             "city": city,
             "state": state,
             "categories": report_category,
-            "services": "",
-            "products": "",
+            "services": "; ".join(website_data.services) if website_data else "",
+            "products": "; ".join(website_data.products) if website_data else "",
             "tags": "; ".join(filter(None, [keyword] + found_keywords)),
             "gmb_url": google_maps_url(
                 place_id=place_id,
