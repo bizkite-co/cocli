@@ -237,7 +237,8 @@ class WebService:
         log_callback: Optional[Callable[[str], None]] = None,
     ) -> list[str]:
         """Push the campaign's already-generated lead-filter CSVs (and the
-        criteria doc that explains them) to S3 - does NOT regenerate them.
+        customer-facing summary that explains them) to S3 - does NOT
+        regenerate them.
 
         Regenerating the filter (re-scanning witness HTML on the worker
         nodes, reclassifying) is a separate, heavier, occasional action a
@@ -245,6 +246,11 @@ class WebService:
         just "publish whatever's currently in exports/", the same split
         export_and_upload_emails_csv already makes between refreshing data
         and deploying the site shell (see its own docstring).
+
+        Uploads lead-filter-summary.md (client-facing business rationale),
+        never filter-criteria.md (the internal/technical doc - has
+        implementation details, embedded code, file paths; not for a
+        public download link).
 
         Returns the list of exports/ keys actually uploaded (some files
         may not exist yet - the filter hasn't necessarily been run for
@@ -261,7 +267,7 @@ class WebService:
         uploads = [
             (exports_dir / f"{prefix}_IN.csv", f"exports/{self.campaign_name}-leadfilter-in.csv", "text/csv"),
             (exports_dir / f"{prefix}_OUT.csv", f"exports/{self.campaign_name}-leadfilter-out.csv", "text/csv"),
-            (exports_dir / "filter-criteria-v1.md", f"exports/{self.campaign_name}-leadfilter-criteria.md", "text/markdown"),
+            (exports_dir / "lead-filter-summary.md", f"exports/{self.campaign_name}-leadfilter-summary.md", "text/markdown"),
         ]
 
         uploaded_keys = []

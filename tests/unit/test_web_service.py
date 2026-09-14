@@ -89,7 +89,7 @@ def test_upload_lead_filter_exports_uploads_existing_files_only(tmp_path):
     exports_dir.mkdir(parents=True)
     (exports_dir / "enriched_emails_test-campaign_filter_IN.csv").write_text("in-data")
     (exports_dir / "enriched_emails_test-campaign_filter_OUT.csv").write_text("out-data")
-    # Deliberately no filter-criteria-v1.md, to exercise the skip path.
+    # Deliberately no lead-filter-summary.md, to exercise the skip path.
 
     service = WebService(campaign_name=campaign_name)
     mock_s3 = MagicMock()
@@ -108,6 +108,39 @@ def test_upload_lead_filter_exports_uploads_existing_files_only(tmp_path):
 
     out_call = mock_s3.upload_file.call_args_list[1]
     assert out_call.args[1:] == ("test-bucket", "exports/test-campaign-leadfilter-out.csv")
+
+
+def test_upload_lead_filter_exports_uploads_customer_summary_not_internal_doc(tmp_path):
+    """The internal/technical doc (filter-criteria.md - has embedded code,
+    file paths, implementation detail) must never be uploaded to the
+    public bucket, even if present. Only lead-filter-summary.md (the
+    client-facing rationale) is eligible - confirmed 2026-09-14 after
+    almost wiring the internal doc up to a public download link."""
+    paths.root = tmp_path
+    campaign_name = "test-campaign"
+    exports_dir = tmp_path / "campaigns" / campaign_name / "exports"
+    exports_dir.mkdir(parents=True)
+    (exports_dir / "enriched_emails_test-campaign_filter_IN.csv").write_text("in-data")
+    (exports_dir / "enriched_emails_test-campaign_filter_OUT.csv").write_text("out-data")
+    (exports_dir / "lead-filter-summary.md").write_text("# customer-facing")
+    (exports_dir / "filter-criteria.md").write_text("# internal, has code samples")
+
+    service = WebService(campaign_name=campaign_name)
+    mock_s3 = MagicMock()
+
+    uploaded = service.upload_lead_filter_exports(mock_s3, "test-bucket")
+
+    assert uploaded == [
+        "exports/test-campaign-leadfilter-in.csv",
+        "exports/test-campaign-leadfilter-out.csv",
+        "exports/test-campaign-leadfilter-summary.md",
+    ]
+    uploaded_local_paths = [call.args[0] for call in mock_s3.upload_file.call_args_list]
+    assert not any("filter-criteria.md" in p for p in uploaded_local_paths)
+
+    summary_call = mock_s3.upload_file.call_args_list[2]
+    assert summary_call.args[1:] == ("test-bucket", "exports/test-campaign-leadfilter-summary.md")
+    assert summary_call.kwargs["ExtraArgs"]["ContentType"] == "text/markdown"
 
 
 def test_upload_lead_filter_exports_handles_nothing_generated_yet(tmp_path):
