@@ -43,6 +43,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         ("alt+s", "reset_view", "Return to List"),
         ("d", "remove_from_to_call", "Remove from To-Call"),
         Binding("m", "open_mark_menu", "Mark"),
+        Binding("u", "upload_lead_filter", "Upload Filter"),
     ]
 
     def __init__(
@@ -739,3 +740,42 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self.app.notify(f"Marked {item.slug} invalid")
         self.search_offset = 0
         self.run_search("")
+
+    async def action_upload_lead_filter(self) -> None:
+        """Publish the campaign's current lead-filter exports to the web
+        dashboard. Doesn't regenerate anything - just pushes whatever's in
+        exports/ right now (see WebService.upload_lead_filter_exports).
+        AWS/1Password auth may prompt; offloaded to a thread via
+        asyncio.to_thread (same pattern as cluster_view.py's S3 calls) so
+        the prompt doesn't freeze the TUI."""
+        from cocli.core.config import get_campaign
+
+        campaign = get_campaign()
+        if not campaign:
+            self.app.notify("No campaign set", severity="error")
+            return
+
+        self.app.notify("Uploading lead-filter exports...")
+
+        def _upload() -> list[str]:
+            from cocli.application.web_service import WebService
+            from cocli.core.reporting import get_boto3_session
+
+            service = WebService(campaign)
+            cfg = service.resolve_deployment_config()
+            session = get_boto3_session({}, profile_name=cfg["profile"])
+            s3 = session.client("s3")
+            return service.upload_lead_filter_exports(s3, cfg["bucket_name"])
+
+        try:
+            uploaded = await asyncio.to_thread(_upload)
+        except Exception as e:
+            self.app.notify(f"Upload failed: {e}", severity="error")
+            return
+
+        if uploaded:
+            self.app.notify(f"Uploaded {len(uploaded)} lead-filter file(s) to web")
+        else:
+            self.app.notify(
+                "Nothing to upload - run the lead-filter script first", severity="warning"
+            )
