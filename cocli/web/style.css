@@ -103,6 +103,15 @@ body {
 
 /* Secondary Button */
 .button-secondary, .btn-clear {
+    /* The primary rule above targets the bare `button` tag, not just
+       `.button` - its `background: linear-gradient(...)` shorthand sets
+       background-image, which this rule's background-color alone can't
+       remove for a real <button class="button-secondary"> element (only
+       <a> tags styled as buttons were used here before, so this never
+       surfaced). Without this, a <button>.button-secondary shows this
+       rule's cyan text on top of the primary gradient underneath -
+       illegible. Confirmed live 2026-09-14. */
+    background-image: none;
     background-color: var(--bg-button-secondary);
     border: 1px solid var(--border-button-secondary);
     color: var(--accent-cyan) !important;

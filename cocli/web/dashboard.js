@@ -388,7 +388,14 @@ async function setupLeadFilterDownloads(exportCampaign) {
 
     try {
         const res = await fetch(`/exports/${exportCampaign}-leadfilter-summary.md?v=${Date.now()}`);
-        if (!res.ok) return; // Campaign hasn't run the filter yet - leave the box hidden.
+        // res.ok alone isn't enough: this site's CloudFront distribution
+        // serves the dashboard's own index.html (200, text/html) as an
+        // error-document fallback for missing keys, instead of a real 404 -
+        // confirmed live 2026-09-14, the fallback page's own <script> tags
+        // rendered as visible text in the summary box before this check
+        // existed. A real upload is always text/markdown.
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('text/markdown')) return; // Not uploaded yet - leave the box hidden.
         const text = await res.text();
 
         if (inLink) {
@@ -401,7 +408,8 @@ async function setupLeadFilterDownloads(exportCampaign) {
         }
         if (summaryEl) summaryEl.innerHTML = renderLeadFilterSummary(text);
         if (toggle && summaryEl) {
-            toggle.addEventListener('click', () => {
+            toggle.addEventListener('click', (e) => {
+                e.preventDefault(); // toggle is an <a href="#"> now, not a <button>
                 summaryEl.hidden = !summaryEl.hidden;
                 toggle.textContent = summaryEl.hidden ? 'Show filtering criteria' : 'Hide filtering criteria';
             });
