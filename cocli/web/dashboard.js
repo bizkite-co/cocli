@@ -38,9 +38,15 @@ async function fetchReport() {
 
         // Merge exclusions so the card rendering logic works correctly
         const combinedStats = { ...stats, ...exclData };
-        
-        renderReport(combinedStats, campaign);
-        fetchProspects(combinedStats.campaign_name || campaign);
+        const exportCampaign = combinedStats.campaign_name || campaign;
+
+        // Resolved once and shared: the download panel and the prospect
+        // cards must agree on whether the refined list exists, or the
+        // displayed count and the displayed cards would silently disagree.
+        const leadFilterInfo = await resolveLeadFilterInfo(exportCampaign);
+
+        renderReport(combinedStats, campaign, exportCampaign, leadFilterInfo);
+        fetchProspects(exportCampaign, leadFilterInfo);
     } catch (error) {
         document.getElementById('report-loading').style.display = 'none';
         const errDiv = document.getElementById('report-error');
@@ -49,9 +55,14 @@ async function fetchReport() {
     }
 }
 
-async function fetchProspects(campaign) {
+async function fetchProspects(campaign, leadFilterInfo) {
     try {
-        const csvUrl = `/exports/${campaign}-emails.csv?v=${Date.now()}`;
+        // Same data source the download panel is showing - a campaign
+        // without a filter yet falls back to the raw export so the card
+        // list still works, exactly like setupDownloadPanel's fallback.
+        const csvUrl = leadFilterInfo && leadFilterInfo.available
+            ? `/exports/${campaign}-leadfilter-in.csv?v=${Date.now()}`
+            : `/exports/${campaign}-emails.csv?v=${Date.now()}`;
         Papa.parse(csvUrl, {
             download: true,
             header: true,
@@ -59,25 +70,22 @@ async function fetchProspects(campaign) {
             complete: function(results) {
                 const config = window.COCLI_CONFIG || {};
                 const isStrict = config.strictKeywordFilter === true;
-                
+
                 // If strictKeywordFilter is enabled, only show those with keywords
                 if (isStrict) {
                     allProspects = results.data.filter(p => p.keywords && p.keywords.trim() !== "");
                 } else {
                     allProspects = results.data;
                 }
-                
+
                 document.getElementById('prospects-loading').style.display = 'none';
                 document.getElementById('prospects-container').style.display = 'grid';
-                
-                // Update email count display from current data length if it hasn't been set by the report
-                // or if we are in strict mode (to show only the filtered count)
-                const emailCountDisplay = document.getElementById('email-count-display');
-                if (emailCountDisplay) {
-                    if (isStrict || emailCountDisplay.textContent === '...' || emailCountDisplay.textContent === '0') {
-                        emailCountDisplay.textContent = allProspects.length.toLocaleString();
-                    }
-                }
+
+                // Authoritative count: renderReport's own count is only ever
+                // a provisional guess from stats.json (which reflects the
+                // raw export, not whichever CSV actually got used here).
+                const countDisplay = document.getElementById('prospect-count-display');
+                if (countDisplay) countDisplay.textContent = allProspects.length.toLocaleString();
 
                 // Build category list
                 allProspects.forEach(p => {
@@ -377,50 +385,90 @@ function renderLeadFilterSummary(markdown) {
     return html;
 }
 
-async function setupLeadFilterDownloads(exportCampaign) {
-    const box = document.getElementById('lead-filter-box');
-    if (!box) return;
+/**
+ * Single source of truth for "has this campaign run the lead filter yet."
+ * Both the download panel (renderReport) and the prospect-card list
+ * (fetchProspects) need this same answer, resolved once, so the count
+ * shown and the cards displayed always agree with each other - not one
+ * reading the filtered list while the other silently still reads the raw
+ * export.
+ *
+ * res.ok alone isn't enough to detect "not uploaded yet": this site's
+ * CloudFront distribution serves the dashboard's own index.html (200,
+ * text/html) as an error-document fallback for missing keys instead of a
+ * real 404 - confirmed live 2026-09-14, the fallback page's own <script>
+ * tags rendered as visible text in the summary box before this check
+ * existed. A real upload is always text/markdown.
+ */
+async function resolveLeadFilterInfo(exportCampaign) {
+    try {
+        const res = await fetch(`/exports/${exportCampaign}-leadfilter-summary.md?v=${Date.now()}`);
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('text/markdown')) {
+            return { available: false };
+        }
+        return { available: true, summaryText: await res.text() };
+    } catch (e) {
+        console.error('Lead filter summary check failed:', e);
+        return { available: false };
+    }
+}
 
-    const inLink = document.getElementById('download-leadfilter-in');
-    const outLink = document.getElementById('download-leadfilter-out');
+function setupDownloadPanel(exportCampaign, leadFilterInfo) {
+    const titleEl = document.getElementById('download-box-title');
+    const descEl = document.getElementById('download-box-description');
+    const primaryLink = document.getElementById('download-link-primary');
+    const secondaryLink = document.getElementById('download-link-secondary');
+    const toggleRow = document.getElementById('lead-filter-toggle-row');
     const toggle = document.getElementById('lead-filter-toggle');
     const summaryEl = document.getElementById('lead-filter-summary');
 
-    try {
-        const res = await fetch(`/exports/${exportCampaign}-leadfilter-summary.md?v=${Date.now()}`);
-        // res.ok alone isn't enough: this site's CloudFront distribution
-        // serves the dashboard's own index.html (200, text/html) as an
-        // error-document fallback for missing keys, instead of a real 404 -
-        // confirmed live 2026-09-14, the fallback page's own <script> tags
-        // rendered as visible text in the summary box before this check
-        // existed. A real upload is always text/markdown.
-        const contentType = res.headers.get('content-type') || '';
-        if (!res.ok || !contentType.includes('text/markdown')) return; // Not uploaded yet - leave the box hidden.
-        const text = await res.text();
-
-        if (inLink) {
-            inLink.href = `/exports/${exportCampaign}-leadfilter-in.csv?v=${Date.now()}`;
-            inLink.setAttribute('download', `${exportCampaign}-leadfilter-in.csv`);
+    if (leadFilterInfo.available) {
+        if (titleEl) titleEl.textContent = 'Refined Lead List';
+        if (descEl) descEl.textContent = 'Prospects matched to this campaign, with off-topic and poor-fit results already filtered out.';
+        if (primaryLink) {
+            primaryLink.href = `/exports/${exportCampaign}-leadfilter-in.csv?v=${Date.now()}`;
+            primaryLink.setAttribute('download', `${exportCampaign}-leadfilter-in.csv`);
+            primaryLink.textContent = 'Download Refined List (CSV)';
         }
-        if (outLink) {
-            outLink.href = `/exports/${exportCampaign}-leadfilter-out.csv?v=${Date.now()}`;
-            outLink.setAttribute('download', `${exportCampaign}-leadfilter-out.csv`);
+        if (secondaryLink) {
+            secondaryLink.href = `/exports/${exportCampaign}-leadfilter-out.csv?v=${Date.now()}`;
+            secondaryLink.setAttribute('download', `${exportCampaign}-leadfilter-out.csv`);
+            secondaryLink.textContent = 'Download Excluded List (CSV)';
+            secondaryLink.classList.add('button-small');
         }
-        if (summaryEl) summaryEl.innerHTML = renderLeadFilterSummary(text);
-        if (toggle && summaryEl) {
+        if (summaryEl) summaryEl.innerHTML = renderLeadFilterSummary(leadFilterInfo.summaryText);
+        if (toggleRow) toggleRow.hidden = false;
+        if (toggle && summaryEl && !toggle.dataset.wired) {
+            toggle.dataset.wired = 'true';
             toggle.addEventListener('click', (e) => {
-                e.preventDefault(); // toggle is an <a href="#"> now, not a <button>
+                e.preventDefault();
                 summaryEl.hidden = !summaryEl.hidden;
                 toggle.textContent = summaryEl.hidden ? 'Show filtering criteria' : 'Hide filtering criteria';
             });
         }
-        box.hidden = false;
-    } catch (e) {
-        console.error('Lead filter summary unavailable:', e);
+    } else {
+        // No filter run for this campaign yet - fall back to the raw,
+        // unfiltered export so the panel still works.
+        if (titleEl) titleEl.textContent = 'Latest Email Export';
+        if (descEl) descEl.textContent = 'Download the most recent list of enriched prospects with emails.';
+        if (primaryLink) {
+            primaryLink.href = `/exports/${exportCampaign}-emails.csv?v=${Date.now()}`;
+            primaryLink.setAttribute('download', `${exportCampaign}-emails.csv`);
+            primaryLink.textContent = 'Download CSV';
+        }
+        if (secondaryLink) {
+            secondaryLink.href = `/exports/${exportCampaign}-emails.json?v=${Date.now()}`;
+            secondaryLink.setAttribute('download', `${exportCampaign}-emails.json`);
+            secondaryLink.textContent = 'Download JSON';
+            secondaryLink.classList.remove('button-small');
+        }
+        if (toggleRow) toggleRow.hidden = true;
+        if (summaryEl) summaryEl.hidden = true;
     }
 }
 
-function renderReport(stats, campaign) {
+function renderReport(stats, campaign, exportCampaign, leadFilterInfo) {
     // The report table (and worker stats) only exist on pages that include
     // report_table.njk / worker_stats.njk (currently just config.md) - the
     // download links and email count below are unrelated and must still
@@ -478,24 +526,14 @@ function renderReport(stats, campaign) {
         }
     }
 
-    const emailCountDisplay = document.getElementById('email-count-display');
-    if (emailCountDisplay) emailCountDisplay.textContent = (stats.emails_found_count || 0).toLocaleString();
-    
-    const exportCampaign = stats.campaign_name || campaign;
+    // Provisional count from the report stats - fetchProspects() overwrites
+    // this with the real row count of whichever CSV it actually ends up
+    // parsing (refined or raw) once that fetch completes, since stats.json
+    // only ever reflects the raw export's count.
+    const countDisplay = document.getElementById('prospect-count-display');
+    if (countDisplay) countDisplay.textContent = (stats.emails_found_count || 0).toLocaleString();
 
-    const downloadLink = document.getElementById('download-link');
-    if (downloadLink) {
-        downloadLink.href = `/exports/${exportCampaign}-emails.csv?v=${Date.now()}`;
-        downloadLink.setAttribute('download', `${exportCampaign}-emails.csv`);
-    }
-
-    const downloadLinkJson = document.getElementById('download-link-json');
-    if (downloadLinkJson) {
-        downloadLinkJson.href = `/exports/${exportCampaign}-emails.json?v=${Date.now()}`;
-        downloadLinkJson.setAttribute('download', `${exportCampaign}-emails.json`);
-    }
-
-    setupLeadFilterDownloads(exportCampaign);
+    setupDownloadPanel(exportCampaign, leadFilterInfo);
 }
 
 window.addEventListener('DOMContentLoaded', () => {

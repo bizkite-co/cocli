@@ -1,21 +1,13 @@
-<div class="download-box">
-    <h3>Latest Email Export</h3>
-    <p>Download the most recent list of enriched prospects with emails.</p>
-    <p><strong>Total Emails:</strong> <span id="email-count-display">...</span></p>
-    <div style="display: flex; gap: 10px;">
-        <a href="#" id="download-link" class="button">Download CSV</a>
-        <a href="#" id="download-link-json" class="button-secondary">Download JSON</a>
-    </div>
-</div>
-
-<div class="download-box" id="lead-filter-box" hidden>
-    <h3>Refined Lead List</h3>
-    <p>
+<div class="download-box" id="download-box">
+    <h3 id="download-box-title">Latest Email Export</h3>
+    <p id="download-box-description">Download the most recent list of enriched prospects with emails.</p>
+    <p><strong>Total Prospects:</strong> <span id="prospect-count-display">...</span></p>
+    <p id="lead-filter-toggle-row" hidden>
         <a href="#" id="lead-filter-toggle" class="button-secondary button-small">Show filtering criteria</a>
     </p>
     <div id="lead-filter-summary" class="lead-filter-summary" hidden></div>
     <div style="display: flex; gap: 10px; align-items: center;">
-        <a href="#" id="download-leadfilter-in" class="button">Download Refined List (CSV)</a>
-        <a href="#" id="download-leadfilter-out" class="button-secondary button-small">Download Excluded List (CSV)</a>
+        <a href="#" id="download-link-primary" class="button">Download CSV</a>
+        <a href="#" id="download-link-secondary" class="button-secondary">Download JSON</a>
     </div>
 </div>

@@ -37,10 +37,13 @@ def _get_op_secret():
 @pytest.mark.asyncio
 async def test_dashboard_download_links_populate_after_login(page, turboship_auth_creds, visible_locator):
     """
-    Regression test for the download CSV/JSON buttons: on a fresh session
-    (no stored Cognito token) the dashboard must complete login and then
-    rewrite the '#' placeholder hrefs to real, downloadable export URLs with
-    a `download` attribute - not leave them as dead links.
+    Regression test for the download panel: on a fresh session (no stored
+    Cognito token) the dashboard must complete login and then rewrite the
+    '#' placeholder hrefs to real, downloadable export URLs with a
+    `download` attribute - not leave them as dead links.
+
+    turboship has a lead filter uploaded, so the merged panel resolves to
+    the refined list (leadfilter-in), not the raw emails export.
     """
     dashboard_url = "https://cocli.turboheat.net/index.html"
 
@@ -60,19 +63,19 @@ async def test_dashboard_download_links_populate_after_login(page, turboship_aut
 
     await page.wait_for_url(f"{dashboard_url}*", timeout=30000)
 
-    download_link = page.locator("#download-link")
-    download_link_json = page.locator("#download-link-json")
+    download_link = page.locator("#download-link-primary")
+    download_link_secondary = page.locator("#download-link-secondary")
 
     # The report fetch is async - give it a real chance to populate the
     # hrefs before asserting, rather than racing it.
     await expect(download_link).not_to_have_attribute("href", "#", timeout=15000)
-    await expect(download_link).to_have_attribute("download", "turboship-emails.csv")
-    await expect(download_link_json).to_have_attribute("download", "turboship-emails.json")
+    await expect(download_link).to_have_attribute("download", "turboship-leadfilter-in.csv")
+    await expect(download_link_secondary).to_have_attribute("download", "turboship-leadfilter-out.csv")
 
     href = await download_link.get_attribute("href")
-    assert href is not None and "/exports/turboship-emails.csv" in href
+    assert href is not None and "/exports/turboship-leadfilter-in.csv" in href
 
     async with page.expect_download() as download_info:
         await download_link.click()
     download = await download_info.value
-    assert download.suggested_filename == "turboship-emails.csv"
+    assert download.suggested_filename == "turboship-leadfilter-in.csv"
