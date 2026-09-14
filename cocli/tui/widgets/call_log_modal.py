@@ -3,29 +3,36 @@ from datetime import datetime, UTC, timedelta
 from typing import Any
 from textual.app import ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Label, TextArea, Static, Checkbox, Select
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Label, TextArea, Static
+from textual.containers import Container
 from textual import on, events
 
 from cocli.models.companies.company import Company
 from cocli.models.companies.meeting import Meeting
 from cocli.models.companies.call_note import CallNote
 from cocli.models.campaigns.queues.to_call import ToCallTask
-from cocli.application.campaign_service import CampaignService
+from cocli.application.to_call_disposition_service import mark_to_call_invalid
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
 from .inputs import CocliInput
+from .search_select import SearchSelect
 
 DISPOSITION_CHOICES = [
     ("Follow Up Needed", "Follow Up Needed"),
     ("Interested / Qualified", "Interested"),
     ("Not Interested", "Not Interested"),
+    ("Wrong Trade / No Fit", "Wrong Trade / No Fit"),
     ("Objection: Price", "Objection: Price"),
     ("Objection: Feature Gap", "Objection: Feature Gap"),
     ("Bad Number", "Bad Number"),
 ]
 
-EXCLUDING_DISPOSITIONS = {"Not Interested", "Bad Number"}
+# "Wrong Trade / No Fit": the business isn't the kind of customer the
+# product serves at all (wrong industry, or right industry but doesn't do
+# the specific installation type) - the standard sales term for this is
+# "not ICP" (Ideal Customer Profile), used here in plain English per Mark's
+# preference (conversation 2026-09-14).
+EXCLUDING_DISPOSITIONS = {"Not Interested", "Bad Number", "Wrong Trade / No Fit"}
 
 
 class CallLogModal(ModalScreen[bool]):
@@ -49,19 +56,14 @@ class CallLogModal(ModalScreen[bool]):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield Label(f"Phone: {self.phone}", classes="modal-subtitle")
 
-            yield Label("Call Disposition", classes="field-label")
-            yield Select(DISPOSITION_CHOICES, value="Follow Up Needed", id="call_disposition")
+            yield Label("Call Disposition (type to filter, Enter to pick)", classes="field-label")
+            yield SearchSelect(DISPOSITION_CHOICES, initial_value="Follow Up Needed", id="call_disposition")
 
             yield Label("Call Notes (VIM-ish keys supported)", classes="field-label")
             yield TextArea(id="call_notes", classes="notes-area")
 
-            with Horizontal(id="callback_row"):
-                with Vertical(classes="field-group"):
-                    yield Label("Follow-up Date (YYYY-MM-DD)", classes="field-label")
-                    yield CocliInput(value=default_callback, id="callback_date")
-                with Vertical(classes="field-group"):
-                    yield Label("Schedule?", classes="field-label")
-                    yield Checkbox("Re-queue for callback", value=True, id="should_schedule")
+            yield Label("Follow-up Date (YYYY-MM-DD, blank = don't re-queue)", classes="field-label")
+            yield CocliInput(value=default_callback, id="callback_date")
 
             yield Static("[bold reverse] CTRL+S: SAVE & REMOVE FROM LIST [/]  [dim] ESC: CANCEL [/]", id="modal_help")
 
@@ -76,12 +78,10 @@ class CallLogModal(ModalScreen[bool]):
     def save_call(self) -> None:
         notes = self.query_one("#call_notes", TextArea).text.strip()
         callback_str = self.query_one("#callback_date", CocliInput).value.strip()
-        should_schedule = self.query_one("#should_schedule", Checkbox).value
-        disposition_val = self.query_one("#call_disposition", Select).value
-        if disposition_val is Select.BLANK or not disposition_val:
-            disposition = "Follow Up Needed"
-        else:
-            disposition = str(disposition_val)
+        # No separate "schedule?" checkbox: a non-empty follow-up date IS
+        # the request to re-queue. Clear the date field to opt out.
+        should_schedule = bool(callback_str)
+        disposition = self.query_one("#call_disposition", SearchSelect).value or "Follow Up Needed"
 
         try:
             company = Company.get(self.company_slug)
@@ -110,30 +110,42 @@ class CallLogModal(ModalScreen[bool]):
             )
             call_note.to_file(notes_dir)
 
-            # 3. Handle Exclusions if disposition is not interested / bad number
+            # 3. Disqualifying dispositions go through the same campaign-wide
+            # mechanism as the m,i mark-invalid shortcut (ExclusionManager +
+            # the to-call-invalid review pile), not a separate exclude call -
+            # same reversibility (m,v), same "Invalid" template visibility,
+            # whether the disqualification came from a phone call or a list
+            # keypress. This also removes the pending to-call file itself,
+            # so skip the completed-queue move below for this branch.
             is_excluded_disposition = disposition in EXCLUDING_DISPOSITIONS
             if is_excluded_disposition:
-                CampaignService(campaign).add_exclude(self.company_slug, reason=disposition)
-                self.app.notify(f"Added exclusion for {self.company_slug} ({disposition})")
+                mark_to_call_invalid(
+                    campaign=campaign,
+                    slug=self.company_slug,
+                    domain=company.domain,
+                    reason=disposition,
+                )
+                self.app.notify(f"Marked '{self.company_slug}' invalid ({disposition})")
 
             # 4. Queue Lifecycle: Move from PENDING to COMPLETED
-            pending_task = ToCallTask(
-                company_slug=self.company_slug,
-                domain=company.domain or "unknown",
-                campaign_name=campaign,
-                ack_token=None
-            )
-            pending_path = pending_task.get_local_path()
-            if pending_path.exists():
-                completed_dir = paths.campaign(campaign).path / "queues" / "to-call" / "completed"
-                completed_dir.mkdir(parents=True, exist_ok=True)
-                ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-                target_path = completed_dir / f"{ts}_{self.company_slug}.usv"
-                pending_path.rename(target_path)
-                self.app.notify("Task moved to completed.")
+            if not is_excluded_disposition:
+                pending_task = ToCallTask(
+                    company_slug=self.company_slug,
+                    domain=company.domain or "unknown",
+                    campaign_name=campaign,
+                    ack_token=None
+                )
+                pending_path = pending_task.get_local_path()
+                if pending_path.exists():
+                    completed_dir = paths.campaign(campaign).path / "queues" / "to-call" / "completed"
+                    completed_dir.mkdir(parents=True, exist_ok=True)
+                    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+                    target_path = completed_dir / f"{ts}_{self.company_slug}.usv"
+                    pending_path.rename(target_path)
+                    self.app.notify("Task moved to completed.")
 
             # 5. Schedule Follow-up if requested and not excluded
-            if should_schedule and callback_str and not is_excluded_disposition:
+            if should_schedule and not is_excluded_disposition:
                 try:
                     cb_date = datetime.strptime(callback_str, "%Y-%m-%d").replace(tzinfo=UTC)
                     company.callback_at = cb_date

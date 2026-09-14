@@ -97,3 +97,95 @@ async def test_call_log_modal_handles_exclusion_disposition(
     # Check exclusion manager
     ex_mgr = ExclusionManager("roadmap")
     assert ex_mgr.is_excluded(slug="bad-prospect", domain="badprospect.com")
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_wrong_trade_disposition_uses_shared_mark_invalid_path(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The new disposition must go through mark_to_call_invalid() - the
+    same campaign-wide mechanism as the m,i keybinding - not a bespoke
+    exclude call, so it's reversible via m,v and shows up in the "Invalid"
+    TUI template regardless of whether the disqualification came from a
+    phone call or a list keypress (conversation 2026-09-14)."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.queues.to_call_invalid import ToCallInvalidTask
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    co = Company(
+        name="Wrong Trade Co", slug="wrong-trade-co", domain="wrongtrade.com", phone="555-222-3333"
+    )
+    co.save()
+
+    pending = ToCallTask(
+        company_slug="wrong-trade-co", domain="wrongtrade.com", campaign_name="roadmap"
+    )
+    pending.save()
+    pending_path = pending.get_local_path()
+    assert pending_path.exists()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="wrong-trade-co", phone="555-222-3333")
+        app.push_screen(modal)
+        await driver.pause()
+
+        modal.query_one("#call_disposition").value = "Wrong Trade / No Fit"
+        modal.query_one("#call_notes").text = "Doesn't install sheet vinyl at all."
+
+        await driver.press("ctrl+s")
+        await driver.pause()
+
+    ex_mgr = ExclusionManager("roadmap")
+    assert ex_mgr.is_excluded(slug="wrong-trade-co", domain="wrongtrade.com")
+
+    # Pending file removed outright (not moved to completed/) - same
+    # behavior as mark_to_call_invalid via m,i.
+    assert not pending_path.exists()
+
+    # Review-pile record exists with the specific reason, same as m,i.
+    invalid_task = ToCallInvalidTask(
+        company_slug="wrong-trade-co", domain="wrongtrade.com", campaign_name="roadmap"
+    )
+    assert invalid_task.get_local_path().exists()
+    assert "Wrong Trade / No Fit" in invalid_task.get_local_path().read_text()
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_blank_followup_date_means_no_reschedule(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """No checkbox anymore: an empty follow-up date IS "don't reschedule".
+    Confirmed 2026-09-14 the checkbox was one more GUI-ish control this
+    keyboard-first TUI didn't need."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    co = Company(
+        name="No Reschedule Co", slug="no-reschedule-co", domain="noreschedule.com", phone="555-444-5555"
+    )
+    co.save()
+    pending = ToCallTask(
+        company_slug="no-reschedule-co", domain="noreschedule.com", campaign_name="roadmap"
+    )
+    pending.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="no-reschedule-co", phone="555-444-5555")
+        app.push_screen(modal)
+        await driver.pause()
+
+        modal.query_one("#callback_date").value = ""
+        await driver.press("ctrl+s")
+        await driver.pause()
+
+    completed_dir = paths.campaign("roadmap").path / "queues" / "to-call" / "completed"
+    assert list(completed_dir.glob("*no-reschedule-co*"))
+
+    pending_dir = paths.campaign("roadmap").path / "queues" / "to-call" / "pending"
+    assert not list(pending_dir.glob("*no-reschedule-co*"))
