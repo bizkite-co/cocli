@@ -124,6 +124,25 @@ body {
     background-color: var(--bg-button-secondary-hover);
     border-color: var(--accent-cyan);
 }
+
+.button-small {
+    padding: 6px 14px;
+    font-size: 0.8rem;
+}
+
+.lead-filter-summary {
+    background: var(--bg-button-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 10px 0;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+.lead-filter-summary h1 { font-size: 1.1rem; margin: 0 0 8px; }
+.lead-filter-summary h2 { font-size: 1rem; margin: 14px 0 6px; }
+.lead-filter-summary ul { margin: 6px 0 6px 20px; padding: 0; }
+.lead-filter-summary p { margin: 0 0 10px; }
 footer {
     text-align: center;
     padding: 20px;

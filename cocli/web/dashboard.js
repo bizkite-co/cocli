@@ -297,6 +297,121 @@ function filterProspects() {
     renderProspects(filtered);
 }
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Renders a small, fixed subset of Markdown - only what
+ * lead-filter-summary.md actually uses (h1/h2 headers, **bold**, bullet
+ * lists, paragraphs). Not a general-purpose Markdown parser; if the
+ * summary doc's structure grows beyond this, extend it deliberately
+ * rather than assuming full CommonMark support. Text is HTML-escaped
+ * before any markup is applied, so this stays safe even if the source
+ * file is ever editable by someone other than the CLI that generates it.
+ */
+function renderLeadFilterSummary(markdown) {
+    const lines = markdown.split(/\r?\n/);
+    let html = '';
+    let inList = false;
+    // Soft-wrapped continuation lines (no blank line between them) belong
+    // to the current paragraph/list item and must be joined BEFORE inline
+    // formatting is applied - a per-line regex misses a **bold** span or a
+    // bullet's own text when either wraps across physical lines (verified
+    // 2026-09-14 against the real doc: it broke both ways on the first try).
+    let blockLines = [];
+    let blockType = null; // 'p' | 'li'
+
+    function inlineBold(text) {
+        return escapeHtml(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    }
+    function flushBlock() {
+        if (!blockLines.length) return;
+        const text = inlineBold(blockLines.join(' '));
+        html += blockType === 'li' ? `<li>${text}</li>` : `<p>${text}</p>`;
+        blockLines = [];
+        blockType = null;
+    }
+    function closeList() {
+        if (inList) { html += '</ul>'; inList = false; }
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) {
+            flushBlock();
+            // A blank line only ends the list if the next non-blank line
+            // isn't another bullet - a blank line between two "- " items
+            // is a loose list (still one list), not two separate ones.
+            // Verified against the real doc, which separates its two
+            // bullets exactly this way.
+            const nextLine = (lines[i + 1] || '').trim();
+            if (!nextLine.startsWith('- ')) closeList();
+            continue;
+        }
+        if (line.startsWith('## ')) {
+            flushBlock(); closeList();
+            html += `<h2>${inlineBold(line.slice(3))}</h2>`;
+        } else if (line.startsWith('# ')) {
+            flushBlock(); closeList();
+            html += `<h1>${inlineBold(line.slice(2))}</h1>`;
+        } else if (line.startsWith('- ')) {
+            flushBlock();
+            if (!inList) { html += '<ul>'; inList = true; }
+            blockType = 'li';
+            blockLines.push(line.slice(2));
+        } else {
+            // A plain-text line either continues the block already open
+            // (list item or paragraph) or, right after a header/blank,
+            // starts a fresh paragraph. Never touches inList itself -
+            // that's only ever opened/closed at a bullet, header, or
+            // blank line, never inferred from a continuation line.
+            if (blockType === null) blockType = 'p';
+            blockLines.push(line);
+        }
+    }
+    flushBlock();
+    closeList();
+    return html;
+}
+
+async function setupLeadFilterDownloads(exportCampaign) {
+    const box = document.getElementById('lead-filter-box');
+    if (!box) return;
+
+    const inLink = document.getElementById('download-leadfilter-in');
+    const outLink = document.getElementById('download-leadfilter-out');
+    const toggle = document.getElementById('lead-filter-toggle');
+    const summaryEl = document.getElementById('lead-filter-summary');
+
+    try {
+        const res = await fetch(`/exports/${exportCampaign}-leadfilter-summary.md?v=${Date.now()}`);
+        if (!res.ok) return; // Campaign hasn't run the filter yet - leave the box hidden.
+        const text = await res.text();
+
+        if (inLink) {
+            inLink.href = `/exports/${exportCampaign}-leadfilter-in.csv?v=${Date.now()}`;
+            inLink.setAttribute('download', `${exportCampaign}-leadfilter-in.csv`);
+        }
+        if (outLink) {
+            outLink.href = `/exports/${exportCampaign}-leadfilter-out.csv?v=${Date.now()}`;
+            outLink.setAttribute('download', `${exportCampaign}-leadfilter-out.csv`);
+        }
+        if (summaryEl) summaryEl.innerHTML = renderLeadFilterSummary(text);
+        if (toggle && summaryEl) {
+            toggle.addEventListener('click', () => {
+                summaryEl.hidden = !summaryEl.hidden;
+                toggle.textContent = summaryEl.hidden ? 'Show filtering criteria' : 'Hide filtering criteria';
+            });
+        }
+        box.hidden = false;
+    } catch (e) {
+        console.error('Lead filter summary unavailable:', e);
+    }
+}
+
 function renderReport(stats, campaign) {
     // The report table (and worker stats) only exist on pages that include
     // report_table.njk / worker_stats.njk (currently just config.md) - the
@@ -371,6 +486,8 @@ function renderReport(stats, campaign) {
         downloadLinkJson.href = `/exports/${exportCampaign}-emails.json?v=${Date.now()}`;
         downloadLinkJson.setAttribute('download', `${exportCampaign}-emails.json`);
     }
+
+    setupLeadFilterDownloads(exportCampaign);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
