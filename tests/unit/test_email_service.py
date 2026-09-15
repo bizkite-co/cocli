@@ -57,6 +57,30 @@ def test_send_writes_company_note(tmp_path: Path) -> None:
     assert "bob@acme.test" in text
 
 
+def test_ses_sender_constructed_once_and_cached(mocker) -> None:
+    """A batch of N sends must trigger one 1Password/AWS credential
+    resolution, not N - Boto3SesSender.__init__ calls boto3.Session(...),
+    so _ses() must cache the sender instead of rebuilding it per send."""
+    from cocli.application import email_service as email_service_mod
+
+    mock_sender = mocker.Mock()
+    mock_sender.send_email.return_value = "ses-msg-1"
+    mock_ctor = mocker.patch.object(
+        email_service_mod, "Boto3SesSender", return_value=mock_sender
+    )
+
+    settings = EmailSettings(from_address="outreach@example.com")
+    service = EmailService(
+        "test-campaign", settings, company_lookup=lambda addr: None
+    )
+
+    service._ses()
+    service._ses()
+    service._ses()
+
+    mock_ctor.assert_called_once()
+
+
 def test_build_authorize_url_includes_client_and_login_hint() -> None:
     settings = EmailSettings(client_id="abc-123", imap_user="mark@example.com")
     url = build_authorize_url(settings)

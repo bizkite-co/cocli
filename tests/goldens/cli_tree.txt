@@ -424,6 +424,10 @@ cocli
             --body (text) [required]
             --company (text)
             --from (text)
+        send-batch - Actually send a batch via SES (prepare-batch only renders drafts).
+            --limit/-l (integer)
+            --template/-t (text)
+            --dry-run (boolean)
         suppression-list - List suppressed email addresses from AWS SES account-level suppression list.
             --limit (integer)
         unsubscribe - Unsubscribe an email address, adding to AWS SES suppression list and local exclusions.

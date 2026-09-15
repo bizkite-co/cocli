@@ -5,13 +5,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from cocli.application.company_service import get_company_details_for_view
 from cocli.core.exclusions import ExclusionManager
 from cocli.core.paths import paths
 from cocli.models.companies.company import Company
 from cocli.utils.utm import append_utm_params
+
+if TYPE_CHECKING:
+    from cocli.application.email_service import EmailService
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,13 @@ class ProspectContactMatch:
     role: Optional[str]
     subject: str
     body: str
+
+
+@dataclass
+class SendBatchResult:
+    batch_id: str
+    sent: int = 0
+    failed: int = 0
 
 
 def extract_first_name(full_name_or_str: str) -> Optional[str]:
@@ -195,9 +205,20 @@ class PersonalizedOutreachService:
 
 
     def load_template(self, template_name: str = "email_01_pas_hook.md") -> tuple[str, str]:
-        """Load email template subject pattern and body content from initiatives/rta/email-sequences/."""
-        seq_dir = paths.campaigns / self.campaign_name / "initiatives" / "rta" / "email-sequences"
-        template_path = seq_dir / template_name
+        """Load email template subject pattern and body content.
+
+        Checks campaigns/<c>/email-templates/ first (campaign-generic
+        location) then falls back to
+        campaigns/<c>/initiatives/rta/email-sequences/ (the original
+        roadmap/RTA-specific location, left in place rather than moved) so
+        other campaigns can add templates without needing an "rta
+        initiative" directory of their own.
+        """
+        generic_dir = paths.campaigns / self.campaign_name / "email-templates"
+        rta_dir = paths.campaigns / self.campaign_name / "initiatives" / "rta" / "email-sequences"
+        template_path = generic_dir / template_name
+        if not template_path.exists():
+            template_path = rta_dir / template_name
 
         default_subject = "{first_name}, a 30-year spend-down view your clients will instantly understand"
         default_body = (
@@ -299,5 +320,87 @@ class PersonalizedOutreachService:
 
         out_file.write_text(frontmatter + match.body, encoding="utf-8")
         return out_file
+
+    def send_batch(
+        self,
+        matches: list[ProspectContactMatch],
+        *,
+        template_id: str,
+        email_service: "EmailService",
+    ) -> SendBatchResult:
+        """Actually sends a batch (as opposed to prepare-batch/render_and_save_draft,
+        which only render drafts to disk).
+
+        Isolates each recipient's send in its own try/except so one failure
+        doesn't abort the run - the same discipline as
+        index_service.IndexService.requeue_enrichment_gaps, built after a
+        set -e-style batch lost already-completed work partway through.
+        Appends one SendLogEntry per attempt to the campaign's structured
+        send log - the replacement for scattered per-company EmailNote
+        markdown files as the source of truth for "was this actually sent."
+        """
+        from datetime import datetime, UTC
+
+        from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+        from cocli.models.mail import SendMailRequest
+
+        # Microsecond precision: two send_batch() calls in quick succession
+        # (e.g. back-to-back CLI runs, or two tests in the same process)
+        # must not collide on batch_id - second-granularity did.
+        batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        index_dir = SendLogEntry.get_index_dir(self.campaign_name)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        log_path = index_dir / "log.usv"
+
+        result = SendBatchResult(batch_id=batch_id)
+        entries: list[SendLogEntry] = []
+        for match in matches:
+            try:
+                send_result = email_service.send(
+                    SendMailRequest(
+                        to_address=match.recipient_email,
+                        subject=match.subject,
+                        body=match.body,
+                        company_slug=match.company_slug,
+                    )
+                )
+                entries.append(
+                    SendLogEntry(
+                        batch_id=batch_id,
+                        template_id=template_id,
+                        company_slug=match.company_slug,
+                        recipient=match.recipient_email,
+                        subject=match.subject,
+                        message_id=send_result.message_id,
+                        status="sent",
+                    )
+                )
+                result.sent += 1
+            except Exception as exc:
+                logger.warning(
+                    "send_batch: failed to send to %s (%s): %s",
+                    match.recipient_email,
+                    match.company_slug,
+                    exc,
+                )
+                entries.append(
+                    SendLogEntry(
+                        batch_id=batch_id,
+                        template_id=template_id,
+                        company_slug=match.company_slug,
+                        recipient=match.recipient_email,
+                        subject=match.subject,
+                        status="failed",
+                        error=str(exc),
+                    )
+                )
+                result.failed += 1
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(entry.to_usv())
+        SendLogEntry.save_datapackage(index_dir, "email_send_log", "log.usv")
+
+        return result
 
 

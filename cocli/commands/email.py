@@ -193,4 +193,43 @@ def prepare_batch(
         console.print(f"    Body Preview:\n{match.body[:200]}...\n")
 
 
+@app.command("send-batch")
+def send_batch(
+    limit: int = typer.Option(10, "--limit", "-l", help="Number of prospects with contact first names to select."),
+    template: str = typer.Option(
+        "email_01_pas_hook.md", "--template", "-t", help="Template filename (see prepare-batch preview)."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview the batch without sending or writing to the send log."
+    ),
+) -> None:
+    """Actually send a batch via SES (prepare-batch only renders drafts)."""
+    campaign_name = _require_campaign()
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    service = PersonalizedOutreachService(campaign_name)
+    matches = service.find_eligible_prospects(limit=limit)
+
+    if not matches:
+        console.print(f"[yellow]No eligible prospects with contact first names found in campaign '{campaign_name}'.[/yellow]")
+        return
+
+    if dry_run:
+        console.print(f"[bold blue]Dry run[/bold blue] - would send {len(matches)} email(s) for '{campaign_name}':\n")
+        for idx, match in enumerate(matches, 1):
+            console.print(f"[bold cyan][{idx}] {match.company_name}[/bold cyan] ({match.company_slug})")
+            console.print(f"    To: {match.contact_name} <{match.recipient_email}>")
+            console.print(f"    Subject: {match.subject}\n")
+        return
+
+    settings, profile = _settings(campaign_name)
+    email_service = EmailService(campaign_name, settings, aws_profile=profile)
+    result = service.send_batch(matches, template_id=template, email_service=email_service)
+
+    console.print(
+        f"[bold green]Batch {result.batch_id}[/bold green]: "
+        f"sent={result.sent} failed={result.failed}"
+    )
+
+
 

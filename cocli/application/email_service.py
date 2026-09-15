@@ -204,15 +204,20 @@ class EmailService:
         return result
 
     def _ses(self) -> SesSender:
-        if self._ses_sender is not None:
-            return self._ses_sender
-        sender = Boto3SesSender(
-            self.settings.ses_region,
-            profile=self._aws_profile,
-            configuration_set=self.settings.ses_configuration_set,
-        )
-        sender._reply_to = self.settings.reply_to
-        return sender
+        # Cached on first use: constructing a Boto3SesSender re-runs
+        # boto3.Session(profile_name=...), which re-triggers 1Password/AWS
+        # credential resolution. Uncached, a batch of N sends meant N
+        # credential resolutions (the Windows-Hello-popup-storm failure
+        # mode this project has hit before with per-item AWS auth loops).
+        if self._ses_sender is None:
+            sender = Boto3SesSender(
+                self.settings.ses_region,
+                profile=self._aws_profile,
+                configuration_set=self.settings.ses_configuration_set,
+            )
+            sender._reply_to = self.settings.reply_to
+            self._ses_sender = sender
+        return self._ses_sender
 
     def _token(self) -> TokenProvider:
         if self._token_provider is not None:
