@@ -39,6 +39,23 @@ module_patch('cocli.core.gossip_bridge.GossipBridge.stop', lambda x: None).start
 module_patch('cocli.core.gossip_bridge.Zeroconf', MagicMock()).start()
 module_patch('cocli.core.gossip_bridge.ServiceBrowser', MagicMock()).start()
 
+@pytest.fixture(autouse=True)
+def _reset_op_secret_cache():
+    """op_utils._secret_cache is a module-level, process-lifetime cache
+    (2026-09-15, to cut redundant 1Password/Windows-Hello reads within one
+    process). pytest runs the whole suite in one process, so without this
+    reset a test's mocked/fake secret for a given op:// path would leak
+    into any later test using that same literal path string - confirmed
+    live: test_get_op_secret_falls_back_to_op_read_paused and
+    test_get_op_secret_uses_linux_op_not_windows_exe both already use
+    "op://Private/AWS_Civilton_Main/aws_access_key_id"."""
+    from cocli.utils import op_utils
+
+    op_utils._secret_cache.clear()
+    yield
+    op_utils._secret_cache.clear()
+
+
 @pytest.fixture(scope="session")
 def runner():
     return CliRunner()

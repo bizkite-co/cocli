@@ -65,15 +65,33 @@ def run_windows_cmd(*args: str, timeout: int = 120) -> subprocess.CompletedProce
     )
 
 
+# In-memory only, process-lifetime cache of resolved secret VALUES (never
+# the AWS session/STS credentials built from them - those can legitimately
+# expire, a stable 1Password-sourced key/token does not). Never written to
+# disk. Exists so a single `pytest` run or CLI invocation that asks for the
+# same op:// ref more than once (a real, confirmed gap - see conversation
+# 2026-09-15) triggers one Windows Hello prompt instead of one per call,
+# not to solve the ambient browser-extension reconnect noise this session
+# also found in 1Password's own logs, which is unrelated to this code path.
+_secret_cache: dict[str, str] = {}
+
+
 def read_op_secrets(*op_paths: str) -> Optional[list[str]]:
     """Read one or two ``op://`` refs via op-read-paused (one Windows Hello).
 
     This is the same helper AWS ``credential_process`` uses. Two refs share
     one unlock session. Linux ``op`` does not raise Hello from WSL.
+
+    Serves from the in-memory cache when every requested ref is already
+    resolved; otherwise re-reads the whole batch fresh (simpler and still
+    correct - avoids reasoning about partially-cached ordering) and caches
+    each result.
     """
     refs = [path for path in op_paths if path]
     if not refs:
         return None
+    if all(r in _secret_cache for r in refs):
+        return [_secret_cache[r] for r in refs]
     if not os.path.isfile(_OP_READ_PAUSED_LINUX):
         return None
     try:
@@ -88,7 +106,10 @@ def read_op_secrets(*op_paths: str) -> Optional[list[str]]:
     lines = [line.strip() for line in result.stdout.replace("\r", "").splitlines() if line.strip()]
     if len(lines) < len(refs):
         return None
-    return lines[: len(refs)]
+    values = lines[: len(refs)]
+    for ref, value in zip(refs, values):
+        _secret_cache[ref] = value
+    return values
 
 
 def _read_via_linux_op(op_path: str) -> Optional[str]:
@@ -155,6 +176,9 @@ def get_op_secret(op_path: str) -> Optional[str]:
     if not op_path or not op_path.startswith("op://"):
         return None
 
+    if op_path in _secret_cache:
+        return _secret_cache[op_path]
+
     # 1. Attempt SDK Retrieval
     try:
         from onepassword.sdk import Client as NewSDKClient  # type: ignore
@@ -167,7 +191,9 @@ def get_op_secret(op_path: str) -> Optional[str]:
                     integration_name="cocli",
                     integration_version="0.1.0",
                 )
-                return cast(str, client.secrets.retrieve(op_path))
+                sdk_value = cast(str, client.secrets.retrieve(op_path))
+                _secret_cache[op_path] = sdk_value
+                return sdk_value
             except Exception as sdk_err:
                 logger.debug(f"Official SDK retrieval failed: {sdk_err}")
 
@@ -179,6 +205,7 @@ def get_op_secret(op_path: str) -> Optional[str]:
     # 2. Linux ``op`` if a session is already open (no Hello).
     value = _read_via_linux_op(op_path)
     if value:
+        _secret_cache[op_path] = value
         return value
 
     # 3. op-read-paused.cmd via /init — this is the Windows Hello path
@@ -189,6 +216,7 @@ def get_op_secret(op_path: str) -> Optional[str]:
 
     value = _read_via_windows_op(op_path)
     if value:
+        _secret_cache[op_path] = value
         return value
 
     logger.error(
