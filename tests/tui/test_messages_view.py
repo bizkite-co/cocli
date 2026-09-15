@@ -1,0 +1,214 @@
+"""Messages TUI screen: navigation, per-section rendering, and the
+review-before-send flow (the exact frozen body must be shown and sent,
+not a fresh re-render)."""
+
+from __future__ import annotations
+
+import pytest
+
+from cocli.tui.app import CocliApp
+from cocli.application.services import ServiceContainer
+from cocli.tui.widgets.messages_view import MessagesView
+from cocli.tui.widgets.message_templates_view import MessageTemplatesView
+from cocli.tui.widgets.target_batches_view import TargetBatchesView
+from cocli.tui.widgets.send_log_view import SendLogView, SendLogListItem
+from cocli.tui.widgets.unsubscribe_rate_view import UnsubscribeRateView
+from textual.widgets import ListView, Label
+
+CAMPAIGN = "test/default"
+
+
+def _write_pending_batch(
+    batch_id: str,
+    *,
+    slug: str = "acme-financial",
+    recipient: str = "bob@acme.test",
+    subject: str = "Hi Bob",
+    body: str = "Line one\nLine two",
+    template_id: str = "t1",
+) -> None:
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    index_dir = PendingBatchEntry.get_index_dir(CAMPAIGN)
+    index_dir.mkdir(parents=True, exist_ok=True)
+    entry = PendingBatchEntry(
+        batch_id=batch_id,
+        template_id=template_id,
+        company_slug=slug,
+        recipient=recipient,
+        subject=subject,
+        body=body,
+    )
+    with open(index_dir / "pending.usv", "a", encoding="utf-8") as f:
+        f.write(entry.to_usv())
+
+
+@pytest.mark.asyncio
+async def test_leader_key_opens_messages_view_with_templates_section(mock_cocli_env, mocker) -> None:
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.pause(0.1)
+        await pilot.press("m")
+        await pilot.pause(0.3)
+
+        assert len(app.query(MessagesView)) == 1
+        assert app.query_one("#menu-messages").has_class("active-menu-item")
+        assert len(app.query(MessageTemplatesView)) == 1
+
+
+@pytest.mark.asyncio
+async def test_target_batches_shows_full_rendered_body_on_selection(mock_cocli_env, mocker) -> None:
+    _write_pending_batch("batch-1", body="Line one\nLine two")
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = TargetBatchesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        list_view = widget.query_one("#target-batch-list", ListView)
+        assert len(list_view.children) == 1
+        list_view.focus()
+        list_view.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.1)
+
+        body_text = widget.query_one("#batch-preview-body").content
+        # The exact frozen content, with real newlines restored - not the
+        # USV-sanitized "<br>" form, and not a re-rendered value.
+        assert "<br>" not in str(body_text)
+        assert "Line one" in str(body_text)
+        assert "Line two" in str(body_text)
+
+
+@pytest.mark.asyncio
+async def test_send_batch_flow_sends_and_clears_pending(mock_cocli_env, mocker) -> None:
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    _write_pending_batch("batch-1", slug="acme-financial", recipient="bob@acme.test")
+
+    class _FakeSentResult:
+        message_id = "fake-msg-id"
+
+    class _FakeEmailService:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def send(self, request: object) -> _FakeSentResult:
+            return _FakeSentResult()
+
+    mocker.patch("cocli.core.config.load_campaign_config", return_value={})
+    mocker.patch("cocli.application.email_service.EmailService", _FakeEmailService)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = TargetBatchesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        list_view = widget.query_one("#target-batch-list", ListView)
+        list_view.focus()
+        list_view.index = 0
+        await pilot.pause(0.1)
+
+        await pilot.press("s")
+        await pilot.pause(0.2)
+        await pilot.press("y")
+        await pilot.pause(0.3)
+
+        service = PersonalizedOutreachService(CAMPAIGN)
+        assert service.list_pending_batches() == []
+
+        log_path = SendLogEntry.get_index_dir(CAMPAIGN) / "log.usv"
+        entries = [SendLogEntry.from_usv(line) for line in log_path.read_text().splitlines() if line]
+        assert len(entries) == 1
+        assert entries[0].status == "sent"
+        assert entries[0].company_slug == "acme-financial"
+
+
+@pytest.mark.asyncio
+async def test_discard_batch_removes_without_sending(mock_cocli_env, mocker) -> None:
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    _write_pending_batch("batch-1")
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = TargetBatchesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        list_view = widget.query_one("#target-batch-list", ListView)
+        list_view.focus()
+        list_view.index = 0
+        await pilot.pause(0.1)
+
+        await pilot.press("d")
+        await pilot.pause(0.2)
+        await pilot.press("y")
+        await pilot.pause(0.2)
+
+        service = PersonalizedOutreachService(CAMPAIGN)
+        assert service.list_pending_batches() == []
+
+
+@pytest.mark.asyncio
+async def test_send_log_section_lists_sent_entries(mock_cocli_env, mocker) -> None:
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    index_dir = SendLogEntry.get_index_dir(CAMPAIGN)
+    index_dir.mkdir(parents=True, exist_ok=True)
+    entry = SendLogEntry(
+        batch_id="b1", template_id="t1", company_slug="acme-financial",
+        recipient="bob@acme.test", subject="Hi Bob", status="sent", message_id="msg-1",
+    )
+    with open(index_dir / "log.usv", "w", encoding="utf-8") as f:
+        f.write(entry.to_usv())
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = SendLogView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        list_view = widget.query_one("#send-log-list", ListView)
+        assert len(list_view.children) == 1
+        assert isinstance(list_view.children[0], SendLogListItem)
+        assert list_view.children[0].entry.company_slug == "acme-financial"
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_rate_shows_computed_rate(mock_cocli_env, mocker) -> None:
+    from cocli.core.exclusions import ExclusionManager
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    index_dir = SendLogEntry.get_index_dir(CAMPAIGN)
+    index_dir.mkdir(parents=True, exist_ok=True)
+    entries = [
+        SendLogEntry(
+            batch_id="b1", template_id="t1", company_slug=f"co-{i}",
+            recipient=f"co{i}@test.com", subject="Hi", status="sent",
+        )
+        for i in range(4)
+    ]
+    with open(index_dir / "log.usv", "w", encoding="utf-8") as f:
+        for entry in entries:
+            f.write(entry.to_usv())
+    ExclusionManager(CAMPAIGN).add_exclusion(
+        slug="co-1", domain="co1@test.com", reason="unsubscribe:COMPLAINT"
+    )
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = UnsubscribeRateView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        sent_label = widget.query_one("#unsubscribe-rate-sent", Label)
+        rate_label = widget.query_one("#unsubscribe-rate-rate", Label)
+        assert "4" in str(sent_label.content)
+        assert "25.0%" in str(rate_label.content)

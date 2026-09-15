@@ -223,6 +223,18 @@ class PersonalizedOutreachService:
         return matches
 
 
+    def list_templates(self) -> list[str]:
+        """Filenames available via load_template()'s fallback chain -
+        generic dir first, then the roadmap/RTA-specific dir - deduplicated
+        and sorted for stable display."""
+        generic_dir = paths.campaigns / self.campaign_name / "email-templates"
+        rta_dir = paths.campaigns / self.campaign_name / "initiatives" / "rta" / "email-sequences"
+        names: set[str] = set()
+        for d in (generic_dir, rta_dir):
+            if d.exists():
+                names.update(p.name for p in d.glob("*.md"))
+        return sorted(names)
+
     def load_template(self, template_name: str = "email_01_pas_hook.md") -> tuple[str, str]:
         """Load email template subject pattern and body content.
 
@@ -475,7 +487,7 @@ class PersonalizedOutreachService:
         ]
 
     @staticmethod
-    def _entry_to_match(entry: "PendingBatchEntry") -> ProspectContactMatch:
+    def entry_to_match(entry: "PendingBatchEntry") -> ProspectContactMatch:
         """PendingBatchEntry.to_usv() sanitizes newlines to '<br>' (the
         same lossy encoding every USV string field uses, base.py's
         to_usv()) - reversed here, once, so both the review preview and
@@ -505,7 +517,7 @@ class PersonalizedOutreachService:
         if not batch_entries:
             return SendBatchResult(batch_id=batch_id, sent=0, failed=0)
 
-        matches = [self._entry_to_match(e) for e in batch_entries]
+        matches = [self.entry_to_match(e) for e in batch_entries]
         result = self.send_batch(
             matches, template_id=batch_entries[0].template_id, email_service=email_service
         )

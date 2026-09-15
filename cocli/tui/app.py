@@ -35,6 +35,7 @@ from .widgets.status_view import StatusView
 from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_search import CompanySearchView
 from .widgets.template_list import TemplateList
+from .widgets.messages_view import MessagesView
 from .widgets.event_curation import EventCurationView
 from .navigation import NavNode, ProcessRun
 from .navigation_manager import NavigationStateManager
@@ -88,6 +89,7 @@ class MenuBar(Horizontal):
         # Left-aligned items
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
         yield Label("People ( P)", id="menu-people", classes="menu-item")
+        yield Label("Messages ( M)", id="menu-messages", classes="menu-item")
         yield Label("Events ( E)", id="menu-events", classes="menu-item")
         yield Label("Admin ( A)", id="menu-admin", classes="menu-item")
 
@@ -267,6 +269,11 @@ class CocliCommandProvider(Provider):
                 "Switch to the companies search and list view.",
             ),
             ("Show People", app.action_show_people, "Switch to the people list view."),
+            (
+                "Show Messages",
+                app.action_show_messages,
+                "Switch to the email outreach operations view.",
+            ),
             (
                 "Show Events",
                 app.action_show_events,
@@ -528,6 +535,8 @@ class CocliApp(App[None]):
                 root_widget=ApplicationView,
             ),
             ApplicationView: NavNode(widget_class=ApplicationView, is_branch_root=True),
+            # --- Messages Branch ---
+            MessagesView: NavNode(widget_class=MessagesView, is_branch_root=True),
             # --- Events Branch ---
             EventCurationView: NavNode(
                 widget_class=EventCurationView, is_branch_root=True
@@ -745,6 +754,8 @@ class CocliApp(App[None]):
                 await self.action_show_companies()
             elif self.leader_key_buffer == LEADER_KEY + "p":
                 await self.action_show_people()
+            elif self.leader_key_buffer == LEADER_KEY + "m":
+                await self.action_show_messages()
             elif self.leader_key_buffer == LEADER_KEY + "e":
                 await self.action_show_events()
             elif self.leader_key_buffer == LEADER_KEY + "a":
@@ -1087,6 +1098,36 @@ class CocliApp(App[None]):
                 return
 
             await self.main_content.mount(PersonList())
+            self.menu_bar.set_activity("")
+
+    async def action_show_messages(self) -> None:
+        """Show the email outreach operations view (templates, target
+        batches, send log, unsubscribe rate)."""
+        with time_perf("APP: action_show_messages"):
+            self.menu_bar.set_activity("Switching")
+            self.menu_bar.set_active("messages")
+
+            content = self.main_content
+            messages_view = None
+
+            for child in content.children:
+                if isinstance(child, MessagesView):
+                    messages_view = child
+                    child.display = True
+                elif isinstance(
+                    child, (CompanySearchView, PersonList, ApplicationView)
+                ):
+                    child.display = False
+                else:
+                    child.remove()
+
+            if messages_view:
+                messages_view.action_focus_master()
+                self.menu_bar.set_activity("")
+                return
+
+            messages_view = MessagesView()
+            await self.main_content.mount(messages_view)
             self.menu_bar.set_activity("")
 
     async def action_show_events(self) -> None:
