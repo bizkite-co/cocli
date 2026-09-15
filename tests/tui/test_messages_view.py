@@ -59,6 +59,40 @@ async def test_leader_key_opens_messages_view_with_templates_section(mock_cocli_
 
 
 @pytest.mark.asyncio
+async def test_sections_list_has_real_focus_j_navigates_and_h_stays_put(
+    mock_cocli_env, mocker
+) -> None:
+    """Regression for a real bug (2026-09-15): entering Messages focused
+    nothing in the DOM (the default content pane isn't focusable), so
+    _get_active_nav_node() found no active branch, "j" had no focused
+    ListView to move, and "h" ("Back") fell through to its no-active-node
+    fallback and jumped to Companies."""
+    from cocli.tui.widgets.company_list import CompanyList
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.pause(0.1)
+        await pilot.press("m")
+        await pilot.pause(0.3)
+
+        sections_list = app.query_one("#message_sections_list", ListView)
+        assert sections_list.has_focus
+
+        assert sections_list.index == 0
+        await pilot.press("j")
+        await pilot.pause(0.1)
+        assert sections_list.index == 1
+
+        await pilot.press("h")
+        await pilot.pause(0.2)
+        assert len(app.query(MessagesView)) == 1
+        assert len(app.query(CompanyList)) == 0
+        assert app.query_one("#menu-messages").has_class("active-menu-item")
+
+
+@pytest.mark.asyncio
 async def test_target_batches_shows_full_rendered_body_on_selection(mock_cocli_env, mocker) -> None:
     _write_pending_batch("batch-1", body="Line one\nLine two")
 

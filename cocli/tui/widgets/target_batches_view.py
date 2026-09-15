@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ..app import CocliApp
     from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
-from textual import on
+from textual import events, on
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.widgets import Label, ListItem, ListView, Static
@@ -86,6 +86,15 @@ class TargetBatchesView(MasterDetailView):
 
         if not entries:
             self.batch_preview.update_preview(None, None)
+
+    def on_key(self, event: events.Key) -> None:
+        """vim-style j/k - ListView only binds arrow keys by default."""
+        if event.key == "j":
+            self.batch_list.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "k":
+            self.batch_list.action_cursor_up()
+            event.prevent_default()
 
     @on(ListView.Selected)
     def on_batch_row_selected(self, message: ListView.Selected) -> None:

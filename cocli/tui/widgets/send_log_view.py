@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ..app import CocliApp
     from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
 
-from textual import on
+from textual import events, on
 from textual.containers import VerticalScroll
 from textual.widgets import Label, ListItem, ListView
 
@@ -96,6 +96,15 @@ class SendLogView(MasterDetailView):
 
         if not entries:
             self.log_detail.update_entry(None)
+
+    def on_key(self, event: events.Key) -> None:
+        """vim-style j/k - ListView only binds arrow keys by default."""
+        if event.key == "j":
+            self.log_list.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "k":
+            self.log_list.action_cursor_up()
+            event.prevent_default()
 
     @on(ListView.Selected)
     def on_log_entry_selected(self, message: ListView.Selected) -> None:

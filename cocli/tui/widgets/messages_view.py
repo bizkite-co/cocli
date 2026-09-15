@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from textual import on
+from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.message import Message
@@ -53,6 +53,17 @@ class MessageSectionsList(CocliPanel):
         if event.item and event.item.id:
             self.post_message(self.SectionSelected(event.item.id))
 
+    def on_key(self, event: events.Key) -> None:
+        """vim-style j/k - ListView only binds arrow keys by default (same
+        fix as TemplateList.on_key, missed here originally)."""
+        list_view = self.query_one("#message_sections_list", ListView)
+        if event.key == "j":
+            list_view.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "k":
+            list_view.action_cursor_up()
+            event.prevent_default()
+
     def focus_list(self) -> None:
         self.query_one(ListView).focus()
 
@@ -75,13 +86,25 @@ class MessagesView(Container):
             yield self.content_container
 
     async def on_mount(self) -> None:
-        await self._show_section("section_templates")
+        # Populate the default section's content, but don't focus into it -
+        # matches CompanySearchView landing on its Templates sidebar, not
+        # the (not-yet-selected) results pane. Calling .focus() on a
+        # MasterDetailView content widget here was a no-op anyway (it's a
+        # plain Container, not focusable), which left nothing in the DOM
+        # actually focused: app.py's _get_active_nav_node() requires
+        # has_focus_within to find the active branch, so with nothing
+        # focused it found none, "j" had no focused ListView to move, and
+        # "h" fell through to the global "Back" binding's no-active-node
+        # fallback (action_show_companies) - confirmed 2026-09-15, not a
+        # guess.
+        await self._show_section("section_templates", focus_content=False)
+        self.sections_list.focus_list()
 
     @on(MessageSectionsList.SectionSelected)
     async def on_section_selected(self, message: MessageSectionsList.SectionSelected) -> None:
         await self._show_section(message.section_id)
 
-    async def _show_section(self, section_id: str) -> None:
+    async def _show_section(self, section_id: str, *, focus_content: bool = True) -> None:
         widget_cls = _SECTION_WIDGETS.get(section_id)
         if widget_cls is None:
             return
@@ -89,9 +112,17 @@ class MessagesView(Container):
             await child.remove()
         new_widget = widget_cls()
         await self.content_container.mount(new_widget)
-        new_widget.focus()
+        if focus_content and hasattr(new_widget, "action_focus_master"):
+            new_widget.action_focus_master()
 
     def action_focus_sections(self) -> None:
+        self.sections_list.focus_list()
+
+    def action_focus_sidebar(self) -> None:
+        """Same conventional name app.py's action_navigate_up() already
+        looks for (see CompanySearchView/PersonList) - this is what makes
+        bare "h" ("Back") return to the Sections list instead of silently
+        doing nothing once focus is correctly inside Messages."""
         self.sections_list.focus_list()
 
     def action_focus_master(self) -> None:

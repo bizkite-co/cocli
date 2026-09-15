@@ -10,7 +10,7 @@ from typing import Any, cast, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..app import CocliApp
 
-from textual import on
+from textual import events, on
 from textual.containers import VerticalScroll
 from textual.widgets import Label, ListItem, ListView, Static
 
@@ -74,6 +74,15 @@ class MessageTemplatesView(MasterDetailView):
 
         if not names:
             self.template_preview.update_preview(None, None)
+
+    def on_key(self, event: events.Key) -> None:
+        """vim-style j/k - ListView only binds arrow keys by default."""
+        if event.key == "j":
+            self.template_list.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "k":
+            self.template_list.action_cursor_up()
+            event.prevent_default()
 
     @on(ListView.Selected)
     def on_template_selected(self, message: ListView.Selected) -> None:
