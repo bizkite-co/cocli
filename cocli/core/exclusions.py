@@ -46,6 +46,13 @@ class ExclusionManager:
             return True
         return False
 
+    def get_exclusion(self, domain: Optional[str] = None, slug: Optional[str] = None) -> Optional[Exclusion]:
+        if slug and slug in self._slug_map:
+            return self._slug_map[slug]
+        if domain and domain in self._domain_map:
+            return self._domain_map[domain]
+        return None
+
     def add_exclusion(self, domain: Optional[str] = None, slug: Optional[str] = None, reason: Optional[str] = None) -> None:
         if not domain and not slug:
             raise ValueError("Must provide either domain or slug to exclude")

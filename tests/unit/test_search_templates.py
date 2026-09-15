@@ -282,11 +282,19 @@ def test_lead_filter_templates_read_static_index_not_company_data(
     must not require touching any company's own data. 2026-09-13: this
     replaced an earlier, rejected design that would have written filter
     verdicts into shared company tags."""
+    from cocli.models.campaigns.indexes.lead_filter import LeadFilterEntry
+
     campaign_node = paths.campaign(templates_env)
     lead_filter_dir = campaign_node.index("lead-filter").path
     lead_filter_dir.mkdir(parents=True, exist_ok=True)
-    (lead_filter_dir / "in.usv").write_text("email-co\ninbox-co\n", encoding="utf-8")
-    (lead_filter_dir / "out.usv").write_text("no-email-co\n", encoding="utf-8")
+    (lead_filter_dir / "in.usv").write_text(
+        LeadFilterEntry(slug="email-co", verdict="in").to_usv()
+        + LeadFilterEntry(slug="inbox-co", verdict="in").to_usv(),
+        encoding="utf-8",
+    )
+    (lead_filter_dir / "out.usv").write_text(
+        LeadFilterEntry(slug="no-email-co", verdict="out").to_usv(), encoding="utf-8"
+    )
 
     counts = get_template_counts(campaign_name=templates_env)
     assert counts["tpl_filter_in"] == 2
@@ -306,13 +314,34 @@ def test_lead_filter_templates_read_static_index_not_company_data(
 
     # Regenerating the index (simulating a filter re-run) changes results
     # without touching any company's own data at all.
-    (lead_filter_dir / "in.usv").write_text("email-co\n", encoding="utf-8")
+    (lead_filter_dir / "in.usv").write_text(
+        LeadFilterEntry(slug="email-co", verdict="in").to_usv(), encoding="utf-8"
+    )
     search_service._last_filter_in_mtime = -1.0
     updated = get_fuzzy_search_results(
         "", campaign_name=templates_env, filters={"filter_in": True},
         force_rebuild_cache=True,
     )
     assert {r.slug for r in updated} == {"email-co"}
+
+
+def test_lead_filter_templates_tolerate_pre_schema_bare_slug_lines(
+    templates_env: str,
+) -> None:
+    """Files written before LeadFilterEntry existed are one bare slug per
+    line, no other fields - from_usv() must still parse those into a valid
+    (slug-only) record rather than raising, since which physical file
+    (in.usv/out.usv) a row lives in - not the verdict field - is what
+    membership actually depends on."""
+    campaign_node = paths.campaign(templates_env)
+    lead_filter_dir = campaign_node.index("lead-filter").path
+    lead_filter_dir.mkdir(parents=True, exist_ok=True)
+    (lead_filter_dir / "in.usv").write_text("email-co\ninbox-co\n", encoding="utf-8")
+    (lead_filter_dir / "out.usv").write_text("no-email-co\n", encoding="utf-8")
+
+    counts = get_template_counts(campaign_name=templates_env)
+    assert counts["tpl_filter_in"] == 2
+    assert counts["tpl_filter_out"] == 1
 
 
 def test_invalid_template_lists_excluded_invalid_companies(

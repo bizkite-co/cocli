@@ -560,21 +560,33 @@ def get_fuzzy_search_results(
                 # ever-growing history. Same pattern as items_to_call: a
                 # small membership table LEFT JOINed into the view, never a
                 # write into shared company data.
+                def _load_lead_filter_slugs(path: Optional[Path]) -> list[list[str]]:
+                    # Records, not bare slugs: parse through the model so a
+                    # future field never silently becomes part of the slug
+                    # (or drops the row) the way naive line.strip() would.
+                    from cocli.models.campaigns.indexes.lead_filter import LeadFilterEntry
+
+                    if not path or not path.exists():
+                        return []
+                    result = []
+                    for line in path.read_text().splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            result.append([LeadFilterEntry.from_usv(line).slug])
+                        except Exception:
+                            continue
+                    return result
+
                 _con.execute("CREATE TABLE items_filter_in (slug VARCHAR)")
-                if filter_in_path and filter_in_path.exists():
-                    in_slugs = [
-                        [line.strip()] for line in filter_in_path.read_text().splitlines() if line.strip()
-                    ]
-                    if in_slugs:
-                        _con.executemany("INSERT INTO items_filter_in VALUES (?)", in_slugs)
+                in_slugs = _load_lead_filter_slugs(filter_in_path)
+                if in_slugs:
+                    _con.executemany("INSERT INTO items_filter_in VALUES (?)", in_slugs)
 
                 _con.execute("CREATE TABLE items_filter_out (slug VARCHAR)")
-                if filter_out_path and filter_out_path.exists():
-                    out_slugs = [
-                        [line.strip()] for line in filter_out_path.read_text().splitlines() if line.strip()
-                    ]
-                    if out_slugs:
-                        _con.executemany("INSERT INTO items_filter_out VALUES (?)", out_slugs)
+                out_slugs = _load_lead_filter_slugs(filter_out_path)
+                if out_slugs:
+                    _con.executemany("INSERT INTO items_filter_out VALUES (?)", out_slugs)
 
                 _load_email_index(_con, emails_root)
 
