@@ -217,12 +217,18 @@ class InitiativesView(Container):
         self._current_initiative: str | None = None
 
     def compose(self) -> ComposeResult:
+        # Mirrors application_view.py's Admin sidebar exactly: an outer
+        # #app_sidebar_column-equivalent holding two stacked, independently
+        # focus-highlighted containers (top nav list, second sub-nav list),
+        # same ids-plus-CSS shape (see tui.css), same width.
         with Horizontal():
-            with Vertical(id="initiatives-nav-column"):
-                yield Label("INITIATIVES", classes="pane-header")
-                yield self.initiatives_list
-                yield Label("CATEGORY", classes="pane-header")
-                yield self.categories_list
+            with Vertical(id="initiatives_sidebar_column"):
+                with Vertical(id="initiatives_nav_container"):
+                    yield Label("Initiatives", classes="sidebar-title")
+                    yield self.initiatives_list
+                with Vertical(id="initiatives_sub_nav_container"):
+                    yield Label("Category", classes="sidebar-title")
+                    yield self.categories_list
             yield self.content_container
 
     async def on_mount(self) -> None:
@@ -233,17 +239,19 @@ class InitiativesView(Container):
         service = PersonalizedOutreachService(campaign)
         for name in service.list_initiatives():
             self.initiatives_list.append(InitiativeListItem(name))
-        # Deliberately no focus() call here - MessagesView._show_section()
-        # controls focus externally via action_focus_master(), same as
-        # every other section widget (none of them focus in on_mount either).
-        # This matters on the very first Messages entry, where the outer
-        # Sections sidebar must keep focus instead of this widget grabbing
-        # it immediately (see MessagesView.on_mount()'s focus_content=False).
+        # Items appended dynamically (not statically composed) don't get
+        # an initial highlighted index for free - set it explicitly so
+        # h/j/k/l and Enter have something to act on right away.
+        if self.initiatives_list.children:
+            self.initiatives_list.index = 0
+        # No focus() call here - MessagesView.on_mount() grabs focus
+        # explicitly via action_focus_master() once this widget is mounted,
+        # so a bare re-render/refresh here never steals focus mid-session.
 
     def action_focus_master(self) -> None:
-        """Matches the interface MessagesView._show_section() looks for on
-        every section widget (MasterDetailView subclasses get this for
-        free; InitiativesView isn't one, so it's defined explicitly)."""
+        """Focuses the top (Initiatives) list. Called by MessagesView on
+        first mount and whenever app.py's action_show_messages() reuses an
+        already-mounted MessagesView."""
         self.initiatives_list.focus()
 
     @on(ListView.Selected, "#initiatives_list")

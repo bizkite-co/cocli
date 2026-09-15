@@ -59,7 +59,7 @@ async def test_leader_key_opens_messages_view_with_initiatives_section(mock_cocl
 
 
 @pytest.mark.asyncio
-async def test_sections_list_has_real_focus_j_navigates_and_h_stays_put(
+async def test_initiatives_list_has_real_focus_j_navigates_and_h_stays_put(
     mock_cocli_env, mocker
 ) -> None:
     """Regression for a real bug (2026-09-15): entering Messages focused
@@ -67,7 +67,11 @@ async def test_sections_list_has_real_focus_j_navigates_and_h_stays_put(
     _get_active_nav_node() found no active branch, "j" had no focused
     ListView to move, and "h" ("Back") fell through to its no-active-node
     fallback and jumped to Companies."""
+    from cocli.core.paths import paths
     from cocli.tui.widgets.company_list import CompanyList
+
+    for initiative in ("rta", "wealth-manager-products"):
+        (paths.campaigns / CAMPAIGN / "initiatives" / initiative).mkdir(parents=True, exist_ok=True)
 
     app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
     async with app.run_test() as pilot:
@@ -77,13 +81,13 @@ async def test_sections_list_has_real_focus_j_navigates_and_h_stays_put(
         await pilot.press("m")
         await pilot.pause(0.3)
 
-        sections_list = app.query_one("#message_sections_list", ListView)
-        assert sections_list.has_focus
+        initiatives_list = app.query_one("#initiatives_list", ListView)
+        assert initiatives_list.has_focus
 
-        assert sections_list.index == 0
+        assert initiatives_list.index == 0
         await pilot.press("j")
         await pilot.pause(0.1)
-        assert sections_list.index == 1
+        assert initiatives_list.index == 1
 
         await pilot.press("h")
         await pilot.pause(0.2)

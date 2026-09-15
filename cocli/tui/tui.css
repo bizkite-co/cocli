@@ -64,6 +64,20 @@ Screen {
     border-left: solid #333333;
 }
 
+/* Messages screen (InitiativesView) sidebar - same shape/width as
+   #app_sidebar_column above (Admin): a top nav list stacked above a
+   second sub-nav list, each independently focus-highlighted. */
+#initiatives_sidebar_column {
+    width: 30;
+    background: #000000;
+    border-right: solid #333333;
+}
+
+#initiatives-content {
+    width: 1fr;
+    background: #000000;
+}
+
 #app_main_content {
     width: 1fr;
     background: #000000;
@@ -172,11 +186,14 @@ CocliInput > .text-input--placeholder {
 }
 
 /* Common focus highlighting for all panes */
-.search-pane:focus-within, 
-#app_nav_container:focus-within, 
+.search-pane:focus-within,
+#app_nav_container:focus-within,
 #app_sub_nav_container:focus-within,
 #app_main_content:focus-within,
 #app_recent_runs:focus-within,
+#initiatives_nav_container:focus-within,
+#initiatives_sub_nav_container:focus-within,
+#initiatives-content:focus-within,
 .category-content-root:focus-within {
     background: #161616; /* More distinct background for focused pane */
 }
@@ -186,6 +203,8 @@ CocliInput > .text-input--placeholder {
 #app_sub_nav_container:focus-within .sidebar-title,
 #app_main_content:focus-within .pane-header,
 #app_recent_runs:focus-within .sidebar-title,
+#initiatives_nav_container:focus-within .sidebar-title,
+#initiatives_sub_nav_container:focus-within .sidebar-title,
 .category-content-root:focus-within .pane-header {
     background: #008700; /* Softer green for reverse video */
     color: #000000;
