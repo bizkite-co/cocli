@@ -223,6 +223,89 @@ def test_actionable_requires_email_and_phone(templates_env: str) -> None:
     assert _slugs(results) == {"email-co", "inbox-co", "legacy-md-co"}
 
 
+def test_dir_mtime_alone_misses_changes_inside_an_existing_bucket(tmp_path: Path) -> None:
+    """Documents exactly the bug _inbox_mtime() exists to fix: a plain
+    os.path.getmtime() on inbox/ itself does not change when a file is
+    added inside an already-existing shard bucket subdirectory - a
+    directory's own mtime only reflects changes to its direct children,
+    and the bucket (not inbox/) is the direct child that changed."""
+    import os
+    import time
+
+    inbox_dir = tmp_path / "inbox"
+    bucket = inbox_dir / "ab"
+    bucket.mkdir(parents=True)
+    (bucket / "first@example.com.usv").write_text("x", encoding="utf-8")
+
+    before = search_service._dir_mtime(inbox_dir)
+
+    (bucket / "second@example.com.usv").write_text("y", encoding="utf-8")
+    future = time.time() + 5
+    os.utime(bucket, (future, future))
+
+    after = search_service._dir_mtime(inbox_dir)
+    assert after == before
+
+
+def test_inbox_mtime_detects_changes_inside_an_existing_bucket(tmp_path: Path) -> None:
+    import os
+    import time
+
+    inbox_dir = tmp_path / "inbox"
+    bucket = inbox_dir / "ab"
+    bucket.mkdir(parents=True)
+    (bucket / "first@example.com.usv").write_text("x", encoding="utf-8")
+
+    before = search_service._inbox_mtime(inbox_dir)
+
+    (bucket / "second@example.com.usv").write_text("y", encoding="utf-8")
+    future = time.time() + 5
+    os.utime(bucket, (future, future))
+
+    after = search_service._inbox_mtime(inbox_dir)
+    assert after > before
+
+
+def test_new_email_in_existing_bucket_is_found_without_manual_cache_reset(
+    templates_env: str,
+) -> None:
+    """End-to-end regression (2026-09-16): a long-running process must
+    notice a new email dropped into an already-existing inbox/ shard
+    bucket - confirmed live as the mechanism by which a TUI session kept
+    serving an already-corrected, wrong email/company pairing. Bucket
+    "ab" already exists (team@inboxco.com, from the templates_env
+    fixture), so this adds to it rather than creating a fresh bucket -
+    exactly the case plain _dir_mtime() couldn't see. Deliberately does
+    NOT force_rebuild_cache or reset search_service._last_email_mtime -
+    the real staleness check itself must catch this."""
+    import os
+    import time
+
+    campaign_node = paths.campaign(templates_env)
+    emails_root = campaign_node.index("emails").path
+    bucket = emails_root / "inbox" / "ab"
+
+    before = get_fuzzy_search_results(
+        "", campaign_name=templates_env, filters={"has_email": True}, force_rebuild_cache=True,
+    )
+    assert "no-email-co" not in _slugs(before)
+
+    new_entry = EmailEntry(
+        email="hello@noemailco.com",
+        domain="noemailco.com",
+        company_slug="no-email-co",
+        source="website_scraper",
+    )
+    (bucket / "hello@noemailco.com.usv").write_text(new_entry.to_usv(), encoding="utf-8")
+    future = time.time() + 5
+    os.utime(bucket, (future, future))
+
+    after = get_fuzzy_search_results(
+        "", campaign_name=templates_env, filters={"has_email": True},
+    )
+    assert "no-email-co" in _slugs(after)
+
+
 def test_no_address_uses_checkpoint_street(templates_env: str) -> None:
     results = get_fuzzy_search_results(
         "",

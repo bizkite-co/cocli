@@ -82,6 +82,30 @@ def _dir_mtime(path: Optional[Path]) -> float:
     return -1.0
 
 
+def _inbox_mtime(inbox_dir: Optional[Path]) -> float:
+    """inbox/ is sharded into up to 256 hash-prefix subdirectories
+    (EmailIndexManager.add_email() -> inbox/<sha256(domain)[:2]>/<email>.usv).
+    A directory's own mtime only changes when its direct children list
+    changes - once a shard bucket subdirectory already exists (common
+    after the index has any real size), adding/removing an email file
+    inside it bumps that BUCKET's mtime, never inbox/'s own. Plain
+    _dir_mtime(inbox_dir) therefore stops detecting new/removed emails
+    once most buckets exist, silently serving a stale cached search view
+    indefinitely in a long-running process - confirmed 2026-09-16 tracing
+    a case where the TUI showed an email/company pairing that no longer
+    existed anywhere on disk. Checking one level of subdirectories (cheap:
+    at most 256 stat calls, not a walk of every email file) catches every
+    add/remove regardless of which bucket it lands in.
+    """
+    if not inbox_dir or not inbox_dir.exists():
+        return -1.0
+    mtimes = [os.path.getmtime(inbox_dir)]
+    for entry in inbox_dir.iterdir():
+        if entry.is_dir():
+            mtimes.append(os.path.getmtime(entry))
+    return max(mtimes)
+
+
 def _load_email_index(
     con: duckdb.DuckDBPyConnection, emails_root: Optional[Path]
 ) -> None:
@@ -367,7 +391,7 @@ def get_fuzzy_search_results(
         )
         current_email_mtime = max(
             _dir_mtime(emails_root / "shards" if emails_root else None),
-            _dir_mtime(emails_root / "inbox" if emails_root else None),
+            _inbox_mtime(emails_root / "inbox" if emails_root else None),
             _dir_mtime(emails_root),
         )
         current_filter_in_mtime = (
