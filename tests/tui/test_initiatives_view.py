@@ -120,6 +120,51 @@ async def test_h_and_l_navigate_between_the_two_lists(mock_cocli_env, mocker) ->
 
 
 @pytest.mark.asyncio
+async def test_h_from_content_pane_stops_at_categories_list(mock_cocli_env, mocker) -> None:
+    """Regression (2026-09-16): pressing h in the content pane's own file
+    list moved focus to categories_list, then - because the pane's on_key
+    only called prevent_default(), not stop() - the same keypress kept
+    bubbling to InitiativesView's own "h" handler, which saw
+    categories_list newly focused and hopped again, straight past it to
+    initiatives_list. One "h" must move exactly one level."""
+    _make_initiative(CAMPAIGN, "rta", {"tracking": {"utm.csv": "x"}})
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        categories_list = widget.query_one("#categories_list", ListView)
+
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        categories_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_FileBrowserPane)
+        file_list = pane.query_one("#file_browser_list", ListView)
+        file_list.focus()
+        await pilot.pause(0.1)
+        assert file_list.has_focus
+
+        await pilot.press("h")
+        await pilot.pause(0.1)
+        assert categories_list.has_focus
+        assert not initiatives_list.has_focus
+
+        await pilot.press("h")
+        await pilot.pause(0.1)
+        assert initiatives_list.has_focus
+
+
+@pytest.mark.asyncio
 async def test_email_sequences_pane_renders_selected_template(mock_cocli_env, mocker) -> None:
     _make_initiative(
         CAMPAIGN,

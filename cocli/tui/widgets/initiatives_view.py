@@ -136,15 +136,25 @@ class _EmailSequencesPane(Horizontal):
         self.preview.update_preview(subject, body)
 
     def on_key(self, event: events.Key) -> None:
+        # event.stop() is required on every branch here, not just
+        # prevent_default() - without it the key event keeps bubbling to
+        # InitiativesView's own on_key in the same keypress, which then
+        # (seeing categories_list newly focused) immediately hops focus a
+        # second time, straight past it to initiatives_list. Confirmed
+        # live 2026-09-16: "h" from this pane skipped the Category list
+        # entirely and landed on Initiatives.
         if event.key == "j":
             self.file_list.action_cursor_down()
             event.prevent_default()
+            event.stop()
         elif event.key == "k":
             self.file_list.action_cursor_up()
             event.prevent_default()
+            event.stop()
         elif event.key == "h":
             self.app.query_one("#categories_list", ListView).focus()
             event.prevent_default()
+            event.stop()
 
 
 class _FileBrowserPane(Horizontal):
@@ -191,15 +201,20 @@ class _FileBrowserPane(Horizontal):
         self.preview.update_preview(content)
 
     def on_key(self, event: events.Key) -> None:
+        # See _EmailSequencesPane.on_key()'s comment - event.stop() is
+        # required here too, for the same reason.
         if event.key == "j":
             self.file_list.action_cursor_down()
             event.prevent_default()
+            event.stop()
         elif event.key == "k":
             self.file_list.action_cursor_up()
             event.prevent_default()
+            event.stop()
         elif event.key == "h":
             self.app.query_one("#categories_list", ListView).focus()
             event.prevent_default()
+            event.stop()
 
 
 class InitiativesView(Container):
