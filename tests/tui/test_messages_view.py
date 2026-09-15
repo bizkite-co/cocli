@@ -9,7 +9,7 @@ import pytest
 from cocli.tui.app import CocliApp
 from cocli.application.services import ServiceContainer
 from cocli.tui.widgets.messages_view import MessagesView
-from cocli.tui.widgets.message_templates_view import MessageTemplatesView
+from cocli.tui.widgets.initiatives_view import InitiativesView
 from cocli.tui.widgets.target_batches_view import TargetBatchesView
 from cocli.tui.widgets.send_log_view import SendLogView, SendLogListItem
 from cocli.tui.widgets.unsubscribe_rate_view import UnsubscribeRateView
@@ -44,7 +44,7 @@ def _write_pending_batch(
 
 
 @pytest.mark.asyncio
-async def test_leader_key_opens_messages_view_with_templates_section(mock_cocli_env, mocker) -> None:
+async def test_leader_key_opens_messages_view_with_initiatives_section(mock_cocli_env, mocker) -> None:
     app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
     async with app.run_test() as pilot:
         await pilot.pause(0.2)
@@ -55,7 +55,7 @@ async def test_leader_key_opens_messages_view_with_templates_section(mock_cocli_
 
         assert len(app.query(MessagesView)) == 1
         assert app.query_one("#menu-messages").has_class("active-menu-item")
-        assert len(app.query(MessageTemplatesView)) == 1
+        assert len(app.query(InitiativesView)) == 1
 
 
 @pytest.mark.asyncio

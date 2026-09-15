@@ -235,21 +235,72 @@ class PersonalizedOutreachService:
                 names.update(p.name for p in d.glob("*.md"))
         return sorted(names)
 
-    def load_template(self, template_name: str = "email_01_pas_hook.md") -> tuple[str, str]:
+    _INITIATIVE_CATEGORIES = ("email-sequences", "rendered-outreach", "tracking")
+
+    def _initiatives_dir(self) -> Path:
+        return paths.campaigns / self.campaign_name / "initiatives"
+
+    def list_initiatives(self) -> list[str]:
+        """Initiative names - literally the subdirectory names under
+        campaigns/<c>/initiatives/ (e.g. "rta", "wealth-manager-products"),
+        not an abstraction over them - the Messages Initiatives browser is
+        meant to read the real folder structure directly."""
+        root = self._initiatives_dir()
+        if not root.exists():
+            return []
+        return sorted(p.name for p in root.iterdir() if p.is_dir())
+
+    def list_initiative_categories(self, initiative: str) -> list[str]:
+        """Whichever of email-sequences/rendered-outreach/tracking actually
+        exist for this initiative, in that fixed preferred order - not
+        every initiative has all three (e.g. wealth-manager-products has
+        none yet), so this must not hardcode all three as always present."""
+        base = self._initiatives_dir() / initiative
+        return [c for c in self._INITIATIVE_CATEGORIES if (base / c).is_dir()]
+
+    def list_initiative_templates(self, initiative: str) -> list[str]:
+        """*.md filenames directly under this initiative's own
+        email-sequences/ dir - a literal folder listing, deliberately not
+        merged with the campaign-generic email-templates/ dir (that merge
+        is list_templates()'s job, used by the CLI batch commands)."""
+        d = self._initiatives_dir() / initiative / "email-sequences"
+        if not d.is_dir():
+            return []
+        return sorted(p.name for p in d.glob("*.md"))
+
+    def list_category_files(self, initiative: str, category: str) -> list[Path]:
+        """Every file under this initiative/category, recursively - covers
+        both flat categories (tracking/) and nested ones
+        (rendered-outreach/<company-slug>/*.md) uniformly."""
+        base = self._initiatives_dir() / initiative / category
+        if not base.is_dir():
+            return []
+        return sorted(p for p in base.rglob("*") if p.is_file())
+
+    def load_template(
+        self, template_name: str = "email_01_pas_hook.md", initiative: str = "rta"
+    ) -> tuple[str, str]:
         """Load email template subject pattern and body content.
 
         Checks campaigns/<c>/email-templates/ first (campaign-generic
         location) then falls back to
-        campaigns/<c>/initiatives/rta/email-sequences/ (the original
-        roadmap/RTA-specific location, left in place rather than moved) so
-        other campaigns can add templates without needing an "rta
-        initiative" directory of their own.
+        campaigns/<c>/initiatives/<initiative>/email-sequences/ (the
+        original roadmap/RTA-specific location, left in place rather than
+        moved) so other campaigns can add templates without needing an
+        initiative directory of their own. `initiative` defaults to "rta"
+        so every existing caller (prepare-batch, send-batch, freeze_batch)
+        keeps resolving exactly as before - it's only a real parameter (not
+        still a hardcoded literal) so the Messages TUI's Initiatives
+        browser can render a template from *whichever* initiative the
+        user actually has selected, not always "rta".
         """
         generic_dir = paths.campaigns / self.campaign_name / "email-templates"
-        rta_dir = paths.campaigns / self.campaign_name / "initiatives" / "rta" / "email-sequences"
+        initiative_dir = (
+            paths.campaigns / self.campaign_name / "initiatives" / initiative / "email-sequences"
+        )
         template_path = generic_dir / template_name
         if not template_path.exists():
-            template_path = rta_dir / template_name
+            template_path = initiative_dir / template_name
 
         default_subject = "{first_name}, a 30-year spend-down view your clients will instantly understand"
         default_body = (
@@ -293,10 +344,15 @@ class PersonalizedOutreachService:
             return default_subject, default_body
 
     def generate_copy(
-        self, first_name: str, company_name: str, company_slug: str, template_name: str = "email_01_pas_hook.md"
+        self,
+        first_name: str,
+        company_name: str,
+        company_slug: str,
+        template_name: str = "email_01_pas_hook.md",
+        initiative: str = "rta",
     ) -> tuple[str, str]:
         """Generate outcome-driven, personalized email subject and body with UTM links."""
-        subject_template, body_template = self.load_template(template_name)
+        subject_template, body_template = self.load_template(template_name, initiative=initiative)
 
         clean_co_name = company_name.split("-")[0].strip() if "-" in company_name else company_name
 

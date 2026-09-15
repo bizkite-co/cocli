@@ -1,4 +1,4 @@
-"""Top-level Messages branch: a Sections sidebar (Templates / Target
+"""Top-level Messages branch: a Sections sidebar (Initiatives / Target
 Batches / Send Log / Unsubscribe Rate) driving a content pane that swaps
 between the corresponding section widget - same message-driven swap
 pattern as CompanySearchView (TemplateList -> CompanyList)."""
@@ -14,13 +14,13 @@ from textual.message import Message
 from textual.widgets import Label, ListItem, ListView
 
 from ..base import CocliPanel
-from .message_templates_view import MessageTemplatesView
+from .initiatives_view import InitiativesView
 from .target_batches_view import TargetBatchesView
 from .send_log_view import SendLogView
 from .unsubscribe_rate_view import UnsubscribeRateView
 
 _SECTION_WIDGETS: dict[str, type] = {
-    "section_templates": MessageTemplatesView,
+    "section_initiatives": InitiativesView,
     "section_batches": TargetBatchesView,
     "section_send_log": SendLogView,
     "section_unsubscribe_rate": UnsubscribeRateView,
@@ -41,7 +41,7 @@ class MessageSectionsList(CocliPanel):
     def compose(self) -> ComposeResult:
         yield Label("SECTIONS", classes="pane-header")
         yield ListView(
-            ListItem(Label("Templates"), id="section_templates"),
+            ListItem(Label("Initiatives"), id="section_initiatives"),
             ListItem(Label("Target Batches"), id="section_batches"),
             ListItem(Label("Send Log"), id="section_send_log"),
             ListItem(Label("Unsubscribe Rate"), id="section_unsubscribe_rate"),
@@ -97,7 +97,7 @@ class MessagesView(Container):
         # "h" fell through to the global "Back" binding's no-active-node
         # fallback (action_show_companies) - confirmed 2026-09-15, not a
         # guess.
-        await self._show_section("section_templates", focus_content=False)
+        await self._show_section("section_initiatives", focus_content=False)
         self.sections_list.focus_list()
 
     @on(MessageSectionsList.SectionSelected)

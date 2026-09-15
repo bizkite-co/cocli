@@ -411,3 +411,147 @@ def test_compute_unsubscribe_rate(tmp_path: Any, monkeypatch: Any) -> None:
     assert stats.sent_count == 4
     assert stats.unsubscribed_count == 1
     assert stats.rate == 0.25
+
+
+def _make_initiative(
+    paths: Any, initiative: str, categories: dict[str, dict[str, str]]
+) -> None:
+    """categories: {category_name: {relative_file_path: content}}."""
+    base = paths.campaigns / "roadmap" / "initiatives" / initiative
+    base.mkdir(parents=True, exist_ok=True)
+    for category, files in categories.items():
+        cat_dir = base / category
+        for rel_path, content in files.items():
+            file_path = cat_dir / rel_path
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
+
+
+def test_list_initiatives_lists_subdirectories_only(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    initiatives_dir = paths.campaigns / "roadmap" / "initiatives"
+    initiatives_dir.mkdir(parents=True)
+    (initiatives_dir / "README.md").write_text("not an initiative", encoding="utf-8")
+    (initiatives_dir / "rta").mkdir()
+    (initiatives_dir / "wealth-manager-products").mkdir()
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service.list_initiatives() == ["rta", "wealth-manager-products"]
+
+
+def test_list_initiative_categories_only_returns_existing_ones(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(
+        paths,
+        "rta",
+        {
+            "email-sequences": {"t.md": "x"},
+            "rendered-outreach": {"acme/t.md": "x"},
+            "tracking": {"utm.csv": "x"},
+        },
+    )
+    _make_initiative(paths, "wealth-manager-products", {})
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service.list_initiative_categories("rta") == [
+        "email-sequences",
+        "rendered-outreach",
+        "tracking",
+    ]
+    assert service.list_initiative_categories("wealth-manager-products") == []
+
+
+def test_list_initiative_templates_is_a_literal_folder_listing(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Must not merge in the campaign-generic email-templates/ dir - that
+    merge is list_templates()'s job for the CLI batch commands."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(paths, "rta", {"email-sequences": {"email_01_pas_hook.md": "x"}})
+
+    generic_dir = paths.campaigns / "roadmap" / "email-templates"
+    generic_dir.mkdir(parents=True)
+    (generic_dir / "generic_only.md").write_text("x", encoding="utf-8")
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service.list_initiative_templates("rta") == ["email_01_pas_hook.md"]
+
+
+def test_list_category_files_covers_flat_and_nested(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(
+        paths,
+        "rta",
+        {
+            "tracking": {"utm-matrix.csv": "x", "gtm-events.json": "{}"},
+            "rendered-outreach": {
+                "acme-financial/email_01_pas_hook.md": "x",
+                "other-co/email_01_pas_hook.md": "x",
+            },
+        },
+    )
+
+    service = PersonalizedOutreachService("roadmap")
+    tracking_files = service.list_category_files("rta", "tracking")
+    assert [f.name for f in tracking_files] == ["gtm-events.json", "utm-matrix.csv"]
+
+    outreach_files = service.list_category_files("rta", "rendered-outreach")
+    assert [f"{f.parent.name}/{f.name}" for f in outreach_files] == [
+        "acme-financial/email_01_pas_hook.md",
+        "other-co/email_01_pas_hook.md",
+    ]
+
+
+def test_list_category_files_missing_category_returns_empty(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(paths, "rta", {})
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service.list_category_files("rta", "tracking") == []
+
+
+def test_generate_copy_uses_the_given_initiative_not_hardcoded_rta(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A second initiative's own email-sequences/ template must resolve
+    correctly - not silently fall through to rta's (or the default
+    hardcoded copy) because the initiative was never actually threaded
+    through."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(
+        paths,
+        "wealth-manager-products",
+        {
+            "email-sequences": {
+                "wmp_hook.md": '---\nsubject: "WMP hi {first_name}"\n---\n\nWMP body for {company_name}'
+            }
+        },
+    )
+
+    service = PersonalizedOutreachService("roadmap")
+    subject, body = service.generate_copy(
+        first_name="Sample",
+        company_name="Sample Co",
+        company_slug="sample-co",
+        template_name="wmp_hook.md",
+        initiative="wealth-manager-products",
+    )
+
+    assert subject == "WMP hi Sample"
+    assert "WMP body for Sample Co" in body

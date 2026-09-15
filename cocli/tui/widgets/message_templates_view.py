@@ -1,22 +1,13 @@
-"""Browse available email templates, rendered with sample values - lets
-you sanity-check a template's placeholders resolve before it's ever used
-in a real batch."""
+"""Shared list-item/preview widgets for browsing an email template
+rendered with sample values - used by InitiativesView's Email Sequences
+category pane (initiatives_view.py)."""
 
 from __future__ import annotations
 
-import logging
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    from ..app import CocliApp
-
-from textual import events, on
 from textual.containers import VerticalScroll
-from textual.widgets import Label, ListItem, ListView, Static
-
-from .master_detail import MasterDetailView
-
-logger = logging.getLogger(__name__)
+from textual.widgets import Label, ListItem, Static
 
 
 class TemplateListItem(ListItem):
@@ -46,64 +37,3 @@ class TemplatePreview(VerticalScroll):
         empty.display = False
         subject_label.update(f"[bold]Subject:[/bold] {subject}")
         body_static.update(body or "")
-
-
-class MessageTemplatesView(MasterDetailView):
-    """Master: available template filenames. Detail: rendered with
-    placeholder sample values (not a real prospect)."""
-
-    def __init__(self, **kwargs: Any) -> None:
-        self.template_list = ListView(id="message-template-list")
-        self.template_preview = TemplatePreview(id="message-template-preview")
-        super().__init__(master=self.template_list, detail=self.template_preview, master_width=30, **kwargs)
-
-    async def on_mount(self) -> None:
-        self.refresh_templates()
-
-    def refresh_templates(self) -> None:
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
-
-        app = cast("CocliApp", self.app)
-        campaign = app.services.campaign_name
-        service = PersonalizedOutreachService(campaign)
-        names = service.list_templates()
-
-        self.template_list.clear()
-        for name in names:
-            self.template_list.append(TemplateListItem(name))
-
-        if not names:
-            self.template_preview.update_preview(None, None)
-
-    def on_key(self, event: events.Key) -> None:
-        """vim-style j/k - ListView only binds arrow keys by default."""
-        if event.key == "j":
-            self.template_list.action_cursor_down()
-            event.prevent_default()
-        elif event.key == "k":
-            self.template_list.action_cursor_up()
-            event.prevent_default()
-
-    @on(ListView.Selected)
-    def on_template_selected(self, message: ListView.Selected) -> None:
-        if not isinstance(message.item, TemplateListItem):
-            return
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
-
-        app = cast("CocliApp", self.app)
-        campaign = app.services.campaign_name
-        service = PersonalizedOutreachService(campaign)
-        try:
-            subject, body = service.generate_copy(
-                first_name="Sample",
-                company_name="Sample Co",
-                company_slug="sample-co",
-                template_name=message.item.template_name,
-            )
-        except Exception as e:
-            self.app.notify(f"Template error: {e}", severity="error")
-            self.template_preview.update_preview(
-                "(template error)", f"{e}\n\nFix the placeholder before using this template in a batch."
-            )
-            return
-        self.template_preview.update_preview(subject, body)
