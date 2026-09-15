@@ -28,8 +28,16 @@ def test_send_batch_dry_run_does_not_send_or_write_log(cli_app, mocker) -> None:
     mock_service = mock_service_cls.return_value
     mock_service.find_eligible_prospects.return_value = [match]
 
-    result = runner.invoke(cli_app, ["email", "send-batch", "--dry-run"])
+    result = runner.invoke(
+        cli_app, ["email", "send-batch", "--dry-run", "--template", "custom.md"]
+    )
 
     assert result.exit_code == 0, result.output
     assert "Dry run" in result.output
     mock_service.send_batch.assert_not_called()
+    # --template must actually reach find_eligible_prospects()'s rendering -
+    # a prior bug threaded it into the log's template_id label only, while
+    # always rendering with the default template regardless of this flag.
+    mock_service.find_eligible_prospects.assert_called_once_with(
+        limit=10, template_name="custom.md"
+    )

@@ -208,7 +208,7 @@ def send_batch(
     from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     service = PersonalizedOutreachService(campaign_name)
-    matches = service.find_eligible_prospects(limit=limit)
+    matches = service.find_eligible_prospects(limit=limit, template_name=template)
 
     if not matches:
         console.print(f"[yellow]No eligible prospects with contact first names found in campaign '{campaign_name}'.[/yellow]")

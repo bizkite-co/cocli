@@ -15,6 +15,7 @@ from cocli.utils.utm import append_utm_params
 
 if TYPE_CHECKING:
     from cocli.application.email_service import EmailService
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,20 @@ class SendBatchResult:
     batch_id: str
     sent: int = 0
     failed: int = 0
+
+
+@dataclass
+class UnsubscribeRateStats:
+    sent_count: int
+    unsubscribed_count: int
+
+    @property
+    def rate(self) -> float:
+        """Unsubscribed / sent, as a fraction. 0.0 when nothing has been sent
+        (rather than dividing by zero) - there's no rate to report yet."""
+        if self.sent_count == 0:
+            return 0.0
+        return self.unsubscribed_count / self.sent_count
 
 
 def extract_first_name(full_name_or_str: str) -> Optional[str]:
@@ -76,7 +91,9 @@ class PersonalizedOutreachService:
         self.campaign_name = campaign_name
         self.exclusion_mgr = ExclusionManager(campaign_name)
 
-    def find_eligible_prospects(self, limit: int = 10) -> list[ProspectContactMatch]:
+    def find_eligible_prospects(
+        self, limit: int = 10, template_name: str = "email_01_pas_hook.md"
+    ) -> list[ProspectContactMatch]:
         """Find campaign companies having valid email addresses and contact first names."""
         matches: list[ProspectContactMatch] = []
         companies_dir = paths.companies.ensure()
@@ -136,6 +153,7 @@ class PersonalizedOutreachService:
                     first_name=selected_first_name,
                     company_name=company_display_name,
                     company_slug=slug,
+                    template_name=template_name,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -187,6 +205,7 @@ class PersonalizedOutreachService:
                     first_name=fname,
                     company_name=co_name,
                     company_slug=co_slug,
+                    template_name=template_name,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -402,5 +421,139 @@ class PersonalizedOutreachService:
         SendLogEntry.save_datapackage(index_dir, "email_send_log", "log.usv")
 
         return result
+
+    def freeze_batch(self, *, limit: int, template_id: str) -> str:
+        """Selects and fully renders a batch, then writes it to
+        indexes/email-pending-batch/pending.usv before it is ever
+        sendable - a bad template placeholder raises here (from
+        find_eligible_prospects -> generate_copy -> str.format()), not
+        after a batch has already been queued for review or send.
+
+        Returns the new batch_id.
+        """
+        from datetime import datetime, UTC
+
+        from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        matches = self.find_eligible_prospects(limit=limit, template_name=template_id)
+
+        batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        pending_path = index_dir / "pending.usv"
+
+        entries = [
+            PendingBatchEntry(
+                batch_id=batch_id,
+                template_id=template_id,
+                company_slug=match.company_slug,
+                recipient=match.recipient_email,
+                subject=match.subject,
+                body=match.body,
+            )
+            for match in matches
+        ]
+        with open(pending_path, "a", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(entry.to_usv())
+        PendingBatchEntry.save_datapackage(index_dir, "email_pending_batch", "pending.usv")
+
+        return batch_id
+
+    def list_pending_batches(self) -> list["PendingBatchEntry"]:
+        """All rows across all not-yet-sent-or-discarded batches, current
+        state only (a sent/discarded batch's rows are removed, not kept)."""
+        from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        pending_path = PendingBatchEntry.get_index_dir(self.campaign_name) / "pending.usv"
+        if not pending_path.exists():
+            return []
+        return [
+            PendingBatchEntry.from_usv(line)
+            for line in pending_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    @staticmethod
+    def _entry_to_match(entry: "PendingBatchEntry") -> ProspectContactMatch:
+        """PendingBatchEntry.to_usv() sanitizes newlines to '<br>' (the
+        same lossy encoding every USV string field uses, base.py's
+        to_usv()) - reversed here, once, so both the review preview and
+        the actual sent email see real line breaks instead of literal
+        '<br>' text. This is the one place that conversion happens; don't
+        duplicate it."""
+        return ProspectContactMatch(
+            company_slug=entry.company_slug,
+            company_name=entry.company_slug,
+            recipient_email=entry.recipient,
+            contact_name="",
+            first_name="",
+            role=None,
+            subject=entry.subject.replace("<br>", "\n"),
+            body=entry.body.replace("<br>", "\n"),
+        )
+
+    def send_pending_batch(self, batch_id: str, *, email_service: "EmailService") -> SendBatchResult:
+        """Sends exactly the frozen rows for batch_id (not a fresh
+        find_eligible_prospects() re-render - what was reviewed is what
+        gets sent), then removes only that batch_id's rows from
+        pending.usv so it can't be sent twice."""
+        all_entries = self.list_pending_batches()
+        batch_entries = [e for e in all_entries if e.batch_id == batch_id]
+        remaining = [e for e in all_entries if e.batch_id != batch_id]
+
+        if not batch_entries:
+            return SendBatchResult(batch_id=batch_id, sent=0, failed=0)
+
+        matches = [self._entry_to_match(e) for e in batch_entries]
+        result = self.send_batch(
+            matches, template_id=batch_entries[0].template_id, email_service=email_service
+        )
+
+        self._rewrite_pending(remaining)
+        return result
+
+    def discard_pending_batch(self, batch_id: str) -> None:
+        """Drops batch_id's rows from pending.usv without sending - e.g.
+        review caught a flaw in the rendered content."""
+        remaining = [e for e in self.list_pending_batches() if e.batch_id != batch_id]
+        self._rewrite_pending(remaining)
+
+    def _rewrite_pending(self, entries: list["PendingBatchEntry"]) -> None:
+        from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        pending_path = index_dir / "pending.usv"
+        pending_path.write_text("".join(e.to_usv() for e in entries), encoding="utf-8")
+
+
+def compute_unsubscribe_rate(campaign_name: str) -> UnsubscribeRateStats:
+    """Sent count from the send log, unsubscribed count from exclusions
+    tagged by `cocli email unsubscribe` (reason "unsubscribe:<REASON>",
+    commands/email.py) - a pure computation over existing data, no new
+    storage."""
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    index_dir = SendLogEntry.get_index_dir(campaign_name)
+    log_path = index_dir / "log.usv"
+    sent_count = 0
+    if log_path.exists():
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                if SendLogEntry.from_usv(line).status == "sent":
+                    sent_count += 1
+            except Exception:
+                continue
+
+    unsubscribed_count = sum(
+        1
+        for exc in ExclusionManager(campaign_name).list_exclusions()
+        if (exc.reason or "").startswith("unsubscribe:")
+    )
+
+    return UnsubscribeRateStats(sent_count=sent_count, unsubscribed_count=unsubscribed_count)
 
 

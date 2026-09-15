@@ -86,9 +86,11 @@ class _FakeEmailService:
     def __init__(self, fail_for: set[str] | None = None) -> None:
         self.fail_for = fail_for or set()
         self.sent_to: list[str] = []
+        self.sent_requests: list[Any] = []
 
     def send(self, request: Any) -> _FakeEmailResult:
         self.sent_to.append(request.to_address)
+        self.sent_requests.append(request)
         if request.to_address in self.fail_for:
             raise RuntimeError("SES boom")
         return _FakeEmailResult(message_id=f"msg-{request.to_address}")
@@ -208,3 +210,204 @@ def test_load_template_falls_back_to_rta_dir_when_generic_absent(
 
     assert subject == "Legacy {first_name}"
     assert "Legacy body" in body
+
+
+def _make_eligible_prospect(
+    paths: Any,
+    *,
+    slug: str = "acme-financial",
+    company_name: str = "Acme Financial",
+    first_name: str = "Bob",
+    email_addr: str = "bob@acme.test",
+) -> None:
+    """Same setup shape as test_find_eligible_prospects above: a company
+    tagged for the campaign, with a linked contact having a real first
+    name and email - the minimum find_eligible_prospects() needs."""
+    company = Company(
+        name=company_name,
+        slug=slug,
+        domain=f"{slug}.test",
+        email=email_addr,
+        tags=["roadmap"],
+    )
+    company.save()
+
+    person_slug = f"{first_name.lower()}-{slug}"
+    person = Person(
+        name=f"{first_name} Smith",
+        email=email_addr,
+        company_name=company_name,
+        slug=person_slug,
+    )
+    person.save()
+
+    contacts_dir = paths.companies.entry(slug).path / "contacts"
+    contacts_dir.mkdir(parents=True, exist_ok=True)
+    (contacts_dir / person_slug).symlink_to(person.get_local_path())
+
+
+def test_freeze_batch_writes_rendered_pending_entries(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    batch_id = service.freeze_batch(limit=10, template_id="email_01_pas_hook.md")
+
+    pending = service.list_pending_batches()
+    assert len(pending) == 1
+    assert pending[0].batch_id == batch_id
+    assert pending[0].template_id == "email_01_pas_hook.md"
+    assert pending[0].company_slug == "acme-financial"
+    assert pending[0].recipient == "bob@acme.test"
+    # Fully rendered, not a raw template - no unresolved placeholders left.
+    assert "{first_name}" not in pending[0].subject
+    assert "Bob" in pending[0].subject
+
+
+def test_freeze_batch_raises_on_bad_template_placeholder(tmp_path: Any, monkeypatch: Any) -> None:
+    """A template bug must surface at freeze time, not after a batch has
+    already been queued for review or send."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths)
+
+    template_dir = paths.campaigns / "roadmap" / "email-templates"
+    template_dir.mkdir(parents=True)
+    (template_dir / "broken.md").write_text(
+        '---\nsubject: "Hi {first_name}"\n---\n\nSee {this_field_does_not_exist}',
+        encoding="utf-8",
+    )
+
+    service = PersonalizedOutreachService("roadmap")
+    import pytest
+
+    with pytest.raises(KeyError):
+        service.freeze_batch(limit=10, template_id="broken.md")
+
+    assert service.list_pending_batches() == []
+
+
+def test_send_pending_batch_sends_and_removes_only_that_batch(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    batch_id = service.freeze_batch(limit=10, template_id="email_01_pas_hook.md")
+
+    # An unrelated pending batch must survive untouched.
+    other_index_dir = PendingBatchEntry.get_index_dir("roadmap")
+    with open(other_index_dir / "pending.usv", "a", encoding="utf-8") as f:
+        f.write(
+            PendingBatchEntry(
+                batch_id="other-batch",
+                template_id="t2",
+                company_slug="other-co",
+                recipient="other@co.test",
+                subject="Other subject",
+                body="Other body",
+            ).to_usv()
+        )
+
+    fake_email_service = _FakeEmailService()
+    result = service.send_pending_batch(batch_id, email_service=fake_email_service)
+
+    assert result.sent == 1
+    assert result.failed == 0
+    assert fake_email_service.sent_to == ["bob@acme.test"]
+
+    remaining = service.list_pending_batches()
+    assert [e.batch_id for e in remaining] == ["other-batch"]
+
+    log_path = SendLogEntry.get_index_dir("roadmap") / "log.usv"
+    sent_entries = [SendLogEntry.from_usv(line) for line in log_path.read_text().splitlines() if line]
+    assert len(sent_entries) == 1
+    assert sent_entries[0].company_slug == "acme-financial"
+    assert sent_entries[0].status == "sent"
+
+
+def test_send_pending_batch_restores_real_newlines_in_body(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """PendingBatchEntry.to_usv() sanitizes newlines to '<br>' for USV
+    storage - the actual sent email must see real newlines back, not
+    literal '<br>' text (that would itself be exactly the kind of
+    send-time flaw the review step exists to catch)."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    batch_id = service.freeze_batch(limit=10, template_id="email_01_pas_hook.md")
+
+    fake_email_service = _FakeEmailService()
+    service.send_pending_batch(batch_id, email_service=fake_email_service)
+
+    sent_body = fake_email_service.sent_requests[0].body
+    assert "<br>" not in sent_body
+    assert "\n" in sent_body
+
+
+def test_discard_pending_batch_removes_without_sending(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    batch_id = service.freeze_batch(limit=10, template_id="email_01_pas_hook.md")
+
+    fake_email_service = _FakeEmailService()
+    service.discard_pending_batch(batch_id)
+
+    assert service.list_pending_batches() == []
+    assert fake_email_service.sent_to == []
+
+
+def test_compute_unsubscribe_rate(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.application.personalized_outreach_service import compute_unsubscribe_rate
+    from cocli.core.exclusions import ExclusionManager
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    index_dir = SendLogEntry.get_index_dir("roadmap")
+    index_dir.mkdir(parents=True, exist_ok=True)
+    entries = [
+        SendLogEntry(
+            batch_id="b1", template_id="t1", company_slug=f"co-{i}",
+            recipient=f"co{i}@test.com", subject="Hi", status="sent",
+        )
+        for i in range(4)
+    ] + [
+        SendLogEntry(
+            batch_id="b1", template_id="t1", company_slug="co-failed",
+            recipient="failed@test.com", subject="Hi", status="failed", error="boom",
+        )
+    ]
+    with open(index_dir / "log.usv", "w", encoding="utf-8") as f:
+        for entry in entries:
+            f.write(entry.to_usv())
+
+    ExclusionManager("roadmap").add_exclusion(
+        slug="co-1", domain="co1@test.com", reason="unsubscribe:COMPLAINT"
+    )
+    ExclusionManager("roadmap").add_exclusion(
+        slug="co-wrong-trade", domain="wrong@test.com", reason="to-call-nonconforming"
+    )
+
+    stats = compute_unsubscribe_rate("roadmap")
+
+    assert stats.sent_count == 4
+    assert stats.unsubscribed_count == 1
+    assert stats.rate == 0.25
