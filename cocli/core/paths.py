@@ -4,8 +4,11 @@ from pathlib import Path
 import os
 import platform
 import logging
-from typing import Optional, Iterator, Callable, Union
+from typing import TYPE_CHECKING, Optional, Iterator, Callable, Union
 from .ordinant import StateFolder, IndexIdentity, QueueIdentity
+
+if TYPE_CHECKING:
+    from stations.segments import Phases
 
 from pydantic import BaseModel
 
@@ -67,7 +70,40 @@ class PathObject:
 
 
 class QueuePaths(PathObject):
+    """Phase directories for one campaign queue.
+
+    Which phases exist is declared by the queue's ``StationDecl`` (0010), not
+    by this class. ``StateFolder`` remains the static gate; the decl is the
+    runtime one, so a queue cannot quietly grow a phase its station never
+    declared — the gm-list lesson, where a copied decl disagreed with disk for
+    months without anything failing.
+    """
+
+    def __init__(
+        self, path_factory: Callable[[], Path], queue_name: Optional[str] = None
+    ):
+        super().__init__(path_factory)
+        self.queue_name = queue_name
+
+    def _declared_phases(self) -> Optional["Phases"]:
+        """Phases declared by this queue's station, or None if unidentified."""
+        if self.queue_name is None:
+            return None
+        # Lazy: station_defs imports models, which import this module.
+        from stations.segments import collect_phases
+
+        from cocli.station_defs.campaigns.queues import station_for_queue
+
+        return collect_phases(station_for_queue(self.queue_name).segments)
+
     def state(self, folder: StateFolder) -> Path:
+        declared = self._declared_phases()
+        if declared is not None and not declared.is_phase(folder):
+            raise ValueError(
+                f"queue {self.queue_name!r} has no phase {folder!r}; "
+                f"its station declares {declared.names!r}. Add the phase to the "
+                f"StationDecl in cocli/station_defs/campaigns/queues/ if it is real."
+            )
         return self.path / folder
 
     @property
@@ -89,12 +125,16 @@ class QueuePaths(PathObject):
     @property
     def inputs(self) -> Path:
         """Returns the inputs directory for the discovery-gen queue (target locations, etc)."""
-        return self.path / "inputs"
+        from cocli.station_defs.campaigns.queues import DISCOVERY_GEN_INPUTS_LAYOUT
+
+        return self.path / DISCOVERY_GEN_INPUTS_LAYOUT
 
     @property
     def master(self) -> Path:
         """Returns the master mission file for the discovery-gen queue."""
-        return self.path / "mission.usv"
+        from cocli.station_defs.campaigns.queues import DISCOVERY_GEN_MISSION_FILE
+
+        return self.path / DISCOVERY_GEN_MISSION_FILE
 
 
 class IndexPaths(PathObject):
@@ -147,7 +187,7 @@ class CampaignPaths(PathObject):
 
     def queue(self, name: Union[QueueIdentity, str], ensure: bool = False) -> QueuePaths:
         str_name = name.value if isinstance(name, QueueIdentity) else name
-        obj = QueuePaths(lambda: self.queues / str_name)
+        obj = QueuePaths(lambda: self.queues / str_name, queue_name=str_name)
         if ensure:
             obj.ensure()
         return obj

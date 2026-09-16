@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from cocli.core.queue.filesystem import (
     FilesystemEnrichmentQueue,
     FilesystemGmDetailsQueue,
@@ -22,7 +24,7 @@ from cocli.station_defs.campaigns.queues import (
     GM_LIST_RESULTS_STATION,
     station_for_queue,
 )
-from stations.segments import collect_shard
+from stations.segments import collect_phases, collect_shard
 
 
 def test_station_for_queue_mapping() -> None:
@@ -117,6 +119,86 @@ def test_gm_list_layout_keeps_geo_pending_path() -> None:
     # A leftover place-id combinator would still skip extra shard for this
     # pre-sharded id; the decl itself must not be that combinator.
     assert collect_shard(GM_LIST_QUEUE_STATION.segments) is None
+
+
+def test_discovery_gen_decl_declares_live_layout() -> None:
+    """discovery-gen is ScrapeTask USV with geo identity in the task id, not
+    the place-id json-file DFQ default it silently resolved to before."""
+    from cocli.station_defs.campaigns.queues import DISCOVERY_GEN_QUEUE_STATION
+
+    assert station_for_queue("discovery-gen") is DISCOVERY_GEN_QUEUE_STATION
+    assert station_for_queue("discovery-gen") is not station_for_queue("unknown-queue")
+    assert DISCOVERY_GEN_QUEUE_STATION.model is ScrapeTask
+    assert DISCOVERY_GEN_QUEUE_STATION.serialization == "usv"
+    assert collect_shard(DISCOVERY_GEN_QUEUE_STATION.segments) is None
+
+    ph = collect_phases(DISCOVERY_GEN_QUEUE_STATION.segments)
+    assert ph is not None
+    assert ph.names == ("pending", "completed")
+    # completed/ is the permanent pool gm-list leases from, so it must be a
+    # declared phase of this station, not an incidental directory.
+    assert ph.is_phase(ScrapeTask.SOURCE_STATE)
+
+
+def test_discovery_gen_completed_path_matches_scrape_task_location() -> None:
+    from cocli.core.queue.layout import task_rel_under_phase
+    from cocli.station_defs.campaigns.queues import DISCOVERY_GEN_QUEUE_STATION
+
+    task_id = "2/20.9/-158.3/commercial-vinyl-flooring-contractor.usv"
+    rel = task_rel_under_phase(
+        DISCOVERY_GEN_QUEUE_STATION, ScrapeTask.SOURCE_STATE, task_id
+    )
+    assert rel == "completed/2/20.9/-158.3/commercial-vinyl-flooring-contractor"
+
+
+def test_events_decl_declares_its_own_wal_phase() -> None:
+    """EventService writes queues/events/wal/; the DFQ default declares no wal
+    phase, so events cannot be left to fall back to it."""
+    from cocli.station_defs.campaigns.queues import (
+        EVENTS_QUEUE_STATION,
+        EVENTS_SOURCES_LAYOUT,
+    )
+
+    assert station_for_queue("events") is EVENTS_QUEUE_STATION
+    ph = collect_phases(EVENTS_QUEUE_STATION.segments)
+    assert ph is not None
+    assert ph.names == ("pending", "completed", "wal")
+    assert collect_shard(EVENTS_QUEUE_STATION.segments) is None
+    # sources/ is fixed layout under the queue root, not a lifecycle phase.
+    assert not ph.is_phase(EVENTS_SOURCES_LAYOUT)
+
+    dfq_phases = collect_phases(station_for_queue("unknown-queue").segments)
+    assert dfq_phases is not None
+    assert not dfq_phases.is_phase("wal")
+
+
+def test_queue_paths_state_rejects_phase_the_station_never_declared(
+    tmp_path: Path,
+) -> None:
+    """QueuePaths phases come from the StationDecl, so a queue cannot quietly
+    grow a phase its station never declared."""
+    from cocli.core.paths import paths
+
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        # events declares wal/ because EventService writes there.
+        assert paths.queue("camp", "events").wal.name == "wal"
+        # to-call declares only pending/completed.
+        with pytest.raises(ValueError, match="to-call"):
+            paths.queue("camp", "to-call").wal
+
+
+def test_queue_paths_phases_follow_each_stations_decl(tmp_path: Path) -> None:
+    from cocli.core.paths import paths
+
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        # DFQ queues declare failed/sideline/processing.
+        assert paths.queue("camp", "gm-details").state("failed").name == "failed"
+        # discovery-gen's completed/ is the pool gm-list leases from.
+        dg_pool = paths.queue("camp", "discovery-gen").state(ScrapeTask.SOURCE_STATE)
+        assert dg_pool.name == "completed"
+        # map-tile has no processing phase; the empty dirs on disk are vestigial.
+        with pytest.raises(ValueError, match="map-tile"):
+            paths.queue("camp", "map-tile").state("processing")
 
 
 def test_filesystem_queues_are_queue_edges(tmp_path: Path) -> None:

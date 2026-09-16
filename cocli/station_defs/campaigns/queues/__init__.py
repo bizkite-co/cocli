@@ -8,12 +8,13 @@ Phase names are declared per station — not a single global phase list.
 | :--- | :--- | :--- |
 | gm-details (default DFQ) | place_id 6th char, raw alphabet (``-``/``_`` distinct) | ``shard_by_char_index(5)`` |
 | gm-list work | geo identity in the task id (``{lat_shard}/{lat}/{lon}/{phrase}.usv``) | no extra combinator (not place-id) |
+| discovery-gen | same geo identity as gm-list work | no extra combinator (not place-id) |
 | enrichment | ``sha256(domain)[:2]`` hex | ``shard_by_hash(2)`` |
+| events | no DFQ item shard; declares its own ``wal`` phase | phases only; layout ``sources`` under the root |
 | map-tile | no DFQ item shard; payload bag under pending | phases only; layout ``tiles`` under pending |
 | unknown queue_name | place_id char (safe DFQ default) | ``shard_by_char_index(5)`` |
 
 **Not** ``shard_by_hash(1)`` for place ids — that would re-shard production data.
-discovery-gen is still PR7.
 """
 
 from __future__ import annotations
@@ -76,6 +77,27 @@ GM_LIST_RESULTS_STATION: StationDecl[GoogleMapsListItem] = StationDecl(
     segments=(),
 )
 
+# discovery-gen: generated ScrapeTask USVs. ``completed/`` is the permanent
+# pool gm-list leases from (ScrapeTask.SOURCE_STATE), not a terminal archive;
+# ``pending/`` carries the frontier. Geo identity is in the task id
+# ({lat_shard}/{lat}/{lon}/{phrase}.usv), same as gm-list work, so no extra
+# shard combinator — a place-id one would re-shard production data.
+# ``inputs/``, ``mission.usv`` and ``tiles/`` are fixed layout under the queue
+# root, not phases.
+_DISCOVERY_GEN_PHASES = phases("pending", "completed")
+DISCOVERY_GEN_QUEUE_STATION: StationDecl[ScrapeTask] = StationDecl(
+    name="discovery-gen-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=ScrapeTask,
+    serialization="usv",
+    datapackage_path="completed/datapackage.json",
+    segments=(_DISCOVERY_GEN_PHASES,),
+)
+# Fixed layout names under the queue root (not PhaseRefs).
+DISCOVERY_GEN_INPUTS_LAYOUT = "inputs"
+DISCOVERY_GEN_TILES_LAYOUT = "tiles"
+DISCOVERY_GEN_MISSION_FILE = "mission.usv"
+
 ENRICHMENT_QUEUE_STATION: StationDecl[object] = StationDecl(
     name="enrichment-queue",
     path_template="campaigns/{campaign}/queues/{queue}",
@@ -132,6 +154,19 @@ SCRAPED_EMAIL_INVALID_QUEUE_STATION: StationDecl[object] = StationDecl(
     segments=(_TO_CALL_PHASES,),
 )
 
+# events: venue/event sourcing queue. Declares its own ``wal`` phase — the DFQ
+# default has none, and EventService writes there (wal/{shard}/{event_dir}).
+# ``sources/`` is fixed layout under the queue root, not a phase.
+_EVENTS_PHASES = phases("pending", "completed", "wal")
+EVENTS_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="events-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_EVENTS_PHASES,),
+)
+EVENTS_SOURCES_LAYOUT = "sources"
+
 # Backward-compatible name used by path_helpers pilot
 QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
     name="campaign-queue-pending",
@@ -148,7 +183,9 @@ DFQ_DOMAIN_SHARD_STATION: StationDecl[object] = ENRICHMENT_QUEUE_STATION
 QUEUE_STATIONS: dict[str, StationDecl[Any]] = {
     "gm-details": GM_DETAILS_QUEUE_STATION,
     "gm-list": GM_LIST_QUEUE_STATION,
+    "discovery-gen": DISCOVERY_GEN_QUEUE_STATION,
     "enrichment": ENRICHMENT_QUEUE_STATION,
+    "events": EVENTS_QUEUE_STATION,
     "map-tile": MAP_TILE_QUEUE_STATION,
     "to-call": TO_CALL_QUEUE_STATION,
     "to-call-invalid": TO_CALL_INVALID_QUEUE_STATION,
