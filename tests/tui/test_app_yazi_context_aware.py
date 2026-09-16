@@ -1,3 +1,9 @@
+"""action_open_campaign_yazi() (the single, consolidated "y" binding,
+2026-09-16) opens the visible CompanyDetail's own folder when one is
+active, and the campaign root otherwise - replaces the former separate
+company_detail.py "e"/Explore(Yazi) binding, which these tests used to
+cover directly."""
+
 from contextlib import nullcontext
 from unittest.mock import patch
 
@@ -32,10 +38,10 @@ async def _mount(app: CocliApp, company_data: dict) -> CompanyDetail:
 
 @pytest.mark.asyncio
 @patch("cocli.application.company_service.get_company_details_for_view")
-@patch("cocli.tui.widgets.company_detail.time.sleep")
-@patch("cocli.tui.widgets.company_detail.subprocess.run")
-@patch("cocli.tui.widgets.company_detail.shutil.which", return_value="/usr/bin/yazi")
-async def test_action_open_folder_suspends_and_launches_yazi(
+@patch("cocli.tui.app.time.sleep")
+@patch("cocli.tui.app.subprocess.run")
+@patch("cocli.tui.app.shutil.which", return_value="/usr/bin/yazi")
+async def test_open_yazi_uses_company_folder_when_detail_is_active(
     mock_which,
     mock_run,
     mock_sleep,
@@ -51,41 +57,40 @@ async def test_action_open_folder_suspends_and_launches_yazi(
 
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
-        detail = await _mount(app, mock_company_data)
+        await _mount(app, mock_company_data)
         await pilot.pause()
 
         with patch.object(app, "suspend", return_value=nullcontext()) as mock_suspend:
-            detail.action_open_folder()
+            app.action_open_campaign_yazi()
 
         mock_which.assert_called_once_with("yazi")
         mock_suspend.assert_called_once()
         mock_run.assert_called_once_with(["/usr/bin/yazi", str(company_dir)], check=False)
         mock_sleep.assert_called()
-        mock_get_details.assert_called()
 
 
 @pytest.mark.asyncio
-@patch("cocli.tui.widgets.company_detail.subprocess.run")
-@patch("cocli.tui.widgets.company_detail.shutil.which", return_value="/usr/bin/yazi")
-async def test_action_open_folder_skips_missing_folder(
+@patch("cocli.tui.app.subprocess.run")
+@patch("cocli.tui.app.shutil.which", return_value="/usr/bin/yazi")
+async def test_open_yazi_skips_missing_company_folder(
     mock_which, mock_run, mock_company_data, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(paths, "root", tmp_path)
 
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
-        detail = await _mount(app, mock_company_data)
+        await _mount(app, mock_company_data)
         await pilot.pause()
-        detail.action_open_folder()
+        app.action_open_campaign_yazi()
 
         mock_which.assert_not_called()
         mock_run.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch("cocli.tui.widgets.company_detail.subprocess.run")
-@patch("cocli.tui.widgets.company_detail.shutil.which", return_value=None)
-async def test_action_open_folder_skips_when_yazi_missing(
+@patch("cocli.tui.app.subprocess.run")
+@patch("cocli.tui.app.shutil.which", return_value=None)
+async def test_open_yazi_skips_when_yazi_missing(
     mock_which, mock_run, mock_company_data, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(paths, "root", tmp_path)
@@ -93,19 +98,19 @@ async def test_action_open_folder_skips_when_yazi_missing(
 
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
-        detail = await _mount(app, mock_company_data)
+        await _mount(app, mock_company_data)
         await pilot.pause()
-        detail.action_open_folder()
+        app.action_open_campaign_yazi()
 
         mock_which.assert_called_once_with("yazi")
         mock_run.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch("cocli.tui.widgets.company_detail.subprocess.Popen")
-@patch("cocli.tui.widgets.company_detail.subprocess.run")
-@patch("cocli.tui.widgets.company_detail.shutil.which", return_value="/usr/bin/yazi")
-async def test_action_open_folder_does_not_launch_nvim(
+@patch("cocli.tui.app.subprocess.Popen")
+@patch("cocli.tui.app.subprocess.run")
+@patch("cocli.tui.app.shutil.which", return_value="/usr/bin/yazi")
+async def test_open_yazi_does_not_launch_nvim(
     mock_which, mock_run, mock_popen, mock_company_data, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(paths, "root", tmp_path)
@@ -113,18 +118,42 @@ async def test_action_open_folder_does_not_launch_nvim(
 
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
-        detail = await _mount(app, mock_company_data)
+        await _mount(app, mock_company_data)
         await pilot.pause()
 
         with patch.object(app, "suspend", return_value=nullcontext()):
-            with patch("cocli.tui.widgets.company_detail.time.sleep"):
+            with patch("cocli.tui.app.time.sleep"):
                 with patch(
                     "cocli.application.company_service.get_company_details_for_view",
                     return_value=mock_company_data,
                 ):
-                    detail.action_open_folder()
+                    app.action_open_campaign_yazi()
 
         mock_popen.assert_not_called()
         args, _kwargs = mock_run.call_args
         assert args[0][0] == "/usr/bin/yazi"
         assert "nvim" not in args[0]
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.app.time.sleep")
+@patch("cocli.tui.app.subprocess.run")
+@patch("cocli.tui.app.shutil.which", return_value="/usr/bin/yazi")
+async def test_open_yazi_uses_campaign_root_without_company_detail(
+    mock_which, mock_run, mock_sleep, tmp_path, monkeypatch
+):
+    """No CompanyDetail active (e.g. from the Companies list, or any other
+    view) - falls back to the campaign root, same as before this change."""
+    from cocli.application.services import ServiceContainer
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    campaign_dir = paths.campaign("roadmap").path
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+
+    app = CocliApp(services=ServiceContainer(campaign_name="roadmap"), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        with patch.object(app, "suspend", return_value=nullcontext()):
+            app.action_open_campaign_yazi()
+
+        mock_run.assert_called_once_with(["/usr/bin/yazi", str(campaign_dir)], check=False)

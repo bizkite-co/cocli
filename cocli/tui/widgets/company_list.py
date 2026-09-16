@@ -44,6 +44,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         ("d", "remove_from_to_call", "Remove from To-Call"),
         Binding("m", "open_mark_menu", "Mark"),
         Binding("u", "upload_lead_filter", "Upload Filter"),
+        Binding("r", "refresh_to_call", "Refresh To-Call"),
     ]
 
     def __init__(
@@ -683,6 +684,54 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         except Exception as e:
             logger.error(f"Failed to remove from To-Call: {e}")
             self.app.notify(f"Failed to remove: {e}", severity="error")
+
+    def action_refresh_to_call(self) -> None:
+        """Add more leads to the To-Call queue, right from the To-Call
+        view - the same op_compile_to_call operation Admin's Operations
+        screen exposes, but with purge always off (Mark, 2026-09-16: the
+        one-off purge+refill was a development-phase cleanup, not the
+        steady-state workflow - normal use is topping up the existing
+        queue by a configurable batch size, never wiping it) and no
+        params form, since there's nothing to confirm for a non-destructive
+        add."""
+        if not self.current_filters.get("to_call"):
+            self.app.notify("Only available in To-Call view", severity="warning")
+            return
+
+        from cocli.core.config import get_campaign
+
+        campaign = get_campaign()
+        if not campaign:
+            self.app.notify("No campaign set", severity="error")
+            return
+
+        self.app.run_worker(self._refresh_to_call(campaign), exclusive=True)
+
+    async def _refresh_to_call(self, campaign: str) -> None:
+        from cocli.core.config import get_to_call_batch_size
+
+        limit = get_to_call_batch_size(campaign)
+        self.app.notify(f"Adding up to {limit} more lead(s) to To-Call...")
+
+        app = cast("CocliApp", self.app)
+        try:
+            result = await app.services.operation_service.execute(
+                "op_compile_to_call",
+                params={"purge": False, "limit": limit, "dry_run": False},
+            )
+        except Exception as e:
+            logger.error(f"Refresh To-Call failed: {e}")
+            self.app.notify(f"Refresh failed: {e}", severity="error")
+            return
+
+        created = result.get("created_count", 0)
+        skipped_pending = result.get("skipped_already_pending", 0)
+        self.app.notify(
+            f"Added {created} lead(s) to To-Call"
+            + (f" ({skipped_pending} already pending)" if skipped_pending else "")
+        )
+        self.search_offset = 0
+        self.run_search("")
 
     def action_open_mark_menu(self) -> None:
         """``m`` then ``i`` / ``v`` / ``h``. No-op while typing in search."""

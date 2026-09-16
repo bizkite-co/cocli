@@ -417,6 +417,20 @@ def load_campaign_config(campaign_name: str) -> dict[str, Any]:
     return merged_config
 
 
+def get_to_call_batch_size(campaign_name: str, default: int = 20) -> int:
+    """How many *more* leads a To-Call "refresh" adds per run
+    (op_compile_to_call with purge=False - the steady-state population
+    strategy, not the one-off purge+refill used during development).
+    Configured per campaign as `[to_call] batch_size = N` in config.toml;
+    falls back to `default` if unset or invalid."""
+    raw = load_campaign_config(campaign_name) or {}
+    to_call_cfg = raw.get("to_call") or {}
+    try:
+        return int(to_call_cfg.get("batch_size", default))
+    except (TypeError, ValueError):
+        return default
+
+
 def get_config_path() -> Path:
     config_dir = get_config_dir()
     return config_dir / "cocli_config.toml"

@@ -639,19 +639,42 @@ class CocliApp(App[None]):
                 tui_debug_log(f"APP: Gossip Bridge failed to stop: {e}")
 
     def action_open_campaign_yazi(self) -> None:
-        """Suspend the TUI and open yazi in the active campaign directory.
+        """Suspend the TUI and open yazi - context-aware (2026-09-16, was
+        two separate keys: campaign-root ``y`` here and a company-specific
+        ``e`` in CompanyDetail, which looked like accidental duplicates but
+        actually targeted different folders on purpose. Consolidated into
+        one key that opens whichever folder is more specific to the
+        current view, rather than keeping a second binding around just to
+        reach the company folder).
 
-        Company detail ``e`` still opens the company folder. This is the
-        campaign root (queues, indexes, companies) from any view.
+        Opens the visible CompanyDetail's own company folder if one is
+        active; otherwise the campaign root (queues, indexes, companies).
         """
-        name = self.services.campaign_name
-        if not name:
-            self.notify("No campaign selected", severity="error")
-            return
-        folder = get_campaign_dir(name)
-        if folder is None or not folder.is_dir():
-            self.notify(f"Campaign directory not found: {name}", severity="error")
-            return
+        from .widgets.company_detail import CompanyDetail
+        from ..core.paths import paths
+
+        detail: Optional[CompanyDetail] = None
+        for widget in self.query(CompanyDetail):
+            if widget.visible:
+                detail = widget
+                break
+
+        if detail is not None:
+            slug = detail.company_data["company"].get("slug")
+            folder = paths.companies.entry(slug).path if slug else None
+            if folder is None or not folder.is_dir():
+                self.notify(f"Company folder not found: {slug}", severity="error")
+                return
+        else:
+            name = self.services.campaign_name
+            if not name:
+                self.notify("No campaign selected", severity="error")
+                return
+            folder = get_campaign_dir(name)
+            if folder is None or not folder.is_dir():
+                self.notify(f"Campaign directory not found: {name}", severity="error")
+                return
+
         browser = shutil.which("yazi")
         if not browser:
             self.notify("yazi not found on PATH", severity="error")
@@ -662,8 +685,13 @@ class CocliApp(App[None]):
             self.refresh()
             time.sleep(0.1)
         except Exception as e:
-            logger.error("Yazi campaign session failed: %s", e)
+            logger.error("Yazi session failed: %s", e)
             self.notify(f"Yazi failed: {e}", severity="error")
+            return
+
+        if detail is not None:
+            detail.refresh_notes_data()
+            detail.refresh_meetings_data()
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
