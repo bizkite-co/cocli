@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 import asyncio
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, cast, Any, Optional
 
 from textual.binding import Binding
@@ -41,7 +40,6 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
     BINDINGS = [
         Binding("l", "open_highlighted", "Open", show=False, priority=True),
         ("alt+s", "reset_view", "Return to List"),
-        ("d", "remove_from_to_call", "Remove from To-Call"),
         Binding("m", "open_mark_menu", "Mark"),
         Binding("u", "upload_lead_filter", "Upload Filter"),
         Binding("r", "refresh_to_call", "Refresh To-Call"),
@@ -612,78 +610,6 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self.app.notify(f"Opening {url}")
         else:
             self.app.notify(f"Could not open browser for {url}", severity="error")
-
-    def action_remove_from_to_call(self) -> None:
-        """Remove the highlighted company from the To-Call list."""
-        list_view = self.query_one("#company_list_view", ListView)
-        idx = list_view.index
-
-        if idx is None or idx >= len(self.filtered_fz_items):
-            self.app.notify("No company selected", severity="warning")
-            return
-
-        selected_item = self.filtered_fz_items[idx]
-        if not selected_item or not selected_item.slug:
-            self.app.notify("No company selected", severity="warning")
-            return
-
-        # Check if this is the To-Call filter view
-        if not self.current_filters.get("to_call"):
-            self.app.notify("Only available in To-Call view", severity="warning")
-            return
-
-        # Import here to avoid circular imports
-        from cocli.models.campaigns.queues.to_call import ToCallTask
-        from cocli.core.config import get_campaign
-
-        campaign = get_campaign()
-        if not campaign:
-            self.app.notify("No campaign set", severity="error")
-            return
-
-        task = ToCallTask(
-            company_slug=selected_item.slug,
-            domain=str(selected_item.name) if selected_item.name else "unknown",
-            campaign_name=campaign,
-            ack_token=None,
-        )
-
-        task_path = task.get_local_path()
-        if not task_path.exists():
-            self.app.notify("Not in To-Call list", severity="warning")
-            return
-
-        # Run confirmation and deletion in background
-        self.app.run_worker(
-            self._remove_from_to_call_with_confirm(
-                task_path, selected_item.slug,
-                str(selected_item.name) if selected_item.name else "",
-            ),
-            exclusive=True,
-        )
-
-    async def _remove_from_to_call_with_confirm(
-        self, task_path: Path, slug: str, name: str
-    ) -> None:
-        """Async method to confirm and remove from To-Call list."""
-        from .confirm_screen import ConfirmScreen
-
-        # Use push_screen and wait for the modal to be closed
-        confirm = await self.app.push_screen_wait(
-            ConfirmScreen(f"Remove '{name}' from To-Call list?")
-        )
-        if not confirm:
-            return
-
-        try:
-            task_path.unlink()
-            self.app.notify(f"Removed {slug} from To-Call list")
-            # Refresh the list
-            self.search_offset = 0
-            self.run_search("")
-        except Exception as e:
-            logger.error(f"Failed to remove from To-Call: {e}")
-            self.app.notify(f"Failed to remove: {e}", severity="error")
 
     def action_refresh_to_call(self) -> None:
         """Add more leads to the To-Call queue, right from the To-Call
