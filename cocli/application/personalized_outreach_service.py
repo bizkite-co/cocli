@@ -16,6 +16,8 @@ from cocli.utils.utm import append_utm_params
 if TYPE_CHECKING:
     from cocli.application.email_service import EmailService
     from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+    from cocli.models.campaigns.indexes.ses_event_log import SesEventLogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,10 @@ class PersonalizedOutreachService:
         self.exclusion_mgr = ExclusionManager(campaign_name)
 
     def find_eligible_prospects(
-        self, limit: int = 10, template_name: str = "email_01_pas_hook.md"
+        self,
+        limit: int = 10,
+        template_name: str = "email_01_pas_hook.md",
+        initiative: str = "rta",
     ) -> list[ProspectContactMatch]:
         """Find campaign companies having valid email addresses and contact first names."""
         matches: list[ProspectContactMatch] = []
@@ -154,6 +159,7 @@ class PersonalizedOutreachService:
                     company_name=company_display_name,
                     company_slug=slug,
                     template_name=template_name,
+                    initiative=initiative,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -206,6 +212,7 @@ class PersonalizedOutreachService:
                     company_name=co_name,
                     company_slug=co_slug,
                     template_name=template_name,
+                    initiative=initiative,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -379,14 +386,19 @@ class PersonalizedOutreachService:
 
         return subject, body_with_utm
 
-    def render_and_save_draft(self, match: ProspectContactMatch, template_id: str = "email_01_pas_hook") -> Path:
+    def render_and_save_draft(
+        self,
+        match: ProspectContactMatch,
+        template_id: str = "email_01_pas_hook",
+        initiative: str = "rta",
+    ) -> Path:
         """Render and save an outreach email draft to disk before sending, maintaining an audit trail."""
 
         out_dir = (
             paths.campaigns
             / self.campaign_name
             / "initiatives"
-            / "rta"
+            / initiative
             / "rendered-outreach"
             / match.company_slug
         )
@@ -414,6 +426,7 @@ class PersonalizedOutreachService:
         *,
         template_id: str,
         email_service: "EmailService",
+        initiative: str = "rta",
     ) -> SendBatchResult:
         """Actually sends a batch (as opposed to prepare-batch/render_and_save_draft,
         which only render drafts to disk).
@@ -460,6 +473,7 @@ class PersonalizedOutreachService:
                         subject=match.subject,
                         message_id=send_result.message_id,
                         status="sent",
+                        initiative=initiative,
                     )
                 )
                 result.sent += 1
@@ -479,6 +493,7 @@ class PersonalizedOutreachService:
                         subject=match.subject,
                         status="failed",
                         error=str(exc),
+                        initiative=initiative,
                     )
                 )
                 result.failed += 1
@@ -490,7 +505,7 @@ class PersonalizedOutreachService:
 
         return result
 
-    def freeze_batch(self, *, limit: int, template_id: str) -> str:
+    def freeze_batch(self, *, limit: int, template_id: str, initiative: str = "rta") -> str:
         """Selects and fully renders a batch, then writes it to
         indexes/email-pending-batch/pending.usv before it is ever
         sendable - a bad template placeholder raises here (from
@@ -503,7 +518,7 @@ class PersonalizedOutreachService:
 
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
-        matches = self.find_eligible_prospects(limit=limit, template_name=template_id)
+        matches = self.find_eligible_prospects(limit=limit, template_name=template_id, initiative=initiative)
 
         batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
@@ -518,6 +533,7 @@ class PersonalizedOutreachService:
                 recipient=match.recipient_email,
                 subject=match.subject,
                 body=match.body,
+                initiative=initiative,
             )
             for match in matches
         ]
@@ -575,7 +591,10 @@ class PersonalizedOutreachService:
 
         matches = [self.entry_to_match(e) for e in batch_entries]
         result = self.send_batch(
-            matches, template_id=batch_entries[0].template_id, email_service=email_service
+            matches,
+            template_id=batch_entries[0].template_id,
+            email_service=email_service,
+            initiative=batch_entries[0].initiative,
         )
 
         self._rewrite_pending(remaining)
@@ -594,6 +613,50 @@ class PersonalizedOutreachService:
         index_dir.mkdir(parents=True, exist_ok=True)
         pending_path = index_dir / "pending.usv"
         pending_path.write_text("".join(e.to_usv() for e in entries), encoding="utf-8")
+
+    def list_send_log(self, initiative: Optional[str] = None) -> list["SendLogEntry"]:
+        """Every attempt (sent or failed) across every batch, newest first -
+        the Messages screen's per-initiative Tracking pane's data source.
+        Rows written before `initiative` existed default to "rta" (the
+        field's own default), which is factually correct for every entry
+        written before this feature - roadmap only had one initiative
+        with an email-sequences/ dir at the time."""
+        from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+        log_path = SendLogEntry.get_index_dir(self.campaign_name) / "log.usv"
+        if not log_path.exists():
+            return []
+        entries = [
+            SendLogEntry.from_usv(line)
+            for line in log_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if initiative is not None:
+            entries = [e for e in entries if e.initiative == initiative]
+        return sorted(entries, key=lambda e: e.sent_at, reverse=True)
+
+    def list_ses_events(self, initiative: Optional[str] = None) -> list["SesEventLogEntry"]:
+        """Bounce/complaint events (EmailEventsService.poll()'s output),
+        newest first. The event log itself doesn't record which
+        initiative a message belonged to (see ses_event_log.py) - joined
+        here against this initiative's own send log by message_id,
+        instead of denormalizing initiative onto the event at ingestion
+        time, matching compute_unsubscribe_rate()'s existing
+        compute-over-existing-data convention."""
+        from cocli.models.campaigns.indexes.ses_event_log import SesEventLogEntry
+
+        log_path = SesEventLogEntry.get_index_dir(self.campaign_name) / "log.usv"
+        if not log_path.exists():
+            return []
+        entries = [
+            SesEventLogEntry.from_usv(line)
+            for line in log_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if initiative is not None:
+            message_ids = {e.message_id for e in self.list_send_log(initiative) if e.message_id}
+            entries = [e for e in entries if e.message_id in message_ids]
+        return sorted(entries, key=lambda e: e.occurred_at, reverse=True)
 
 
 def compute_unsubscribe_rate(campaign_name: str) -> UnsubscribeRateStats:

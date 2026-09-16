@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import email as email_pkg
+from email import policy as email_policy
 from email.message import EmailMessage
 from pathlib import Path
 from unittest.mock import patch
 
-from cocli.application.email_service import EmailService
+from cocli.application.email_service import Boto3SesSender, EmailService
 from cocli.application.mail_oauth import FileOAuthTokenStore, build_authorize_url
 from cocli.core.paths import paths
 from cocli.models.mail import EmailSettings, SendMailRequest
@@ -79,6 +81,60 @@ def test_ses_sender_constructed_once_and_cached(mocker) -> None:
     service._ses()
 
     mock_ctor.assert_called_once()
+
+
+def test_boto3_sender_sets_list_unsubscribe_header_via_raw_send(mocker) -> None:
+    """Gmail/Yahoo bulk-sender rules expect List-Unsubscribe; the simple
+    send_email API has no header support, so this must go via
+    send_raw_email - assert on the actual decoded header, not just that
+    send_raw_email was called."""
+    mock_client = mocker.Mock()
+    mock_client.send_raw_email.return_value = {"MessageId": "ses-raw-1"}
+    mocker.patch("boto3.Session").return_value.client.return_value = mock_client
+
+    sender = Boto3SesSender("us-west-1", configuration_set="prs-default")
+    sender._reply_to = "mark@getretirementtaxanalyzer.com"
+
+    message_id = sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="We would like to talk.",
+    )
+
+    assert message_id == "ses-raw-1"
+    mock_client.send_raw_email.assert_called_once()
+    call_kwargs = mock_client.send_raw_email.call_args.kwargs
+    assert call_kwargs["Source"] == "mark@getretirementtaxanalyzer.com"
+    assert call_kwargs["Destinations"] == ["bob@acme.test"]
+    assert call_kwargs["ConfigurationSetName"] == "prs-default"
+
+    raw = call_kwargs["RawMessage"]["Data"]
+    parsed = email_pkg.message_from_bytes(raw, policy=email_policy.default)
+    assert parsed["List-Unsubscribe"] == "<mailto:mark@getretirementtaxanalyzer.com?subject=unsubscribe>"
+    assert parsed["Reply-To"] == "mark@getretirementtaxanalyzer.com"
+    assert parsed["Subject"] == "Hello"
+    assert parsed.get_content().strip() == "We would like to talk."
+
+
+def test_boto3_sender_list_unsubscribe_falls_back_to_source_without_reply_to(mocker) -> None:
+    mock_client = mocker.Mock()
+    mock_client.send_raw_email.return_value = {"MessageId": "ses-raw-2"}
+    mocker.patch("boto3.Session").return_value.client.return_value = mock_client
+
+    sender = Boto3SesSender("us-west-1")
+
+    sender.send_email(
+        source="outreach@example.com",
+        to_address="bob@acme.test",
+        subject="Hi",
+        body="Body",
+    )
+
+    raw = mock_client.send_raw_email.call_args.kwargs["RawMessage"]["Data"]
+    parsed = email_pkg.message_from_bytes(raw, policy=email_policy.default)
+    assert parsed["List-Unsubscribe"] == "<mailto:outreach@example.com?subject=unsubscribe>"
+    assert parsed["Reply-To"] is None
 
 
 def test_build_authorize_url_includes_client_and_login_hint() -> None:

@@ -123,6 +123,35 @@ def poll_mail(
     )
 
 
+@app.command("poll-events")
+def poll_events(
+    limit: int = typer.Option(10, "--limit", help="Max SQS messages to fetch (max 10 per call)."),
+) -> None:
+    """Poll the SQS queue for SES bounce/complaint events; record them and
+    auto-suppress permanent bounces/complaints."""
+    campaign_name = _require_campaign()
+    settings, profile = _settings(campaign_name)
+    from cocli.application.email_events_service import EmailEventsService
+
+    service = EmailEventsService(campaign_name, region=settings.ses_region, profile=profile)
+    try:
+        result = service.poll(limit=limit)
+    except Exception as exc:
+        logger.error("Poll-events failed: %s", exc)
+        raise typer.Exit(code=1) from exc
+    logger.info(
+        "Poll-events fetched=%s recorded=%s ignored=%s suppressed=%s",
+        result.fetched,
+        result.recorded,
+        result.ignored,
+        len(result.suppressed),
+    )
+    console.print(
+        f"[green]Poll-events[/green] fetched={result.fetched} recorded={result.recorded} "
+        f"ignored={result.ignored} suppressed={result.suppressed}"
+    )
+
+
 @app.command("unsubscribe")
 def unsubscribe(
     address: str = typer.Option(..., "--address", "-a", help="Email address to unsubscribe and suppress."),
@@ -171,13 +200,16 @@ def list_suppressed(
 @app.command("prepare-batch")
 def prepare_batch(
     limit: int = typer.Option(10, "--limit", "-l", help="Number of prospects with contact first names to select."),
+    initiative: str = typer.Option(
+        "rta", "--initiative", "-i", help="Which campaigns/<c>/initiatives/<name>/ this batch belongs to."
+    ),
 ) -> None:
     """Generate personalized outreach email drafts for testing (filters prospects with contact first names)."""
     campaign_name = _require_campaign()
     from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     service = PersonalizedOutreachService(campaign_name)
-    matches = service.find_eligible_prospects(limit=limit)
+    matches = service.find_eligible_prospects(limit=limit, initiative=initiative)
 
     if not matches:
         console.print(f"[yellow]No eligible prospects with contact first names found in campaign '{campaign_name}'.[/yellow]")
@@ -185,7 +217,7 @@ def prepare_batch(
 
     console.print(f"[bold green]Prepared & rendered {len(matches)} personalized email drafts for '{campaign_name}':[/bold green]\n")
     for idx, match in enumerate(matches, 1):
-        draft_path = service.render_and_save_draft(match)
+        draft_path = service.render_and_save_draft(match, initiative=initiative)
         console.print(f"[bold cyan][{idx}] {match.company_name}[/bold cyan] ({match.company_slug})")
         console.print(f"    Recipient: {match.contact_name} <{match.recipient_email}> (First Name: [bold]{match.first_name}[/bold])")
         console.print(f"    Subject: {match.subject}")
@@ -199,6 +231,9 @@ def send_batch(
     template: str = typer.Option(
         "email_01_pas_hook.md", "--template", "-t", help="Template filename (see prepare-batch preview)."
     ),
+    initiative: str = typer.Option(
+        "rta", "--initiative", "-i", help="Which campaigns/<c>/initiatives/<name>/ this batch belongs to."
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview the batch without sending or writing to the send log."
     ),
@@ -208,7 +243,7 @@ def send_batch(
     from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     service = PersonalizedOutreachService(campaign_name)
-    matches = service.find_eligible_prospects(limit=limit, template_name=template)
+    matches = service.find_eligible_prospects(limit=limit, template_name=template, initiative=initiative)
 
     if not matches:
         console.print(f"[yellow]No eligible prospects with contact first names found in campaign '{campaign_name}'.[/yellow]")
@@ -224,7 +259,9 @@ def send_batch(
 
     settings, profile = _settings(campaign_name)
     email_service = EmailService(campaign_name, settings, aws_profile=profile)
-    result = service.send_batch(matches, template_id=template, email_service=email_service)
+    result = service.send_batch(
+        matches, template_id=template, email_service=email_service, initiative=initiative
+    )
 
     console.print(
         f"[bold green]Batch {result.batch_id}[/bold green]: "

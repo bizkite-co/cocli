@@ -19,8 +19,8 @@ class PendingBatchEntry(BaseIndexModel):
     """
 
     INDEX_NAME: ClassVar[str] = "email-pending-batch"
-    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
-    SCHEMA_UPDATED_AT: ClassVar[str] = "2026-09-15T00:00:00+00:00"
+    SCHEMA_VERSION: ClassVar[str] = "1.1.0"
+    SCHEMA_UPDATED_AT: ClassVar[str] = "2026-09-16T00:00:00+00:00"
 
     batch_id: str
     template_id: str
@@ -29,3 +29,8 @@ class PendingBatchEntry(BaseIndexModel):
     subject: str
     body: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Added last, not inserted earlier: from_usv()/to_usv() are positional
+    # (base.py) - keeping this last means any pending.usv row written
+    # before this field existed still parses (missing trailing column ->
+    # falls through to this default).
+    initiative: str = "rta"

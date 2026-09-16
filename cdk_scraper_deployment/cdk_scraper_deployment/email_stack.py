@@ -1,9 +1,8 @@
-"""SES sending identity for a campaign (separate region from the scraper stack).
-
-This is a *create recipe* for the next client: deploy, then add the DKIM
-CNAME / bounce MX outputs at their DNS host. It does not manage GoDaddy
-or Route53. Do not `cdk deploy` over an identity that already exists with
-manually-issued Easy DKIM tokens unless you intend to rotate those CNAMEs.
+"""Thin Stack wrapper around CocliOutreachEmailIdentity (see
+constructs/outreach_email_identity.py for the actual resources) - kept as
+its own Stack, separate from CdkScraperDeploymentStack, so a campaign's
+outbound-sales email identity can be deployed/torn down independently of
+its scraper infrastructure.
 """
 
 from __future__ import annotations
@@ -11,8 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 import aws_cdk as cdk
-from aws_cdk import aws_ses as ses
 from constructs import Construct
+
+from .constructs.email_events_queue import CocliEmailEventsQueue
+from .constructs.outreach_email_identity import CocliOutreachEmailIdentity
 
 
 class CocliEmailStack(cdk.Stack):
@@ -29,46 +30,31 @@ class CocliEmailStack(cdk.Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        config_set = ses.CfnConfigurationSet(
+        self.identity = CocliOutreachEmailIdentity(
             self,
-            "ConfigurationSet",
-            name=configuration_set_name,
-            sending_options=ses.CfnConfigurationSet.SendingOptionsProperty(
-                sending_enabled=True
-            ),
-            reputation_options=ses.CfnConfigurationSet.ReputationOptionsProperty(
-                reputation_metrics_enabled=True
-            ),
+            "OutreachEmailIdentity",
+            campaign_name=campaign_name,
+            sending_domain=sending_domain,
+            mail_from_domain=mail_from_domain,
+            configuration_set_name=configuration_set_name,
         )
-        config_set.apply_removal_policy(cdk.RemovalPolicy.RETAIN)
 
-        identity = ses.CfnEmailIdentity(
+        self.events_queue = CocliEmailEventsQueue(
             self,
-            "SendingDomain",
-            email_identity=sending_domain,
-            configuration_set_attributes=ses.CfnEmailIdentity.ConfigurationSetAttributesProperty(
-                configuration_set_name=configuration_set_name
-            ),
-            dkim_attributes=ses.CfnEmailIdentity.DkimAttributesProperty(
-                signing_enabled=True
-            ),
-            mail_from_attributes=ses.CfnEmailIdentity.MailFromAttributesProperty(
-                mail_from_domain=mail_from_domain,
-                behavior_on_mx_failure="USE_DEFAULT_VALUE",
-            ),
-            feedback_attributes=ses.CfnEmailIdentity.FeedbackAttributesProperty(
-                email_forwarding_enabled=True
-            ),
+            "EventsQueue",
+            campaign_name=campaign_name,
+            events_topic=self.identity.events_topic,
         )
-        identity.add_dependency(config_set)
-        identity.apply_removal_policy(cdk.RemovalPolicy.RETAIN)
 
-        bounce_mx = f"feedback-smtp.{self.region}.amazonses.com"
-        cdk.CfnOutput(self, "SendingDomainName", value=sending_domain)
-        cdk.CfnOutput(self, "MailFromDomain", value=mail_from_domain)
-        cdk.CfnOutput(self, "MailFromMx", value=bounce_mx)
-        cdk.CfnOutput(self, "ConfigurationSetName", value=configuration_set_name)
-        cdk.CfnOutput(self, "CampaignName", value=campaign_name)
+        identity = self.identity.identity
+        cdk.CfnOutput(self, "SendingDomainName", value=self.identity.sending_domain)
+        cdk.CfnOutput(self, "MailFromDomain", value=self.identity.mail_from_domain)
+        cdk.CfnOutput(self, "MailFromMx", value=self.identity.bounce_mx)
+        cdk.CfnOutput(self, "ConfigurationSetName", value=self.identity.configuration_set_name)
+        cdk.CfnOutput(self, "CampaignName", value=self.identity.campaign_name)
+        cdk.CfnOutput(self, "EmailEventsTopicArn", value=self.identity.events_topic.topic_arn)
+        cdk.CfnOutput(self, "EmailEventsQueueUrl", value=self.events_queue.queue.queue_url)
+        cdk.CfnOutput(self, "EmailEventsQueueArn", value=self.events_queue.queue.queue_arn)
         cdk.CfnOutput(self, "DkimCname1Name", value=identity.attr_dkim_dns_token_name1)
         cdk.CfnOutput(self, "DkimCname1Value", value=identity.attr_dkim_dns_token_value1)
         cdk.CfnOutput(self, "DkimCname2Name", value=identity.attr_dkim_dns_token_name2)

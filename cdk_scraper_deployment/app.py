@@ -18,6 +18,10 @@ class LogRetentionAspect:
 
 app = cdk.App()
 cdk.Aspects.of(app).add(LogRetentionAspect())
+# Findability in a shared/multi-tenant AWS account (Resource Groups, Cost
+# Explorer) without renaming any already-deployed stack - CloudFormation
+# can't rename a stack in place, so tagging is the non-disruptive answer.
+cdk.Tags.of(app).add("Project", "cocli")
 
 # 1. Determine COCLI_DATA_HOME
 # Try env var, then fallback to common locations or relative path
@@ -127,10 +131,17 @@ CdkScraperDeploymentStack(app, stack_name,
 email_config = config.get("email") or {}
 from_address = email_config.get("from_address") or ""
 if from_address and "@" in from_address:
-    sending_domain = from_address.split("@", 1)[1]
+    product_domain = from_address.split("@", 1)[1]
+    # Always its own subdomain, never the bare product domain: cocli's
+    # outbound-sales email must not share reputation with whatever else
+    # already sends mail as the product itself (transactional/reports) -
+    # see the roadmap/getretirementtaxanalyzer.com precedent (2026-09-16),
+    # where those were already separate, pre-existing uses of the bare
+    # domain before this outbound-sales identity ever existed.
+    sending_domain = f"outreach.{product_domain}"
     ses_region = email_config.get("ses_region") or "us-west-1"
-    config_set_name = email_config.get("ses_configuration_set") or "prs-default"
-    mail_from = email_config.get("mail_from_domain") or f"bounce.{sending_domain}"
+    config_set_name = f"cocli-outreach-{campaign_name}"
+    mail_from = f"bounce.{sending_domain}"
     email_env = cdk.Environment(account=str(account) if account else os.getenv("CDK_DEFAULT_ACCOUNT"), region=ses_region)
     CocliEmailStack(
         app,

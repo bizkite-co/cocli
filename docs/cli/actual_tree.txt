@@ -416,8 +416,11 @@ cocli
         authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
         poll - Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match.
             --limit (integer)
+        poll-events - Poll the SQS queue for SES bounce/complaint events; record them and
+            --limit (integer)
         prepare-batch - Generate personalized outreach email drafts for testing (filters prospects with contact first names).
             --limit/-l (integer)
+            --initiative/-i (text)
         send - Send one email via SES and record a note on the matching company.
             --to (text) [required]
             --subject (text) [required]
@@ -427,6 +430,7 @@ cocli
         send-batch - Actually send a batch via SES (prepare-batch only renders drafts).
             --limit/-l (integer)
             --template/-t (text)
+            --initiative/-i (text)
             --dry-run (boolean)
         suppression-list - List suppressed email addresses from AWS SES account-level suppression list.
             --limit (integer)

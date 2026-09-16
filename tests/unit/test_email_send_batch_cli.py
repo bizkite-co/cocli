@@ -39,5 +39,5 @@ def test_send_batch_dry_run_does_not_send_or_write_log(cli_app, mocker) -> None:
     # a prior bug threaded it into the log's template_id label only, while
     # always rendering with the default template regardless of this flag.
     mock_service.find_eligible_prospects.assert_called_once_with(
-        limit=10, template_name="custom.md"
+        limit=10, template_name="custom.md", initiative="rta"
     )

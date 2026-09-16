@@ -334,6 +334,31 @@ def test_send_pending_batch_sends_and_removes_only_that_batch(
     assert sent_entries[0].status == "sent"
 
 
+def test_send_pending_batch_uses_the_frozen_batchs_own_initiative(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The initiative recorded at freeze time must reach the send log -
+    if send_pending_batch let it default, a batch frozen for a
+    non-default initiative would get silently mislabeled "rta" at send."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    batch_id = service.freeze_batch(
+        limit=10, template_id="email_01_pas_hook.md", initiative="wealth-manager-products"
+    )
+
+    fake_email_service = _FakeEmailService()
+    service.send_pending_batch(batch_id, email_service=fake_email_service)
+
+    log_path = SendLogEntry.get_index_dir("roadmap") / "log.usv"
+    sent_entries = [SendLogEntry.from_usv(line) for line in log_path.read_text().splitlines() if line]
+    assert sent_entries[0].initiative == "wealth-manager-products"
+
+
 def test_send_pending_batch_restores_real_newlines_in_body(
     tmp_path: Any, monkeypatch: Any
 ) -> None:

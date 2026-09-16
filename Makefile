@@ -372,6 +372,25 @@ update-infra-config: install ## Update campaign config.toml with latest SQS URLs
 	$(call validate_campaign)
 	PYTHONPATH=. ././.venv/bin/python3 scripts/update_campaign_infra_config.py $(CAMPAIGN)
 
+.PHONY: diff-email-infra
+diff-email-infra: install ## Preview changes to the campaign's dedicated outbound-sales SES identity (Usage: make diff-email-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Diffing CocliEmailStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk diff CocliEmailStack-$(CAMPAIGN) --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+
+.PHONY: deploy-email-infra
+deploy-email-infra: install ## Deploy the campaign's dedicated outbound-sales SES identity via CDK (Usage: make deploy-email-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Deploying CocliEmailStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy CocliEmailStack-$(CAMPAIGN) --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	@$(MAKE) show-email-infra CAMPAIGN=$(CAMPAIGN)
+
+.PHONY: show-email-infra
+show-email-infra: ## Print the deployed SES identity's outputs (DKIM CNAMEs, bounce MX) - the DNS handoff values (Usage: make show-email-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@EMAIL_REGION=$$(././.venv/bin/python3 -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$(CAMPAIGN)'); print((config.get('email') or {}).get('ses_region', 'us-east-1'))"); \
+	aws cloudformation describe-stacks --stack-name CocliEmailStack-$(CAMPAIGN) --region $$EMAIL_REGION --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
+
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh $(CAMPAIGN)

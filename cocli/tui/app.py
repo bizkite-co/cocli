@@ -937,7 +937,13 @@ class CocliApp(App[None]):
     def on_company_list_company_selected(
         self, message: CompanyList.CompanySelected
     ) -> None:
-        company_slug = message.company_slug
+        self.open_company_detail(message.company_slug)
+
+    def open_company_detail(self, company_slug: str) -> None:
+        """Navigate to a company's detail view by slug - the same
+        auto-materialize-on-demand path CompanyList.CompanySelected uses,
+        callable directly from anywhere else in the TUI that only has a
+        company_slug on hand (e.g. the Tracking pane's send-log entries)."""
         try:
             company_data = self.services.get_company_details(company_slug)
             if not company_data:

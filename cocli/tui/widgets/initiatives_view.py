@@ -18,12 +18,15 @@ if TYPE_CHECKING:
 
 from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 
-from textual.widgets import Label, ListItem, ListView
+from textual.widgets import Label, ListItem, ListView, Static
 
 from ...core.paths import paths
 from .message_templates_view import TemplateListItem, TemplatePreview
+
+if TYPE_CHECKING:
+    from ...models.campaigns.indexes.email_send_log import SendLogEntry
 
 _CATEGORY_LABELS = {
     "email-sequences": "Email Sequences",
@@ -217,6 +220,130 @@ class _FileBrowserPane(Horizontal):
             event.stop()
 
 
+class TrackingListItem(ListItem):
+    def __init__(self, entry: "SendLogEntry", event_type: str | None = None) -> None:
+        super().__init__()
+        self.entry = entry
+        self.event_type = event_type
+
+    def compose(self) -> Any:
+        icon = "[green]sent[/green]" if self.entry.status == "sent" else "[red]failed[/red]"
+        label = f"{icon}  {self.entry.recipient}  {self.entry.subject[:40]}"
+        if self.event_type:
+            label += f"  [bold red]{self.event_type}[/bold red]"
+        yield Label(label)
+
+
+class TrackingPreview(VerticalScroll):
+    def compose(self) -> Any:
+        yield Label("Select an entry to see details", id="tracking-preview-empty")
+        yield Static("", id="tracking-preview-body")
+
+    def update_preview(self, entry: "SendLogEntry | None", event_type: str | None = None) -> None:
+        empty = self.query_one("#tracking-preview-empty", Label)
+        body = self.query_one("#tracking-preview-body", Static)
+        if entry is None:
+            empty.display = True
+            body.update("")
+            return
+        empty.display = False
+        lines = [
+            f"[bold]Recipient:[/bold] {entry.recipient}",
+            f"[bold]Company:[/bold] {entry.company_slug}",
+            f"[bold]Subject:[/bold] {entry.subject}",
+            f"[bold]Status:[/bold] {entry.status}",
+            f"[bold]Batch:[/bold] {entry.batch_id}",
+            f"[bold]Template:[/bold] {entry.template_id}",
+            f"[bold]Sent at:[/bold] {entry.sent_at}",
+        ]
+        if entry.message_id:
+            lines.append(f"[bold]Message ID:[/bold] {entry.message_id}")
+        if entry.error:
+            lines.append(f"[bold]Error:[/bold] {entry.error}")
+        if event_type:
+            lines.append(f"[bold red]{event_type}[/bold red] - see the tracking event log for details")
+        lines.append("")
+        lines.append("[dim]l: open company[/dim]")
+        body.update("\n".join(lines))
+
+
+class _TrackingPane(Horizontal):
+    """Tracking category content: this initiative's send log (sent +
+    failed attempts), newest first - the "list of stats, details on the
+    right" shape Mark asked about, backed by real SendLogEntry rows
+    instead of the raw JSON/CSV files _FileBrowserPane used to show."""
+
+    def __init__(self, initiative: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.initiative = initiative
+        self.stats_label = Label("", id="tracking-stats")
+        self.entry_list = ListView(id="tracking_entry_list")
+        self.preview = TrackingPreview(id="tracking_preview")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="tracking-list-pane"):
+            yield self.stats_label
+            yield self.entry_list
+        yield self.preview
+
+    async def on_mount(self) -> None:
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        service = PersonalizedOutreachService(campaign)
+        entries = service.list_send_log(initiative=self.initiative)
+        sent = sum(1 for e in entries if e.status == "sent")
+        failed = sum(1 for e in entries if e.status == "failed")
+        events = service.list_ses_events(initiative=self.initiative)
+        bounced = sum(1 for e in events if e.event_type == "BOUNCE")
+        complaints = sum(1 for e in events if e.event_type == "COMPLAINT")
+        self.stats_label.update(
+            f"Sent: {sent}   Failed: {failed}   Bounced: {bounced}   Complaints: {complaints}"
+        )
+        # Newest event wins if a message_id somehow has more than one -
+        # events list is already sorted newest-first by list_ses_events().
+        event_by_message_id: dict[str, str] = {}
+        for event in reversed(events):
+            if event.message_id:
+                event_by_message_id[event.message_id] = event.event_type
+        for entry in entries:
+            self.entry_list.append(
+                TrackingListItem(entry, event_type=event_by_message_id.get(entry.message_id or ""))
+            )
+        if not entries:
+            self.preview.update_preview(None)
+        self.entry_list.focus()
+
+    @on(ListView.Selected)
+    def on_entry_selected(self, message: ListView.Selected) -> None:
+        if not isinstance(message.item, TrackingListItem):
+            return
+        self.preview.update_preview(message.item.entry, event_type=message.item.event_type)
+
+    def on_key(self, event: events.Key) -> None:
+        # See _EmailSequencesPane.on_key()'s comment - event.stop() is
+        # required here too, for the same reason.
+        if event.key == "j":
+            self.entry_list.action_cursor_down()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "k":
+            self.entry_list.action_cursor_up()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "h":
+            self.app.query_one("#categories_list", ListView).focus()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "l":
+            highlighted = self.entry_list.highlighted_child
+            if isinstance(highlighted, TrackingListItem):
+                cast("CocliApp", self.app).open_company_detail(highlighted.entry.company_slug)
+            event.prevent_default()
+            event.stop()
+
+
 class InitiativesView(Container):
     """Master: initiatives list (top) + categories list (second, stacked
     below it in the same left column) - mirrors application_view.py's
@@ -303,6 +430,8 @@ class InitiativesView(Container):
         pane: Horizontal
         if category == "email-sequences":
             pane = _EmailSequencesPane(initiative)
+        elif category == "tracking":
+            pane = _TrackingPane(initiative)
         else:
             pane = _FileBrowserPane(initiative, category)
         await self.content_container.mount(pane)

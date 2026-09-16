@@ -28,6 +28,15 @@ def test_to_usv_from_usv_roundtrip() -> None:
     assert parsed.body == "Line one<br>Line two"
 
 
+def test_old_row_without_initiative_column_defaults_to_rta() -> None:
+    """initiative was added last specifically so a pending.usv row written
+    before it existed (one fewer USV column) still parses instead of
+    misaligning every field after the insertion point."""
+    old_row = "20260915T000000000000Z\x1femail_01_pas_hook.md\x1facme-financial\x1fbob@acme.test\x1fHi Bob\x1fbody\x1f2026-09-15T00:00:00+00:00\n"
+    parsed = PendingBatchEntry.from_usv(old_row)
+    assert parsed.initiative == "rta"
+
+
 def test_get_index_dir_is_campaign_scoped(mock_cocli_env, mocker) -> None:
     from cocli.core.paths import paths
 

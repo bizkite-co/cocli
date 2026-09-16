@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime, UTC
 from email.header import decode_header, make_header
-from email.message import Message
+from email.message import EmailMessage, Message
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 from typing import Callable, Optional, Protocol, Literal
@@ -52,19 +52,27 @@ class Boto3SesSender:
         self._reply_to: Optional[str] = None
 
     def send_email(self, *, source: str, to_address: str, subject: str, body: str) -> str:
+        # send_raw_email (not the simpler send_email API) so we can set
+        # List-Unsubscribe - Gmail/Yahoo bulk-sender rules expect it and
+        # the simple API has no header support.
+        msg = EmailMessage()
+        msg["From"] = source
+        msg["To"] = to_address
+        msg["Subject"] = subject
+        if self._reply_to:
+            msg["Reply-To"] = self._reply_to
+        unsubscribe_address = self._reply_to or source
+        msg["List-Unsubscribe"] = f"<mailto:{unsubscribe_address}?subject=unsubscribe>"
+        msg.set_content(body)
+
         kwargs: dict[str, object] = {
             "Source": source,
-            "Destination": {"ToAddresses": [to_address]},
-            "Message": {
-                "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
-            },
+            "Destinations": [to_address],
+            "RawMessage": {"Data": msg.as_bytes()},
         }
-        if self._reply_to:
-            kwargs["ReplyToAddresses"] = [self._reply_to]
         if self._configuration_set:
             kwargs["ConfigurationSetName"] = self._configuration_set
-        resp = self._client.send_email(**kwargs)
+        resp = self._client.send_raw_email(**kwargs)
         return str(resp.get("MessageId") or "")
 
 
