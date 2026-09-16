@@ -215,6 +215,47 @@ def audit_fs(
         console.print(tree)
 
 
+@app.command(name="stations")
+def audit_stations(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Limit the audit to one campaign."
+    ),
+) -> None:
+    """
+    Reports where live index directories disagree with their StationDecl (0010).
+    """
+    from ..core.audit.station_conformance import FindingKind, audit_index_stations
+
+    findings = audit_index_stations(campaign=campaign)
+    if not findings:
+        console.print(
+            "[green]Every index family matches its station declaration.[/green]"
+        )
+        return
+
+    colors = {
+        FindingKind.UNDECLARED_FAMILY: "yellow",
+        FindingKind.UNDECLARED_CHILD: "magenta",
+        FindingKind.NAKED_FILE: "yellow",
+        FindingKind.DECLARED_PHASE_ABSENT: "dim",
+    }
+    for kind in FindingKind:
+        group = [f for f in findings if f.kind is kind]
+        if not group:
+            continue
+        console.print(f"\n[bold]{kind.value}[/bold] ({len(group)})")
+        for finding in group:
+            console.print(
+                f"  [{colors[kind]}]{finding.campaign}/{finding.index_name}[/]"
+                f" — {finding.detail}"
+            )
+
+    console.print(
+        "\n[dim]Read-only. Declared-phase-absent is informational: which "
+        "directories exist is a runtime question, not a declaration error.[/dim]"
+    )
+
+
 @app.command(name="rollout")
 def audit_rollout(
     campaign: Optional[str] = typer.Option(

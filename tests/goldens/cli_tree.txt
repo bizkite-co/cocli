@@ -92,6 +92,8 @@ cocli
             --output/-o (path)
             --no-duckdb (boolean)
             --summary-only (boolean)
+        stations - Reports where live index directories disagree with their StationDecl (0010).
+            --campaign/-c (text)
         tui - Dumps the TUI widget hierarchy.
             --output/-o (path)
         tui-actions - Dumps every action (keybinding or command-palette-only) exposed by the
