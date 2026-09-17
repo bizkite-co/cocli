@@ -49,6 +49,7 @@ dependencies = [
     "phonenumbers",
     "jinja2",
     "markdown-it-py",
+    "dnspython",
     # stations: typed file-path queue/WAL/index Protocols (strangler Phase 1).
     # Not a cocli workspace member (stations decision 0005).
     "stations",

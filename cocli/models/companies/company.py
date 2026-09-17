@@ -111,6 +111,11 @@ class Company(BaseModel):
     all_emails: list[EmailAddress] = Field(default_factory=list)
     email_contexts: dict[str, str] = Field(default_factory=dict)
     tech_stack: list[str] = Field(default_factory=list)
+    # MX-based classification of who hosts this domain's email (Google
+    # Workspace, Microsoft 365, GoDaddy, etc.) - a DNS lookup, not a
+    # scrape, so it works even when the website itself is unreachable
+    # (bot-blocked, down, etc.). See cocli/utils/email_provider.py.
+    email_provider: Optional[str] = None
 
     categories: Annotated[list[str], BeforeValidator(split_categories)] = Field(
         default_factory=list

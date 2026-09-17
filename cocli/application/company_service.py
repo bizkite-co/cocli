@@ -159,6 +159,26 @@ async def update_company_from_website_data(
             company.tech_stack = new_tech
             modified = True
 
+    # 4b. Handle Email Provider (MX lookup, independent of the website
+    # scrape's success/failure - so a bot-blocked or down site still gets
+    # classified. Prefer the actual on-file email's domain over the
+    # website domain - a contact using a personal gmail.com address
+    # would otherwise get classified by their COMPANY's mail hosting,
+    # not the address we'd actually be sending to (e.g. Jimmy Jean
+    # Insurance's own domain has no mail hosting at all - he uses a
+    # personal Gmail address). Detected once and kept (MX providers
+    # rarely change); clear the field manually to force a re-check.
+    if not company.email_provider:
+        email_domain = str(company.email).split("@")[-1] if company.email else None
+        lookup_domain = email_domain or (str(company.domain) if company.domain else None)
+        if lookup_domain:
+            from ..utils.email_provider import detect_email_provider_async
+
+            provider = await detect_email_provider_async(lookup_domain)
+            if provider:
+                company.email_provider = provider
+                modified = True
+
     # 5. Handle Email Contexts
     if website_data.email_contexts:
         for email, label in website_data.email_contexts.items():
