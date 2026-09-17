@@ -1,8 +1,8 @@
 [
   {
-    "name": "Chelsea Hardware",
-    "reviews_count": 45,
-    "average_rating": 4.8
+    "name": "Nuthouse Hardware",
+    "reviews_count": 355,
+    "average_rating": 3.9
   },
   {
     "name": "Columbus Hardware",
@@ -11,8 +11,13 @@
   },
   {
     "name": "Brickman's Columbus Ave",
-    "reviews_count": 238,
+    "reviews_count": 237,
     "average_rating": 4.4
+  },
+  {
+    "name": "Chelsea Hardware",
+    "reviews_count": 44,
+    "average_rating": 4.8
   },
   {
     "name": "Rainbow Ycs",
@@ -25,53 +30,23 @@
     "average_rating": 4.2
   },
   {
-    "name": "El Barrio Hardware",
-    "reviews_count": 116,
-    "average_rating": 4.7
-  },
-  {
-    "name": "Fulton Supply & Hardware",
-    "reviews_count": 129,
-    "average_rating": 4.5
-  },
-  {
-    "name": "Manhattan Hardware & Housewares Inc.",
-    "reviews_count": 66,
-    "average_rating": 4.5
-  },
-  {
     "name": "73rd Street Hardware, Inc.",
-    "reviews_count": 52,
-    "average_rating": 4.3
-  },
-  {
-    "name": "Brickman's Ace Hardware Lower East Side",
-    "reviews_count": 204,
-    "average_rating": 4.3
-  },
-  {
-    "name": "Basics Plus",
-    "reviews_count": 169,
-    "average_rating": 4.5
-  },
-  {
-    "name": "Third Ave Hardware",
-    "reviews_count": 166,
-    "average_rating": 4.1
-  },
-  {
-    "name": "Garcia Hardware & Households",
-    "reviews_count": 42,
-    "average_rating": 5.0
-  },
-  {
-    "name": "Mega Building Supply - Upper West Side",
-    "reviews_count": 73,
-    "average_rating": 4.7
+    "reviews_count": 51,
+    "average_rating": 4.4
   },
   {
     "name": "BEACON HARDWARE",
-    "reviews_count": 72,
+    "reviews_count": 71,
+    "average_rating": 4.3
+  },
+  {
+    "name": "Fulton Supply & Hardware",
+    "reviews_count": 128,
+    "average_rating": 4.5
+  },
+  {
+    "name": "Brickman's Ace Hardware Lower East Side",
+    "reviews_count": 201,
     "average_rating": 4.3
   },
   {
@@ -80,14 +55,49 @@
     "average_rating": 4.6
   },
   {
-    "name": "Lower eastside hardware",
-    "reviews_count": 80,
+    "name": "Manhattan Hardware & Housewares Inc.",
+    "reviews_count": 66,
+    "average_rating": 4.5
+  },
+  {
+    "name": "El Barrio Hardware",
+    "reviews_count": 116,
+    "average_rating": 4.7
+  },
+  {
+    "name": "Mega Building Supply - Upper West Side",
+    "reviews_count": 72,
+    "average_rating": 4.7
+  },
+  {
+    "name": "Garcia Hardware & Households",
+    "reviews_count": 42,
+    "average_rating": 5.0
+  },
+  {
+    "name": "Basics Plus",
+    "reviews_count": 169,
     "average_rating": 4.5
   },
   {
     "name": "University Hardware Housewares",
     "reviews_count": 263,
     "average_rating": 4.6
+  },
+  {
+    "name": "Prince Hardware",
+    "reviews_count": 205,
+    "average_rating": 4.7
+  },
+  {
+    "name": "Citi Hardware",
+    "reviews_count": 44,
+    "average_rating": 4.1
+  },
+  {
+    "name": "Third Ave Hardware",
+    "reviews_count": 166,
+    "average_rating": 4.1
   },
   {
     "name": "Garden Hardware & Supply",
@@ -101,13 +111,13 @@
   },
   {
     "name": "O K Hardware",
-    "reviews_count": 102,
+    "reviews_count": 103,
     "average_rating": 2.6
   },
   {
-    "name": "Nuthouse Hardware",
-    "reviews_count": 356,
-    "average_rating": 3.9
+    "name": "C & S True Value Hardware",
+    "reviews_count": 101,
+    "average_rating": 4.2
   },
   {
     "name": "Garber Hardware",
@@ -115,9 +125,9 @@
     "average_rating": 4.3
   },
   {
-    "name": "Citi Hardware",
-    "reviews_count": 44,
-    "average_rating": 4.1
+    "name": "United Hardware",
+    "reviews_count": 112,
+    "average_rating": 4.4
   },
   {
     "name": "M & D Shapiro True Value Hardware",
@@ -125,34 +135,9 @@
     "average_rating": 4.0
   },
   {
-    "name": "Prince Hardware",
-    "reviews_count": 205,
-    "average_rating": 4.7
-  },
-  {
-    "name": "United Hardware",
-    "reviews_count": 112,
-    "average_rating": 4.4
-  },
-  {
-    "name": "Brickman's Ace Hardware Stuy Town | Paint | Electrical | Housewares | Toys | Blinds",
-    "reviews_count": 230,
-    "average_rating": 4.1
-  },
-  {
     "name": "hardware store Hercules Supply House",
     "reviews_count": 74,
     "average_rating": 4.8
-  },
-  {
-    "name": "Scheman & Grant Hardware",
-    "reviews_count": 117,
-    "average_rating": 3.8
-  },
-  {
-    "name": "Brickman's Ace Hardware West Village | Paint | Plumbing | Hand & Power Tools",
-    "reviews_count": 127,
-    "average_rating": 3.8
   },
   {
     "name": "Admore Hardware & Lock",
@@ -160,19 +145,9 @@
     "average_rating": 4.6
   },
   {
-    "name": "C & S True Value Hardware",
-    "reviews_count": 103,
-    "average_rating": 4.3
-  },
-  {
-    "name": "Dick's Cut-Rate Hardware INC.",
-    "reviews_count": 222,
-    "average_rating": 4.2
-  },
-  {
-    "name": "Garber Hardware",
-    "reviews_count": 206,
-    "average_rating": 4.5
+    "name": "Scheman & Grant Hardware",
+    "reviews_count": 115,
+    "average_rating": 3.8
   },
   {
     "name": "M&D Shapiro True Value Hardware",
@@ -180,14 +155,24 @@
     "average_rating": 4.1
   },
   {
+    "name": "Dick's Cut-Rate Hardware INC.",
+    "reviews_count": 222,
+    "average_rating": 4.2
+  },
+  {
     "name": "DGB Hardware",
     "reviews_count": 73,
     "average_rating": 4.0
   },
   {
-    "name": "Lexington Hardware & Electric Co",
-    "reviews_count": 59,
-    "average_rating": 3.3
+    "name": "R & R General Supply",
+    "reviews_count": 142,
+    "average_rating": 4.7
+  },
+  {
+    "name": "Brickman's Ace Hardware Stuy Town | Paint | Electrical | Housewares | Toys | Blinds",
+    "reviews_count": 229,
+    "average_rating": 4.1
   },
   {
     "name": "Lumber Boys",
@@ -195,9 +180,19 @@
     "average_rating": 3.9
   },
   {
-    "name": "R & R General Supply",
-    "reviews_count": 143,
+    "name": "New York Paint & Hardware",
+    "reviews_count": 33,
     "average_rating": 4.7
+  },
+  {
+    "name": "Brickman's Ace Hardware West Village | Paint | Plumbing | Hand & Power Tools",
+    "reviews_count": 127,
+    "average_rating": 3.8
+  },
+  {
+    "name": "ace hardware",
+    "reviews_count": 43,
+    "average_rating": 4.4
   },
   {
     "name": "H & W Hardware",
@@ -205,13 +200,28 @@
     "average_rating": 3.4
   },
   {
-    "name": "New York Paint & Hardware",
-    "reviews_count": 33,
-    "average_rating": 4.7
+    "name": "Garber Hardware",
+    "reviews_count": 205,
+    "average_rating": 4.5
   },
   {
-    "name": "Bartunek Hardware Inc",
-    "reviews_count": 134,
+    "name": "Safety Locksmith & Hardware Store",
+    "reviews_count": 191,
+    "average_rating": 4.8
+  },
+  {
+    "name": "Lexington Hardware & Electric Co",
+    "reviews_count": 59,
+    "average_rating": 3.3
+  },
+  {
+    "name": "Gantry Home & Hardware",
+    "reviews_count": 79,
+    "average_rating": 4.4
+  },
+  {
+    "name": "Barney's Hardware",
+    "reviews_count": 65,
     "average_rating": 4.6
   },
   {
@@ -220,29 +230,14 @@
     "average_rating": 4.6
   },
   {
-    "name": "Gantry Home & Hardware",
-    "reviews_count": 79,
-    "average_rating": 4.4
-  },
-  {
-    "name": "Saifee Hardware & Garden",
-    "reviews_count": 146,
-    "average_rating": 4.4
-  },
-  {
-    "name": "West New York Home Center",
-    "reviews_count": 153,
-    "average_rating": 4.5
-  },
-  {
-    "name": "S & V True Value Hardware",
-    "reviews_count": 50,
-    "average_rating": 3.4
-  },
-  {
-    "name": "Gantry Home & Hardware",
-    "reviews_count": 234,
+    "name": "T & Y Hardware",
+    "reviews_count": 22,
     "average_rating": 4.7
+  },
+  {
+    "name": "Bartunek Hardware Inc",
+    "reviews_count": 134,
+    "average_rating": 4.6
   },
   {
     "name": "105 Columbus Hardware",
@@ -250,34 +245,19 @@
     "average_rating": 3.8
   },
   {
-    "name": "Pioneer Hardware",
-    "reviews_count": 84,
-    "average_rating": 4.2
+    "name": "New York Paint & Hardware Supply House- Benjamin Moore Yorkville",
+    "reviews_count": 69,
+    "average_rating": 4.6
   },
   {
-    "name": "KDM Hardware",
-    "reviews_count": 63,
-    "average_rating": 4.1
-  },
-  {
-    "name": "Safety Locksmith & Hardware Store",
-    "reviews_count": 191,
-    "average_rating": 4.8
-  },
-  {
-    "name": "GREENWICH HARDWARE",
-    "reviews_count": 26,
+    "name": "Gantry Home & Hardware",
+    "reviews_count": 235,
     "average_rating": 4.7
   },
   {
-    "name": "West Side Home Center Inc",
-    "reviews_count": 94,
+    "name": "Pioneer Hardware",
+    "reviews_count": 83,
     "average_rating": 4.2
-  },
-  {
-    "name": "Bayard's Hardware Inc.",
-    "reviews_count": 46,
-    "average_rating": 4.0
   },
   {
     "name": "Max pro hardware",
@@ -285,9 +265,14 @@
     "average_rating": 4.1
   },
   {
-    "name": "Tribeca Paint",
-    "reviews_count": 121,
-    "average_rating": 4.3
+    "name": "JM Hardware Locksmith",
+    "reviews_count": 55,
+    "average_rating": 4.7
+  },
+  {
+    "name": "Bayard's Hardware Inc.",
+    "reviews_count": 47,
+    "average_rating": 3.9
   },
   {
     "name": "C H P Hardware",
@@ -295,28 +280,28 @@
     "average_rating": 4.3
   },
   {
-    "name": "T & Y Hardware",
-    "reviews_count": 23,
-    "average_rating": 4.5
-  },
-  {
-    "name": "Boss Hardware",
-    "reviews_count": 46,
-    "average_rating": 3.5
-  },
-  {
-    "name": "New York Paint & Hardware Supply House- Benjamin Moore Yorkville",
-    "reviews_count": 71,
-    "average_rating": 4.6
-  },
-  {
-    "name": "JM Hardware Locksmith",
-    "reviews_count": 55,
+    "name": "GREENWICH HARDWARE",
+    "reviews_count": 26,
     "average_rating": 4.7
   },
   {
-    "name": "Broadway Hardware & Paint Center",
-    "reviews_count": 121,
+    "name": "KDM Hardware",
+    "reviews_count": 63,
+    "average_rating": 4.1
+  },
+  {
+    "name": "West New York Home Center",
+    "reviews_count": 152,
+    "average_rating": 4.4
+  },
+  {
+    "name": "S & V True Value Hardware",
+    "reviews_count": 50,
+    "average_rating": 3.4
+  },
+  {
+    "name": "Saifee Hardware & Garden",
+    "reviews_count": 146,
     "average_rating": 4.4
   },
   {
@@ -326,17 +311,27 @@
   },
   {
     "name": "First Avenue Supply House",
-    "reviews_count": 52,
+    "reviews_count": 51,
     "average_rating": 4.7
   },
   {
-    "name": "Novick Paint and Hardware",
-    "reviews_count": 167,
-    "average_rating": 4.5
+    "name": "Apex Hardware NY",
+    "reviews_count": 28,
+    "average_rating": 5.0
   },
   {
-    "name": "Straus Paint & Hardware",
-    "reviews_count": 163,
+    "name": "Broadway Hardware & Paint Center",
+    "reviews_count": 121,
     "average_rating": 4.4
+  },
+  {
+    "name": "Tribeca Paint",
+    "reviews_count": 78,
+    "average_rating": 4.2
+  },
+  {
+    "name": "West Side Home Center Inc",
+    "reviews_count": 94,
+    "average_rating": 4.2
   }
 ]
