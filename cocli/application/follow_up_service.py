@@ -122,6 +122,8 @@ class FollowUpService:
             template_name=task.template_id,
             initiative=task.initiative,
         )
+        match.subject = subject
+        match.body = body
 
         batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         entry = PendingBatchEntry(
@@ -134,3 +136,7 @@ class FollowUpService:
             initiative=task.initiative,
         )
         service.append_pending_batch_entries([entry])
+        # Writes rendered-outreach/<slug>/<template>.md - the file Mark
+        # hand-edits before sending (see render_and_save_draft() and
+        # entry_to_match()), not just an audit record.
+        service.render_and_save_draft(match, template_id=task.template_id, initiative=task.initiative)

@@ -79,12 +79,20 @@ class GoogleVoiceEdgeAppProvider:
         if not proxy:
             logger.warning("msedge_proxy.exe not found; falling back to browser tab")
             return BrowserTabCallingProvider().dial(phone, campaign_name)
-        url = google_voice_url(phone, campaign_name)
+        # Only --profile-directory and --app-id are confirmed (2026-09-16
+        # manual test: launching with exactly these two flags opened the
+        # correct, single-instance Google Voice PWA window). An earlier
+        # version of this also passed --app-url=<dial url>, guessed from
+        # the *install-time* shortcut of a sibling PWA rather than
+        # verified against a real launch - that guess was wrong: it made
+        # msedge_proxy.exe fall back to a plain browser tab instead of the
+        # PWA window (2026-09-17, Mark). Until a real way to pre-fill the
+        # number is confirmed, this only focuses/opens the PWA - the
+        # number still needs to be typed in manually.
         command = [
             proxy,
             "--profile-directory=Default",
             f"--app-id={self.edge_app_id}",
-            f"--app-url={url}",
         ]
         if spawn_detached(command):
             return True

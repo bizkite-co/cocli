@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, TYPE_CHECKING
@@ -318,6 +319,76 @@ class PersonalizedOutreachService:
             result[name] = path.read_text(encoding="utf-8") if path.is_file() else ""
         return result
 
+    def _template_path(self, template_name: str, initiative: str = "rta") -> Path:
+        """Resolve a template (or layout) filename to its actual path:
+        campaigns/<c>/email-templates/ (campaign-generic) first, then
+        campaigns/<c>/initiatives/<initiative>/email-sequences/. Shared by
+        load_template() and _layout_for_template() so both agree on where
+        a given filename lives - an .njk layout sits in the same
+        directory as the .md template that references it."""
+        generic_dir = paths.campaigns / self.campaign_name / "email-templates"
+        initiative_dir = (
+            paths.campaigns / self.campaign_name / "initiatives" / initiative / "email-sequences"
+        )
+        template_path = generic_dir / template_name
+        if not template_path.exists():
+            template_path = initiative_dir / template_name
+        return template_path
+
+    def _layout_for_template(self, template_name: str, initiative: str = "rta") -> Optional[str]:
+        """The `layout:` frontmatter key of a .md template, if any - the
+        signal that this template's body is markdown meant to be rendered
+        to HTML through that .njk layout at send time, rather than sent
+        as plain text. Absent (None) for ordinary plain-text templates
+        like email_01_pas_hook.md."""
+        template_path = self._template_path(template_name, initiative)
+        if not template_path.exists():
+            return None
+        try:
+            content = template_path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        if not content.startswith("---"):
+            return None
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            return None
+        import yaml
+
+        meta = yaml.safe_load(parts[1]) or {}
+        layout = meta.get("layout")
+        return str(layout) if layout else None
+
+    def render_markdown_email(
+        self, markdown_body: str, layout_name: str, initiative: str = "rta"
+    ) -> str:
+        """Render a personalized markdown body into full HTML via its
+        .njk layout - markdown-it-py for the content (raw inline HTML,
+        e.g. the CTA button, passes through untouched), Jinja2 for the
+        layout (syntax-compatible with the website's actual Nunjucks -
+        cocli is a Python backend, so this is Jinja2 under the hood, not
+        the JS Nunjucks engine Eleventy uses; anything using Nunjucks-only
+        features wouldn't render the same way here)."""
+        from jinja2 import Template
+        from markdown_it import MarkdownIt
+
+        layout_path = self._template_path(layout_name, initiative)
+        layout_source = layout_path.read_text(encoding="utf-8")
+        content_html = MarkdownIt("commonmark", {"html": True}).render(markdown_body)
+        return Template(layout_source).render(content=content_html, landing_url=DEFAULT_LANDING_URL)
+
+    def _rendered_outreach_path(self, initiative: str, company_slug: str, template_id: str) -> Path:
+        stem = Path(template_id).stem
+        return (
+            paths.campaigns
+            / self.campaign_name
+            / "initiatives"
+            / initiative
+            / "rendered-outreach"
+            / company_slug
+            / f"{stem}.md"
+        )
+
     def load_template(
         self, template_name: str = "email_01_pas_hook.md", initiative: str = "rta"
     ) -> tuple[str, str]:
@@ -335,13 +406,7 @@ class PersonalizedOutreachService:
         browser can render a template from *whichever* initiative the
         user actually has selected, not always "rta".
         """
-        generic_dir = paths.campaigns / self.campaign_name / "email-templates"
-        initiative_dir = (
-            paths.campaigns / self.campaign_name / "initiatives" / initiative / "email-sequences"
-        )
-        template_path = generic_dir / template_name
-        if not template_path.exists():
-            template_path = initiative_dir / template_name
+        template_path = self._template_path(template_name, initiative)
 
         default_subject = "{first_name}, a 30-year spend-down view your clients will instantly understand"
         default_body = (
@@ -409,6 +474,18 @@ class PersonalizedOutreachService:
             landing_url=DEFAULT_LANDING_URL,
         )
 
+        if template_name.endswith(".html"):
+            # Collapse real newlines from the (nicely line-wrapped, for
+            # source readability) template file into single spaces before
+            # this ever reaches storage. BaseUsvModel.to_usv() converts
+            # every real "\n" to a literal "<br>" for USV storage - left
+            # alone, that turns every line-wrapped paragraph and every
+            # line break between tags into a visible <br>, filling the
+            # rendered email with unwanted line breaks and blank space.
+            # Deliberate literal "<br>" tags already in the source are
+            # untouched since they aren't "\n" characters.
+            raw_body = re.sub(r"[ \t]*\n[ \t]*", " ", raw_body)
+
         body_with_utm = append_utm_params(
             raw_body,
             campaign=self.campaign_name,
@@ -423,36 +500,74 @@ class PersonalizedOutreachService:
     def render_and_save_draft(
         self,
         match: ProspectContactMatch,
-        template_id: str = "email_01_pas_hook",
+        template_id: str = "email_01_pas_hook.md",
         initiative: str = "rta",
     ) -> Path:
-        """Render and save an outreach email draft to disk before sending, maintaining an audit trail."""
+        """Render and save an outreach email draft to disk.
 
-        out_dir = (
-            paths.campaigns
-            / self.campaign_name
-            / "initiatives"
-            / initiative
-            / "rendered-outreach"
-            / match.company_slug
-        )
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_file: Path = out_dir / f"{template_id}.md"
+        This is more than an audit trail: for a template with a `layout:`
+        (a markdown template meant to become an HTML email, see
+        _layout_for_template()), this file - not the pending-batch queue
+        row - is the thing to hand-edit before sending. entry_to_match()
+        re-reads it at send time if present, so editing "As promised, ..."
+        into this file directly (in your own editor) is exactly how a
+        generalized template becomes one specific recipient's email
+        (Mark, 2026-09-17)."""
+        out_file = self._rendered_outreach_path(initiative, match.company_slug, template_id)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        template_stem = Path(template_id).stem
+        layout = self._layout_for_template(template_id, initiative)
 
-        frontmatter = (
-            f"---\n"
-            f"template_id: {template_id}\n"
-            f"company_slug: {match.company_slug}\n"
-            f"company_name: {match.company_name}\n"
-            f"recipient_email: {match.recipient_email}\n"
-            f"contact_name: {match.contact_name}\n"
-            f"first_name: {match.first_name}\n"
-            f"subject: \"{match.subject}\"\n"
-            f"---\n\n"
-        )
+        frontmatter_lines = [
+            "---",
+            f"template_id: {template_stem}",
+            f"company_slug: {match.company_slug}",
+            f"company_name: {match.company_name}",
+            f"recipient_email: {match.recipient_email}",
+            f"contact_name: {match.contact_name}",
+            f"first_name: {match.first_name}",
+            f'subject: "{match.subject}"',
+        ]
+        if layout:
+            frontmatter_lines.append(f"layout: {layout}")
+        frontmatter_lines.append("---\n\n")
+        frontmatter = "\n".join(frontmatter_lines)
 
         out_file.write_text(frontmatter + match.body, encoding="utf-8")
+        self.render_and_save_html_preview(initiative, match.company_slug, template_id)
         return out_file
+
+    def render_and_save_html_preview(
+        self, initiative: str, company_slug: str, template_id: str
+    ) -> Optional[Path]:
+        """Regenerate rendered-outreach/<slug>/<template>.html from the
+        *current* markdown file's content - the actual HTML that would be
+        sent right now, so you can open it in a browser and see the real
+        image/testimonial/button, not just markdown source with raw <img>
+        tags sitting in it. Returns None (and removes any stale .html) for
+        templates with no `layout:` - there's nothing to preview beyond
+        the plain-text body itself.
+
+        Called after every write to the .md file (render_and_save_draft,
+        entry_to_match, update_pending_entry) so this file can never go
+        stale relative to whatever you last edited (Mark, 2026-09-17: "we
+        also need to emit the rendered HTML ... which would have to be
+        updated if the rendered Markdown is changed")."""
+        md_path = self._rendered_outreach_path(initiative, company_slug, template_id)
+        html_path = md_path.with_suffix(".html")
+        current = self._read_rendered_outreach(md_path)
+        if current is None:
+            return None
+        _subject, body = current
+
+        layout = self._layout_for_template(template_id, initiative)
+        if not layout:
+            html_path.unlink(missing_ok=True)
+            return None
+
+        html = self.render_markdown_email(body, layout, initiative)
+        html_path.write_text(html, encoding="utf-8")
+        return html_path
 
     def send_batch(
         self,
@@ -461,6 +576,7 @@ class PersonalizedOutreachService:
         template_id: str,
         email_service: "EmailService",
         initiative: str = "rta",
+        cc_addresses: Optional[list[str]] = None,
     ) -> SendBatchResult:
         """Actually sends a batch (as opposed to prepare-batch/render_and_save_draft,
         which only render drafts to disk).
@@ -472,6 +588,11 @@ class PersonalizedOutreachService:
         Appends one SendLogEntry per attempt to the campaign's structured
         send log - the replacement for scattered per-company EmailNote
         markdown files as the source of truth for "was this actually sent."
+
+        `cc_addresses`, when given, is applied to every recipient in this
+        call - fine for the one-off "cc myself" case a single pending
+        entry is sent through (`send-pending`), not intended for routine
+        bulk `send-batch` use.
         """
         from datetime import datetime, UTC
 
@@ -488,14 +609,30 @@ class PersonalizedOutreachService:
 
         result = SendBatchResult(batch_id=batch_id)
         entries: list[SendLogEntry] = []
-        # A .html template's rendered body IS the HTML content - no
-        # separate authoring of two versions. A plain-text fallback is
-        # derived automatically (a real multipart/alternative email needs
-        # one for clients/spam filters that don't render HTML anyway).
-        is_html_template = template_id.endswith(".html")
+        # A template with a `layout:` frontmatter key is markdown meant to
+        # become an HTML email - render it through that .njk layout here,
+        # once per batch (the layout is a property of the template, not
+        # of the recipient). A .html-suffixed template_id (legacy - the
+        # body IS already HTML, no markdown/layout step) is still
+        # supported directly. Either way, a plain-text fallback is
+        # derived automatically for the multipart/alternative part.
+        layout_name = self._layout_for_template(template_id, initiative)
+        is_legacy_html_template = template_id.endswith(".html")
         for match in matches:
             try:
-                if is_html_template:
+                if layout_name:
+                    from cocli.utils.html_to_text import html_to_text
+
+                    html_body = self.render_markdown_email(match.body, layout_name, initiative)
+                    mail_request = SendMailRequest(
+                        to_address=match.recipient_email,
+                        subject=match.subject,
+                        body=html_to_text(html_body),
+                        html_body=html_body,
+                        company_slug=match.company_slug,
+                        cc_addresses=cc_addresses or [],
+                    )
+                elif is_legacy_html_template:
                     from cocli.utils.html_to_text import html_to_text
 
                     mail_request = SendMailRequest(
@@ -504,6 +641,7 @@ class PersonalizedOutreachService:
                         body=html_to_text(match.body),
                         html_body=match.body,
                         company_slug=match.company_slug,
+                        cc_addresses=cc_addresses or [],
                     )
                 else:
                     mail_request = SendMailRequest(
@@ -511,6 +649,7 @@ class PersonalizedOutreachService:
                         subject=match.subject,
                         body=match.body,
                         company_slug=match.company_slug,
+                        cc_addresses=cc_addresses or [],
                     )
                 send_result = email_service.send(mail_request)
                 entries.append(
@@ -524,6 +663,9 @@ class PersonalizedOutreachService:
                         status="sent",
                         initiative=initiative,
                     )
+                )
+                self._stamp_rendered_outreach_sent(
+                    initiative, match.company_slug, template_id, send_result.message_id
                 )
                 result.sent += 1
             except Exception as exc:
@@ -612,8 +754,29 @@ class PersonalizedOutreachService:
             if line.strip()
         ]
 
-    @staticmethod
-    def entry_to_match(entry: "PendingBatchEntry") -> ProspectContactMatch:
+    def _read_rendered_outreach(self, path: Path) -> Optional[tuple[str, str]]:
+        """(subject, body) from a rendered-outreach .md file's current
+        on-disk content, or None if it doesn't exist / can't be parsed."""
+        if not path.exists():
+            return None
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        if not content.startswith("---"):
+            return None
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            return None
+        import yaml
+
+        meta = yaml.safe_load(parts[1]) or {}
+        subject = meta.get("subject")
+        if not subject:
+            return None
+        return str(subject), parts[2].strip()
+
+    def entry_to_match(self, entry: "PendingBatchEntry") -> ProspectContactMatch:
         """PendingBatchEntry.to_usv() sanitizes newlines to '<br>' (the
         same lossy encoding every USV string field uses, base.py's
         to_usv()) - reversed here, once, so both the review preview and
@@ -627,8 +790,27 @@ class PersonalizedOutreachService:
         HTML doesn't render bare \\n as a line break anyway (whitespace
         is collapsed) - reversing here would silently turn intentional
         <br> tags into invisible newline characters instead.
+
+        If a rendered-outreach/<slug>/<template>.md file exists for this
+        entry, its *current* on-disk subject/body wins over the frozen
+        pending.usv row - that file, not this queue row, is the thing
+        Mark hand-edits (2026-09-17: "I have to edit the text ... put the
+        'As promised,' to Jimmy Jean's rendered version"). update_pending_entry()
+        keeps the file in sync with in-TUI edits too, so there's one
+        source of truth regardless of which surface was used to edit it.
         """
         is_html = entry.template_id.endswith(".html")
+        subject = entry.subject if is_html else entry.subject.replace("<br>", "\n")
+        body = entry.body if is_html else entry.body.replace("<br>", "\n")
+
+        rendered_path = self._rendered_outreach_path(
+            entry.initiative, entry.company_slug, entry.template_id
+        )
+        current = self._read_rendered_outreach(rendered_path)
+        if current is not None:
+            subject, body = current
+            self.render_and_save_html_preview(entry.initiative, entry.company_slug, entry.template_id)
+
         return ProspectContactMatch(
             company_slug=entry.company_slug,
             company_name=entry.company_slug,
@@ -636,9 +818,89 @@ class PersonalizedOutreachService:
             contact_name="",
             first_name="",
             role=None,
-            subject=entry.subject if is_html else entry.subject.replace("<br>", "\n"),
-            body=entry.body if is_html else entry.body.replace("<br>", "\n"),
+            subject=subject,
+            body=body,
         )
+
+    def ensure_rendered_outreach_draft(self, entry: "PendingBatchEntry") -> Path:
+        """The rendered-outreach/<slug>/<template>.md path for this pending
+        entry, creating it from the frozen batch row if it doesn't exist
+        yet. A batch frozen via freeze_batch()/"New Batch" in the TUI
+        never gets one up front (unlike FollowUpService/prepare-batch,
+        which call render_and_save_draft() directly) - this lets "open
+        HTML preview" work for any pending entry, not just follow-ups.
+
+        Never overwrites an *existing* file - entry_to_match() returns
+        placeholder company_name/contact_name/first_name for entries with
+        no rendered-outreach file yet, and re-running render_and_save_draft
+        against an existing file would blow away better data already
+        written there (e.g. by FollowUpService)."""
+        rendered_path = self._rendered_outreach_path(
+            entry.initiative, entry.company_slug, entry.template_id
+        )
+        if not rendered_path.exists():
+            match = self.entry_to_match(entry)
+            self.render_and_save_draft(match, template_id=entry.template_id, initiative=entry.initiative)
+        return rendered_path
+
+    def _sync_rendered_outreach_edit(self, path: Path, subject: str, body: str) -> None:
+        """Write subject/body into an existing rendered-outreach file,
+        preserving its other frontmatter (company_name, layout, etc.) -
+        keeps the file in sync when the edit came from the TUI's
+        EditPendingEntryModal rather than a direct hand-edit, so
+        entry_to_match() always has one consistent answer regardless of
+        which surface was used to edit (2026-09-17)."""
+        if not path.exists():
+            return
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            return
+        if not content.startswith("---"):
+            return
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            return
+        import yaml
+
+        meta = yaml.safe_load(parts[1]) or {}
+        meta["subject"] = subject
+        new_frontmatter = yaml.safe_dump(meta, sort_keys=False).strip()
+        path.write_text(f"---\n{new_frontmatter}\n---\n\n{body}", encoding="utf-8")
+
+    def _stamp_rendered_outreach_sent(
+        self, initiative: str, company_slug: str, template_id: str, message_id: str
+    ) -> None:
+        """Add sent_at/message_id to a rendered-outreach file's frontmatter
+        right after a successful send - the file stays at its usual
+        stable path (send_batch/entry_to_match/ensure_rendered_outreach_draft
+        all assume that), but now visibly answers "was this actually sent"
+        without cross-referencing the send log (Mark, 2026-09-17: "should
+        we put a receipt next to every sent one"). A no-op if this send
+        never went through a rendered-outreach file (e.g. a bulk
+        send-batch call with no prior prepare-batch/FollowUpService
+        draft)."""
+        from datetime import UTC, datetime
+
+        path = self._rendered_outreach_path(initiative, company_slug, template_id)
+        if not path.exists():
+            return
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            return
+        if not content.startswith("---"):
+            return
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            return
+        import yaml
+
+        meta = yaml.safe_load(parts[1]) or {}
+        meta["sent_at"] = datetime.now(UTC).isoformat()
+        meta["message_id"] = message_id
+        new_frontmatter = yaml.safe_dump(meta, sort_keys=False).strip()
+        path.write_text(f"---\n{new_frontmatter}\n---\n\n{parts[2].strip()}", encoding="utf-8")
 
     def update_pending_entry(
         self, batch_id: str, company_slug: str, *, subject: str, body: str
@@ -647,7 +909,11 @@ class PersonalizedOutreachService:
         place - the "add my own text on top of the template, then send"
         step Mark asked for (2026-09-16), rather than requiring every
         follow-up to be either a raw template or hand-composed from
-        scratch. Returns False if no matching row was found."""
+        scratch. Returns False if no matching row was found.
+
+        Also writes through to this entry's rendered-outreach file (if
+        one exists) so a TUI edit and a direct file edit can't silently
+        diverge - entry_to_match() prefers that file's current content."""
         entries = self.list_pending_batches()
         found = False
         for entry in entries:
@@ -655,11 +921,22 @@ class PersonalizedOutreachService:
                 entry.subject = subject
                 entry.body = body
                 found = True
+                rendered_path = self._rendered_outreach_path(
+                    entry.initiative, entry.company_slug, entry.template_id
+                )
+                self._sync_rendered_outreach_edit(rendered_path, subject, body)
+                self.render_and_save_html_preview(entry.initiative, entry.company_slug, entry.template_id)
         if found:
             self._rewrite_pending(entries)
         return found
 
-    def send_pending_batch(self, batch_id: str, *, email_service: "EmailService") -> SendBatchResult:
+    def send_pending_batch(
+        self,
+        batch_id: str,
+        *,
+        email_service: "EmailService",
+        cc_addresses: Optional[list[str]] = None,
+    ) -> SendBatchResult:
         """Sends exactly the frozen rows for batch_id (not a fresh
         find_eligible_prospects() re-render - what was reviewed is what
         gets sent), then removes only that batch_id's rows from
@@ -677,6 +954,45 @@ class PersonalizedOutreachService:
             template_id=batch_entries[0].template_id,
             email_service=email_service,
             initiative=batch_entries[0].initiative,
+            cc_addresses=cc_addresses,
+        )
+
+        self._rewrite_pending(remaining)
+        return result
+
+    def send_one_pending_entry(
+        self,
+        batch_id: str,
+        company_slug: str,
+        *,
+        email_service: "EmailService",
+        cc_addresses: Optional[list[str]] = None,
+    ) -> SendBatchResult:
+        """Sends exactly one (batch_id, company_slug) row, unlike
+        send_pending_batch() which sends every row sharing that batch_id -
+        for "send this one company's pending entry as a one-off, without
+        disrupting anything else" (Mark, 2026-09-17, `email send-pending`).
+        A follow-up already gets a unique batch_id per company, so this
+        only matters when the matched row happens to share a batch_id
+        with other recipients (a bulk freeze_batch())."""
+        all_entries = self.list_pending_batches()
+        target = [
+            e for e in all_entries if e.batch_id == batch_id and e.company_slug == company_slug
+        ]
+        remaining = [
+            e for e in all_entries if not (e.batch_id == batch_id and e.company_slug == company_slug)
+        ]
+
+        if not target:
+            return SendBatchResult(batch_id=batch_id, sent=0, failed=0)
+
+        matches = [self.entry_to_match(e) for e in target]
+        result = self.send_batch(
+            matches,
+            template_id=target[0].template_id,
+            email_service=email_service,
+            initiative=target[0].initiative,
+            cc_addresses=cc_addresses,
         )
 
         self._rewrite_pending(remaining)

@@ -1,7 +1,12 @@
 from __future__ import annotations
 from typing import Optional
 
-from cocli.utils.open_url import _candidate_commands, _escape_for_cmd_exe, open_url
+from cocli.utils.open_url import (
+    _candidate_commands,
+    _escape_for_cmd_exe,
+    open_url,
+    spawn_detached,
+)
 
 
 URL = "http://acme.example"
@@ -138,3 +143,19 @@ def test_open_url_does_not_claim_success_when_nothing_launches(monkeypatch) -> N
     monkeypatch.setattr("cocli.utils.open_url._webbrowser_open", lambda url: False)
 
     assert open_url(URL) is False
+
+
+def test_spawn_detached_refuses_to_launch_under_pytest() -> None:
+    """Regression (2026-09-17): a TUI test that forgot to mock the
+    calling-provider path it exercised actually launched the real
+    msedge_proxy.exe on every test run - nothing stopped a real
+    subprocess.Popen from firing just because a test forgot to mock.
+    PYTEST_CURRENT_TEST is always set while a test is running (pytest
+    sets it itself), so this is true for this test too - proving the
+    guard fires without needing to fake being outside pytest."""
+    import os
+
+    assert "PYTEST_CURRENT_TEST" in os.environ
+    # "true" is a real, harmless binary - if the guard didn't fire this
+    # would actually spawn it (and return True).
+    assert spawn_detached(["true"]) is False

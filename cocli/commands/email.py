@@ -269,4 +269,120 @@ def send_batch(
     )
 
 
+@app.command("list-pending")
+def list_pending() -> None:
+    """List every not-yet-sent pending-batch row - the answer to "what's
+    still queued to send." A row disappears from here the moment it's
+    sent (send-pending/send-batch remove it from pending.usv and append
+    a SendLogEntry to email-send-log/log.usv instead - that's the
+    permanent "was this sent" record, queryable via `list_send_log()`)."""
+    campaign_name = _require_campaign()
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    service = PersonalizedOutreachService(campaign_name)
+    entries = service.list_pending_batches()
+
+    if not entries:
+        console.print("[dim]Nothing pending - everything queued has been sent or discarded.[/dim]")
+        return
+
+    for entry in entries:
+        console.print(
+            f"[bold cyan]{entry.batch_id}[/bold cyan]  {entry.company_slug} <{entry.recipient}>  "
+            f"({entry.template_id}, {entry.initiative})"
+        )
+
+
+@app.command("send-pending")
+def send_pending(
+    company_slug: str = typer.Argument(..., help="Company slug to send the pending entry for."),
+    batch_id: Optional[str] = typer.Option(
+        None, "--batch-id", "-b", help="Disambiguate if more than one pending entry matches this company."
+    ),
+    cc: list[str] = typer.Option(
+        [], "--cc", help="Cc address(es) - repeatable. Applied to this send only, not saved anywhere."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be sent without actually sending."
+    ),
+) -> None:
+    """Send exactly one pending entry as a one-off, without touching the
+    rest of the pending queue or the regular batch-send workflow - e.g.
+    "send this specific follow-up now, and cc myself" (Mark, 2026-09-17)."""
+    campaign_name = _require_campaign()
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    service = PersonalizedOutreachService(campaign_name)
+    matches = [e for e in service.list_pending_batches() if e.company_slug == company_slug]
+    if batch_id:
+        matches = [e for e in matches if e.batch_id == batch_id]
+
+    if not matches:
+        console.print(f"[bold red]No pending entry found for '{company_slug}'.[/bold red]")
+        raise typer.Exit(code=1)
+    if len(matches) > 1:
+        console.print(
+            f"[bold red]{len(matches)} pending entries match '{company_slug}' - pass --batch-id to pick one:[/bold red]"
+        )
+        for entry in matches:
+            console.print(f"  {entry.batch_id}  ({entry.template_id})")
+        raise typer.Exit(code=1)
+
+    entry = matches[0]
+    if dry_run:
+        match = service.entry_to_match(entry)
+        console.print(f"[bold blue]Dry run[/bold blue] - would send to {entry.recipient}")
+        if cc:
+            console.print(f"    Cc: {', '.join(cc)}")
+        console.print(f"    Subject: {match.subject}")
+        return
+
+    settings, profile = _settings(campaign_name)
+    email_service = EmailService(campaign_name, settings, aws_profile=profile)
+    result = service.send_one_pending_entry(
+        entry.batch_id, entry.company_slug, email_service=email_service, cc_addresses=cc or None
+    )
+
+    console.print(
+        f"[bold green]Sent to {entry.recipient}[/bold green]: sent={result.sent} failed={result.failed}"
+    )
+
+
+@app.command("render-html-preview")
+def render_html_preview(
+    company_slug: str = typer.Argument(..., help="Company slug (matches rendered-outreach/<slug>/)."),
+    template: str = typer.Argument(..., help="Template filename, e.g. email_02_product_overview.md."),
+    initiative: str = typer.Option(
+        "rta", "--initiative", "-i", help="Which campaigns/<c>/initiatives/<name>/ this belongs to."
+    ),
+    open_it: bool = typer.Option(
+        True, "--open/--no-open", help="Open the rendered HTML in the desktop browser after regenerating it."
+    ),
+) -> None:
+    """Regenerate rendered-outreach/<slug>/<template>.html from the
+    *current* content of the sibling .md file - the actual HTML that
+    would be sent, so you can review the real image/testimonial/button
+    rendering, not just markdown source with raw HTML tags in it. Only
+    produces output for templates with a `layout:` frontmatter key; a
+    plain-text template has nothing beyond the body already visible in
+    the .md file."""
+    campaign_name = _require_campaign()
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.utils.open_url import open_url
+
+    service = PersonalizedOutreachService(campaign_name)
+    html_path = service.render_and_save_html_preview(initiative, company_slug, template)
+
+    if html_path is None:
+        console.print(
+            "[yellow]No HTML preview produced - either no rendered-outreach draft exists yet "
+            f"for '{company_slug}'/{template}, or that template has no `layout:` key.[/yellow]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print(f"[bold green]Rendered:[/bold green] {html_path}")
+    if open_it:
+        if not open_url(str(html_path)):
+            console.print("[yellow]Could not open a browser - open the path above manually.[/yellow]")
+
 

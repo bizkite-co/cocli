@@ -70,10 +70,11 @@ def test_google_voice_edge_app_provider_builds_expected_command() -> None:
         assert provider.dial("5551234567") is True
 
     command = captured["command"]
-    assert command[0] == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe"
-    assert "--profile-directory=Default" in command
-    assert "--app-id=bbcbahpbnakjldhdcgiblnjnfgaejidg" in command
-    assert any(part.startswith("--app-url=") and "voice.google.com" in part for part in command)
+    assert command == [
+        "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+        "--profile-directory=Default",
+        "--app-id=bbcbahpbnakjldhdcgiblnjnfgaejidg",
+    ]
 
 
 def test_google_voice_edge_app_provider_falls_back_when_proxy_missing() -> None:

@@ -633,6 +633,66 @@ def compile_to_call(
         raise typer.Exit(1)
 
 
+@app.command(name="schedule-follow-up")
+def schedule_follow_up(
+    company_slug: Annotated[str, typer.Argument(help="Company slug to schedule a follow-up for.")],
+    format: Annotated[
+        str, typer.Option("--format", "-f", help='"call" or "email".')
+    ] = "email",
+    template: Annotated[
+        Optional[str],
+        typer.Option("--template", "-t", help="Template filename (email format only, e.g. email_02_product_overview.md)."),
+    ] = None,
+    when: Annotated[
+        Optional[str],
+        typer.Option("--when", "-w", help="YYYY-MM-DD to schedule for; defaults to now (due immediately)."),
+    ] = None,
+    initiative: Annotated[
+        str, typer.Option("--initiative", "-i", help="Which initiative's email-sequences/ to use.")
+    ] = "rta",
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="The name of the campaign.")
+    ] = None,
+) -> None:
+    """Schedule a follow-up outside the note screen's call-log flow - for
+    a company you've already called (like Jimmy Jean) where logging a
+    fake new call just to reach the follow-up picker doesn't make sense.
+    Doesn't send anything: run `process-follow-ups` afterward to render
+    it (email) or queue it (call), same as a follow-up scheduled from the
+    Call Log modal."""
+    from datetime import UTC, datetime
+
+    from ...application.follow_up_service import FollowUpService
+    from ...models.companies.company import Company
+
+    name = _require_campaign(campaign_name)
+
+    if format == "email" and not template:
+        console.print("[bold red]--template is required for format=email.[/bold red]")
+        raise typer.Exit(code=1)
+
+    company = Company.get(company_slug)
+    if not company:
+        console.print(f"[bold red]Company '{company_slug}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    scheduled_at = (
+        datetime.strptime(when, "%Y-%m-%d").replace(tzinfo=UTC) if when else datetime.now(UTC)
+    )
+
+    service = FollowUpService(name)
+    task = service.add_follow_up(
+        company_slug=company_slug,
+        domain=company.domain or "unknown",
+        scheduled_at=scheduled_at,
+        format=format,  # type: ignore[arg-type]
+        template_id=template,
+        initiative=initiative,
+    )
+    console.print(f"[bold green]Scheduled follow-up {task.task_id} for '{company_slug}'.[/bold green]")
+    console.print("Run `process-follow-ups` to render/queue it now that it's due.")
+
+
 @app.command(name="process-follow-ups")
 def process_follow_ups(
     campaign_name: Annotated[

@@ -42,6 +42,7 @@ class SesSender(Protocol):
         subject: str,
         body: str,
         html_body: Optional[str] = None,
+        cc_addresses: Optional[list[str]] = None,
     ) -> str: ...
 
 
@@ -67,6 +68,7 @@ class Boto3SesSender:
         subject: str,
         body: str,
         html_body: Optional[str] = None,
+        cc_addresses: Optional[list[str]] = None,
     ) -> str:
         # send_raw_email (not the simpler send_email API) so we can set
         # List-Unsubscribe - Gmail/Yahoo bulk-sender rules expect it and
@@ -74,6 +76,8 @@ class Boto3SesSender:
         msg = EmailMessage()
         msg["From"] = source
         msg["To"] = to_address
+        if cc_addresses:
+            msg["Cc"] = ", ".join(cc_addresses)
         msg["Subject"] = subject
         if self._reply_to:
             msg["Reply-To"] = self._reply_to
@@ -88,9 +92,13 @@ class Boto3SesSender:
         if html_body:
             msg.add_alternative(html_body, subtype="html")
 
+        # SES doesn't parse the raw message's headers for delivery - a Cc
+        # header alone would show the address to the recipient without
+        # actually sending them anything, so it must also be listed here.
+        destinations = [to_address] + list(cc_addresses or [])
         kwargs: dict[str, object] = {
             "Source": source,
-            "Destinations": [to_address],
+            "Destinations": destinations,
             "RawMessage": {"Data": msg.as_bytes()},
         }
         if self._configuration_set:
@@ -144,6 +152,7 @@ class EmailService:
             subject=request.subject,
             body=request.body,
             html_body=request.html_body,
+            cc_addresses=request.cc_addresses or None,
         )
         slug = request.company_slug or self._lookup(request.to_address)
         note_written = False

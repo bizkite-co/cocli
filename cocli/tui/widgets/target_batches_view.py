@@ -60,6 +60,7 @@ class TargetBatchesView(MasterDetailView):
     BINDINGS = [
         Binding("n", "new_batch", "New Batch", show=True),
         Binding("e", "edit_entry", "Edit", show=True),
+        Binding("o", "open_preview", "Open HTML Preview", show=True),
         Binding("s", "send_batch", "Send Batch", show=True),
         Binding("d", "discard_batch", "Discard Batch", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
@@ -104,7 +105,9 @@ class TargetBatchesView(MasterDetailView):
         from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         entry = message.item.entry
-        match = PersonalizedOutreachService.entry_to_match(entry)
+        app = cast("CocliApp", self.app)
+        service = PersonalizedOutreachService(app.services.campaign_name)
+        match = service.entry_to_match(entry)
         self.batch_preview.update_preview(match.subject, match.body)
 
     def _highlighted_entry(self) -> "PendingBatchEntry | None":
@@ -151,7 +154,10 @@ class TargetBatchesView(MasterDetailView):
         from .edit_pending_entry_modal import EditPendingEntryModal
         from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
-        match = PersonalizedOutreachService.entry_to_match(entry)
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        service = PersonalizedOutreachService(campaign)
+        match = service.entry_to_match(entry)
         result = await self.app.push_screen_wait(
             EditPendingEntryModal(match.subject, match.body)
         )
@@ -159,12 +165,44 @@ class TargetBatchesView(MasterDetailView):
             return
         subject, body = result
 
-        app = cast("CocliApp", self.app)
-        campaign = app.services.campaign_name
-        service = PersonalizedOutreachService(campaign)
         service.update_pending_entry(entry.batch_id, entry.company_slug, subject=subject, body=body)
         self.app.notify(f"Updated draft for {entry.company_slug}")
         self.refresh_batches()
+
+    def action_open_preview(self) -> None:
+        """Open this entry's rendered-outreach/<slug>/<template>.html in
+        the desktop browser - the actual HTML that would be sent, image
+        and all, not just markdown source with raw <img> tags in it.
+        Only exists for templates with a `layout:` (see
+        render_and_save_html_preview()); a plain-text .md template has
+        nothing to preview beyond what's already in the detail pane."""
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.utils.open_url import open_url
+
+        entry = self._highlighted_entry()
+        if entry is None:
+            return
+        app = cast("CocliApp", self.app)
+        service = PersonalizedOutreachService(app.services.campaign_name)
+        # Materializes a rendered-outreach draft on first view for batches
+        # that never went through prepare-batch/FollowUpService (e.g. "New
+        # Batch" in this view) - see ensure_rendered_outreach_draft()'s
+        # docstring for why this must not just call render_and_save_draft
+        # unconditionally.
+        service.ensure_rendered_outreach_draft(entry)
+        html_path = service.render_and_save_html_preview(
+            entry.initiative, entry.company_slug, entry.template_id
+        )
+        if html_path is None:
+            self.app.notify(
+                f"No HTML preview for {entry.template_id} (plain-text template)",
+                severity="warning",
+            )
+            return
+        if open_url(str(html_path)):
+            self.app.notify(f"Opened HTML preview for {entry.company_slug}")
+        else:
+            self.app.notify(f"Could not open {html_path}", severity="error")
 
     def action_send_batch(self) -> None:
         entry = self._highlighted_entry()

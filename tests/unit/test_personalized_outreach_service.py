@@ -36,6 +36,57 @@ def test_generate_copy_includes_name_and_utm() -> None:
     assert "utm_term=david" in body
 
 
+def test_generate_copy_collapses_newlines_for_html_templates(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Regression (2026-09-17): BaseUsvModel.to_usv() turns every real
+    newline into a literal "<br>" for storage. An .html template authored
+    with normal line-wrapping for source readability would otherwise pick
+    up a stray <br> after every wrapped line once it round-trips through
+    the pending-batch USV file, filling the rendered email with unwanted
+    line breaks. generate_copy() must flatten real newlines out of HTML
+    bodies (leaving literal <br> tags already in the source alone) before
+    anything reaches storage."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    templates_dir = paths.campaigns / "roadmap" / "email-templates"
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    (templates_dir / "email_intro.html").write_text(
+        "---\n"
+        "subject_templates:\n"
+        "  - '{first_name}, hello'\n"
+        "---\n"
+        "<p>Hi {first_name},</p>\n"
+        "<p>Line one\n"
+        "<br><br>\n"
+        "Line two</p>\n",
+        encoding="utf-8",
+    )
+
+    service = PersonalizedOutreachService("roadmap")
+    _, body = service.generate_copy(
+        first_name="Bob",
+        company_name="Acme Co",
+        company_slug="acme-co",
+        template_name="email_intro.html",
+    )
+
+    assert "\n" not in body
+    assert body.count("<br>") == 2
+    assert "Line one <br><br> Line two" in body
+
+
+def test_generate_copy_preserves_newlines_for_md_templates() -> None:
+    service = PersonalizedOutreachService("roadmap")
+    _, body = service.generate_copy(
+        first_name="David",
+        company_name="Apex Financial",
+        company_slug="apex-financial",
+        template_name="email_01_pas_hook.md",
+    )
+    assert "\n" in body
+
 
 def test_find_eligible_prospects(tmp_path: Any, monkeypatch: Any) -> None:
     from cocli.core.paths import paths
@@ -201,6 +252,348 @@ def test_send_batch_with_md_template_never_sets_html_body(
     )
 
     assert fake_email_service.sent_requests[0].html_body is None
+
+
+def _write_layout_template(paths: Any, campaign: str = "roadmap") -> None:
+    """A .md template with a `layout:` frontmatter key + its .njk layout,
+    both in email-templates/ (the campaign-generic dir load_template()
+    checks first) - the shape email_02_product_overview.md/.njk actually
+    use in campaigns/roadmap/initiatives/rta/email-sequences/."""
+    templates_dir = paths.campaigns / campaign / "email-templates"
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    (templates_dir / "email_02_product_overview.md").write_text(
+        "---\n"
+        "subject_templates:\n"
+        "  - '{first_name}, take a look'\n"
+        "layout: email_02_product_overview.njk\n"
+        "---\n"
+        "Hi {first_name},\n\n"
+        "Check out **{landing_url}**.\n",
+        encoding="utf-8",
+    )
+    (templates_dir / "email_02_product_overview.njk").write_text(
+        "<html><body>{{ content | safe }}"
+        '<p><a href="{{ landing_url }}/unsubscribe">unsubscribe</a></p></body></html>',
+        encoding="utf-8",
+    )
+
+
+def test_layout_for_template_reads_frontmatter_key(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service._layout_for_template("email_02_product_overview.md") == "email_02_product_overview.njk"
+    assert service._layout_for_template("email_01_pas_hook.md") is None
+
+
+def test_render_markdown_email_wraps_content_in_layout(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    html = service.render_markdown_email(
+        "Hi Bob,\n\nSome **bold** text.", "email_02_product_overview.njk"
+    )
+
+    assert "<html>" in html
+    assert "<p>Hi Bob,</p>" in html
+    assert "<strong>bold</strong>" in html
+    assert "unsubscribe" in html
+
+
+def test_send_batch_with_layout_template_renders_markdown_to_html(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A .md template with a `layout:` key must be rendered through that
+    layout at send time - markdown source becomes real HTML, not sent
+    as raw markdown text with asterisks in it."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = "Hi Bob,\n\nCheck out **our product**."
+    fake_email_service = _FakeEmailService()
+
+    service = PersonalizedOutreachService("roadmap")
+    result = service.send_batch(
+        [match], template_id="email_02_product_overview.md", email_service=fake_email_service
+    )
+
+    assert result.sent == 1
+    sent = fake_email_service.sent_requests[0]
+    assert sent.html_body is not None
+    assert "<strong>our product</strong>" in sent.html_body
+    assert "**" not in sent.html_body
+    assert "Check out our product" in sent.body
+
+
+def test_entry_to_match_prefers_hand_edited_rendered_outreach_file(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The whole point of writing rendered-outreach/<slug>/<template>.md
+    (2026-09-17): Mark hand-edits that file (e.g. adding "As promised,")
+    before sending, and entry_to_match() must pick up that edit instead
+    of the frozen pending.usv snapshot from when the follow-up was
+    queued."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "bob@acme.test", subject="Original subject")
+    match.body = "Original body"
+    entry = PendingBatchEntry(
+        batch_id="b1",
+        template_id="email_02_product_overview.md",
+        company_slug="acme-co",
+        recipient="bob@acme.test",
+        subject=match.subject,
+        body=match.body,
+        initiative="rta",
+    )
+
+    rendered_path = service.render_and_save_draft(match, template_id="email_02_product_overview.md")
+    content = rendered_path.read_text(encoding="utf-8")
+    rendered_path.write_text(
+        content.replace("Original body", "As promised, here's the original body"),
+        encoding="utf-8",
+    )
+
+    resolved = service.entry_to_match(entry)
+
+    assert "As promised" in resolved.body
+    assert resolved.subject == "Original subject"
+
+
+def test_update_pending_entry_syncs_rendered_outreach_file(tmp_path: Any, monkeypatch: Any) -> None:
+    """A TUI-modal edit and a direct file edit must not silently diverge -
+    update_pending_entry() writes through to the rendered-outreach file
+    so entry_to_match() always has one consistent answer."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "bob@acme.test", subject="Original subject")
+    match.body = "Original body"
+    service.render_and_save_draft(match, template_id="email_02_product_overview.md")
+    service.append_pending_batch_entries(
+        [
+            PendingBatchEntry(
+                batch_id="b1",
+                template_id="email_02_product_overview.md",
+                company_slug="acme-co",
+                recipient="bob@acme.test",
+                subject=match.subject,
+                body=match.body,
+                initiative="rta",
+            )
+        ]
+    )
+
+    service.update_pending_entry(
+        "b1", "acme-co", subject="Edited subject", body="Edited body via TUI"
+    )
+
+    rendered_path = service._rendered_outreach_path("rta", "acme-co", "email_02_product_overview.md")
+    content = rendered_path.read_text(encoding="utf-8")
+    assert "Edited body via TUI" in content
+    assert 'subject: Edited subject' in content
+    # Other frontmatter (written by render_and_save_draft) must survive.
+    assert "company_name: Acme Co" in content
+
+    # update_pending_entry() must also keep the .html preview in sync.
+    html_path = rendered_path.with_suffix(".html")
+    assert html_path.exists()
+    assert "Edited body via TUI" in html_path.read_text(encoding="utf-8")
+
+
+def test_render_and_save_draft_writes_html_preview_when_layout_present(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark (2026-09-17): "we also need to emit the rendered HTML" - a
+    .html sibling, in the same rendered-outreach/<slug>/ folder, so the
+    actual image/testimonial/button can be reviewed, not just markdown
+    source with raw HTML tags sitting in it."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = "Hi Bob,\n\nCheck out **our product**."
+
+    md_path = service.render_and_save_draft(match, template_id="email_02_product_overview.md")
+
+    html_path = md_path.with_suffix(".html")
+    assert html_path.exists()
+    html = html_path.read_text(encoding="utf-8")
+    assert "<strong>our product</strong>" in html
+    assert "**" not in html
+
+
+def test_render_and_save_html_preview_reflects_latest_hand_edit(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Re-running render_and_save_html_preview() must pick up whatever is
+    *currently* in the .md file, not whatever it was rendered from
+    originally - this is the "stays in sync when the markdown changes"
+    behavior Mark asked for."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = "Original body."
+    md_path = service.render_and_save_draft(match, template_id="email_02_product_overview.md")
+
+    md_path.write_text(
+        md_path.read_text(encoding="utf-8").replace("Original body.", "As promised, edited body."),
+        encoding="utf-8",
+    )
+
+    html_path = service.render_and_save_html_preview("rta", "acme-co", "email_02_product_overview.md")
+
+    assert html_path is not None
+    html = html_path.read_text(encoding="utf-8")
+    assert "As promised, edited body." in html
+    assert "Original body." not in html
+
+
+def test_render_and_save_html_preview_returns_none_for_plain_text_template(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A plain-text .md template (no `layout:`) has nothing to preview
+    beyond its own body - no .html file should be produced."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = "Plain text body."
+    md_path = service.render_and_save_draft(match, template_id="email_01_pas_hook.md")
+
+    assert service.render_and_save_html_preview("rta", "acme-co", "email_01_pas_hook.md") is None
+    assert not md_path.with_suffix(".html").exists()
+
+
+def test_entry_to_match_refreshes_html_preview_as_a_side_effect(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Every time a pending entry is resolved (TUI preview, edit, or
+    send), the .html sibling should be refreshed too - so it's never
+    stale by the time someone actually looks at it or sends it."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = "Original body."
+    md_path = service.render_and_save_draft(match, template_id="email_02_product_overview.md")
+    md_path.write_text(
+        md_path.read_text(encoding="utf-8").replace("Original body.", "Edited body."),
+        encoding="utf-8",
+    )
+
+    entry = PendingBatchEntry(
+        batch_id="b1",
+        template_id="email_02_product_overview.md",
+        company_slug="acme-co",
+        recipient="bob@acme.test",
+        subject="stale subject",
+        body="stale body",
+        initiative="rta",
+    )
+    service.entry_to_match(entry)
+
+    html = md_path.with_suffix(".html").read_text(encoding="utf-8")
+    assert "Edited body." in html
+
+
+def test_ensure_rendered_outreach_draft_creates_from_frozen_entry_when_missing(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A batch frozen via freeze_batch()/"New Batch" never gets a
+    rendered-outreach file up front (unlike FollowUpService/prepare-batch)
+    - ensure_rendered_outreach_draft() must materialize one from the
+    frozen row so "open HTML preview" works there too."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    entry = PendingBatchEntry(
+        batch_id="b1",
+        template_id="email_02_product_overview.md",
+        company_slug="acme-co",
+        recipient="bob@acme.test",
+        subject="Frozen subject",
+        body="Frozen body",
+        initiative="rta",
+    )
+
+    rendered_path = service.ensure_rendered_outreach_draft(entry)
+
+    assert rendered_path.exists()
+    assert "Frozen body" in rendered_path.read_text(encoding="utf-8")
+
+
+def test_ensure_rendered_outreach_draft_never_clobbers_an_existing_file(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """entry_to_match() returns placeholder company_name/contact_name/
+    first_name for entries with no file yet - if ensure_rendered_outreach_draft()
+    called render_and_save_draft() unconditionally, viewing an entry
+    that already has a real rendered-outreach file (e.g. written by
+    FollowUpService with the real contact name) would blow that away."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    real_match = _match("acme-co", "bob@acme.test", subject="Real subject")
+    real_match.contact_name = "Bob Real"
+    real_match.first_name = "Bob"
+    real_match.body = "Hand-edited body."
+    service.render_and_save_draft(real_match, template_id="email_02_product_overview.md")
+
+    entry = PendingBatchEntry(
+        batch_id="b1",
+        template_id="email_02_product_overview.md",
+        company_slug="acme-co",
+        recipient="bob@acme.test",
+        subject="Stale frozen subject",
+        body="Stale frozen body",
+        initiative="rta",
+    )
+
+    rendered_path = service.ensure_rendered_outreach_draft(entry)
+    content = rendered_path.read_text(encoding="utf-8")
+
+    assert "contact_name: Bob Real" in content
+    assert "Hand-edited body." in content
+    assert "Stale frozen body" not in content
 
 
 def test_send_batch_isolates_per_recipient_failures(tmp_path: Any, monkeypatch: Any) -> None:
@@ -474,6 +867,103 @@ def test_send_pending_batch_restores_real_newlines_in_body(
     sent_body = fake_email_service.sent_requests[0].body
     assert "<br>" not in sent_body
     assert "\n" in sent_body
+
+
+def test_send_batch_threads_cc_addresses_through(tmp_path: Any, monkeypatch: Any) -> None:
+    """cc mark@bizkite.net on a one-off send (Mark, 2026-09-17) - cc_addresses
+    must reach the actual SendMailRequest, not just be accepted and dropped."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    match = _match("acme-co", "bob@acme.test")
+    fake_email_service = _FakeEmailService()
+
+    service = PersonalizedOutreachService("roadmap")
+    service.send_batch(
+        [match],
+        template_id="email_01_pas_hook.md",
+        email_service=fake_email_service,
+        cc_addresses=["mark@bizkite.net"],
+    )
+
+    assert fake_email_service.sent_requests[0].cc_addresses == ["mark@bizkite.net"]
+
+
+def test_send_batch_stamps_rendered_outreach_file_with_sent_receipt(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark (2026-09-17): "should we put a receipt next to every sent
+    one" - yes, stamped into the existing rendered-outreach file's
+    frontmatter (sent_at + message_id) rather than moved to a
+    subdirectory, so entry_to_match()/ensure_rendered_outreach_draft()'s
+    stable-path assumption still holds."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = "Original body"
+    service = PersonalizedOutreachService("roadmap")
+    rendered_path = service.render_and_save_draft(match, template_id="email_01_pas_hook.md")
+
+    fake_email_service = _FakeEmailService()
+    service.send_batch(
+        [match], template_id="email_01_pas_hook.md", email_service=fake_email_service
+    )
+
+    content = rendered_path.read_text(encoding="utf-8")
+    assert "sent_at:" in content
+    assert "message_id: msg-bob@acme.test" in content
+    # The body itself must survive untouched.
+    assert "Original body" in content
+
+
+def test_send_one_pending_entry_leaves_batch_siblings_untouched(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """send-pending must send exactly one company's row, even if it
+    happens to share a batch_id with other recipients (a bulk
+    freeze_batch()) - unlike send_pending_batch(), which sends every row
+    sharing that batch_id (Mark, 2026-09-17: "as a one-off without
+    disrupting the regular workflow")."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    service = PersonalizedOutreachService("roadmap")
+    service.append_pending_batch_entries(
+        [
+            PendingBatchEntry(
+                batch_id="shared-batch",
+                template_id="email_01_pas_hook.md",
+                company_slug="acme-co",
+                recipient="bob@acme.test",
+                subject="Hi Bob",
+                body="Body for Bob",
+                initiative="rta",
+            ),
+            PendingBatchEntry(
+                batch_id="shared-batch",
+                template_id="email_01_pas_hook.md",
+                company_slug="other-co",
+                recipient="carol@other.test",
+                subject="Hi Carol",
+                body="Body for Carol",
+                initiative="rta",
+            ),
+        ]
+    )
+
+    fake_email_service = _FakeEmailService()
+    result = service.send_one_pending_entry(
+        "shared-batch", "acme-co", email_service=fake_email_service
+    )
+
+    assert result.sent == 1
+    assert fake_email_service.sent_to == ["bob@acme.test"]
+
+    remaining = service.list_pending_batches()
+    assert len(remaining) == 1
+    assert remaining[0].company_slug == "other-co"
 
 
 def test_html_templated_entry_preserves_literal_br_tags_through_send(

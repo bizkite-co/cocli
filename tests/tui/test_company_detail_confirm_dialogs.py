@@ -218,6 +218,9 @@ async def test_call_company_refreshes_only_after_modal_dismissed(mock_company_da
 
         with patch(
             "cocli.tui.widgets.company_detail.open_url", return_value=True
+        ), patch(
+            "cocli.utils.calling_provider.get_calling_provider",
+            return_value=MagicMock(dial=MagicMock(return_value=True)),
         ), patch.object(
             app, "push_screen_wait", AsyncMock(side_effect=fake_push_screen_wait)
         ), patch.object(

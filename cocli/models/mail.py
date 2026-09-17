@@ -31,6 +31,11 @@ class SendMailRequest(BaseModel):
     # only works in HTML) and for any templated content that's actually
     # HTML (e.g. initiatives/<x>/email-sequences/*.html).
     html_body: Optional[str] = None
+    # Visible Cc (not Bcc) - e.g. cc'ing yourself on a one-off follow-up
+    # send (Mark, 2026-09-17). Included both in the raw message's Cc
+    # header (so the recipient sees it) and in SES's Destinations (so it
+    # actually gets delivered - SES doesn't parse headers for that).
+    cc_addresses: list[str] = Field(default_factory=list)
 
 
 class SendMailResult(BaseModel):

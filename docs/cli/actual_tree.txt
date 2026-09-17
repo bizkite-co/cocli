@@ -299,6 +299,13 @@ cocli
                 --force (boolean)
         sanitize-discovery - High-Fidelity Discovery Reset: Pulls from S3, purges junk/hollow USVs, and propagates to PIs.
             campaign_name (text)
+        schedule-follow-up - Schedule a follow-up outside the note screen's call-log flow - for
+            company_slug (text) [required]
+            --format/-f (text)
+            --template/-t (text)
+            --when/-w (text)
+            --initiative/-i (text)
+            campaign_name (text)
         set - Sets the current campaign context.
             campaign_name (text) [required]
         show - Displays the current campaign context.
@@ -422,6 +429,7 @@ cocli
             phone (text) [required]
     email - Send via SES and poll a configured IMAP inbox into company notes. Not a mail client.
         authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
+        list-pending - List every not-yet-sent pending-batch row - the answer to "what's
         poll - Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match.
             --limit (integer)
         poll-events - Poll the SQS queue for SES bounce/complaint events; record them and
@@ -429,6 +437,11 @@ cocli
         prepare-batch - Generate personalized outreach email drafts for testing (filters prospects with contact first names).
             --limit/-l (integer)
             --initiative/-i (text)
+        render-html-preview - Regenerate rendered-outreach/<slug>/<template>.html from the
+            company_slug (text) [required]
+            template (text) [required]
+            --initiative/-i (text)
+            --open (boolean)
         send - Send one email via SES and record a note on the matching company.
             --to (text) [required]
             --subject (text) [required]
@@ -439,6 +452,11 @@ cocli
             --limit/-l (integer)
             --template/-t (text)
             --initiative/-i (text)
+            --dry-run (boolean)
+        send-pending - Send exactly one pending entry as a one-off, without touching the
+            company_slug (text) [required]
+            --batch-id/-b (text)
+            --cc (text)
             --dry-run (boolean)
         suppression-list - List suppressed email addresses from AWS SES account-level suppression list.
             --limit (integer)

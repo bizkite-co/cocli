@@ -11,6 +11,7 @@ must not be used here.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -97,6 +98,19 @@ def _candidate_commands(url: str) -> list[list[str]]:
 
 
 def spawn_detached(command: Sequence[str]) -> bool:
+    # Regression (2026-09-17): a TUI test that pressed "p" but only
+    # mocked company_detail's own open_url() call - not the calling
+    # provider it now goes through - actually launched the real
+    # msedge_proxy.exe on Mark's machine on every test run, because
+    # nothing here stops a real subprocess from being spawned when a
+    # test forgets to mock. This is the single choke point every
+    # real launch (browser tab or Windows PWA) passes through, so the
+    # safety net belongs here, not in each caller. PYTEST_CURRENT_TEST
+    # is set by pytest itself for the duration of every test - no
+    # fixture/config required.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        logger.debug("spawn_detached: refusing to launch %s under pytest", command)
+        return False
     try:
         subprocess.Popen(
             list(command),
@@ -113,6 +127,10 @@ def spawn_detached(command: Sequence[str]) -> bool:
 
 
 def _webbrowser_open(url: str) -> bool:
+    # Same rationale as the guard in spawn_detached() - this is the other
+    # path open_url() can use to actually launch something.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
     try:
         controller = webbrowser.get()
     except webbrowser.Error:

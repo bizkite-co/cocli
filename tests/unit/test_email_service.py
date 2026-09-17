@@ -25,9 +25,17 @@ class FakeSes:
         subject: str,
         body: str,
         html_body: Optional[str] = None,
+        cc_addresses: Optional[list[str]] = None,
     ) -> str:
         self.sent.append(
-            {"source": source, "to": to_address, "subject": subject, "body": body, "html_body": html_body}
+            {
+                "source": source,
+                "to": to_address,
+                "subject": subject,
+                "body": body,
+                "html_body": html_body,
+                "cc_addresses": cc_addresses,
+            }
         )
         return "ses-msg-1"
 
@@ -148,6 +156,32 @@ def test_boto3_sender_sends_multipart_alternative_when_html_body_given(mocker) -
     html_part = parsed.get_body(preferencelist=("html",))
     assert text_part is not None and "Plain fallback text." in text_part.get_content()
     assert html_part is not None and "<b>HTML</b>" in html_part.get_content()
+
+
+def test_boto3_sender_cc_sets_header_and_extends_destinations(mocker) -> None:
+    """A Cc header alone wouldn't actually deliver anything - SES reads
+    Destinations, not the raw message's headers - so cc_addresses must
+    land in both places (2026-09-17, Mark: cc mark@bizkite.net on a
+    one-off follow-up send)."""
+    mock_client = mocker.Mock()
+    mock_client.send_raw_email.return_value = {"MessageId": "ses-raw-cc"}
+    mocker.patch("boto3.Session").return_value.client.return_value = mock_client
+
+    sender = Boto3SesSender("us-west-1")
+    sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="Body text.",
+        cc_addresses=["mark@bizkite.net"],
+    )
+
+    call_kwargs = mock_client.send_raw_email.call_args.kwargs
+    assert call_kwargs["Destinations"] == ["bob@acme.test", "mark@bizkite.net"]
+
+    raw = call_kwargs["RawMessage"]["Data"]
+    parsed = email_pkg.message_from_bytes(raw, policy=email_policy.default)
+    assert parsed["Cc"] == "mark@bizkite.net"
 
 
 def test_boto3_sender_omits_html_part_when_not_given(mocker) -> None:
