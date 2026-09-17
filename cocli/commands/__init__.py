@@ -5,6 +5,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import add
     from . import add_email
     from . import add_meeting
+    from . import calling
     from . import campaign
     from . import compile_enrichment
     from . import context
@@ -73,6 +74,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="flag-email-providers", no_args_is_help=True)(flag_email_providers.flag_email_providers)
 
     app.add_typer(campaign.app, name="campaign")
+    app.add_typer(calling.app, name="calling")
     app.add_typer(dev.app, name="dev")
     app.add_typer(exclude.app, name="exclude")
     app.add_typer(do_not_call.app, name="do-not-call")

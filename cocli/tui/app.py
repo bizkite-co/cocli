@@ -20,7 +20,7 @@ from typing import (
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, ListItem, Input, Label, Footer
+from textual.widgets import Static, ListView, ListItem, Input, Label, Footer, TextArea
 from textual.containers import Container, Horizontal
 from textual import events, on
 from textual.command import Provider, Hit, DiscoveryHit, CommandPalette
@@ -756,6 +756,22 @@ class CocliApp(App[None]):
         if event.key in ("alt+s", "meta+s") and isinstance(self.screen, ModalScreen):
             event.stop()
             event.prevent_default()
+
+            # Vim-ish convention (Mark, 2026-09-16): alt+s while typing in
+            # a TextArea means "exit INSERT mode" - i.e. stop capturing
+            # keys as text - not "leave this screen". There's no real
+            # INSERT/NORMAL state machine backing these TextAreas, so the
+            # closest honest equivalent is moving focus off the TextArea;
+            # the modal-cancel behavior below must never fire while a
+            # TextArea has focus, on any screen, or a document full of
+            # real notes is one keypress from being discarded again (the
+            # 2026-09-16 Jimmy Jean incident this was already fixed for
+            # once - that fix made the discard *confirmed*, not *absent*,
+            # which still isn't what "exit insert mode" means).
+            if isinstance(self.focused, TextArea):
+                self.screen.focus_next()
+                return
+
             from .widgets.confirm_screen import ConfirmScreen
 
             if isinstance(self.screen, ConfirmScreen):

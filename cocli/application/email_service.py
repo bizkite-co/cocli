@@ -34,7 +34,15 @@ class TokenProvider(Protocol):
 
 
 class SesSender(Protocol):
-    def send_email(self, *, source: str, to_address: str, subject: str, body: str) -> str: ...
+    def send_email(
+        self,
+        *,
+        source: str,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: Optional[str] = None,
+    ) -> str: ...
 
 
 class Boto3SesSender:
@@ -51,7 +59,15 @@ class Boto3SesSender:
         self._configuration_set = configuration_set
         self._reply_to: Optional[str] = None
 
-    def send_email(self, *, source: str, to_address: str, subject: str, body: str) -> str:
+    def send_email(
+        self,
+        *,
+        source: str,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: Optional[str] = None,
+    ) -> str:
         # send_raw_email (not the simpler send_email API) so we can set
         # List-Unsubscribe - Gmail/Yahoo bulk-sender rules expect it and
         # the simple API has no header support.
@@ -63,7 +79,14 @@ class Boto3SesSender:
             msg["Reply-To"] = self._reply_to
         unsubscribe_address = self._reply_to or source
         msg["List-Unsubscribe"] = f"<mailto:{unsubscribe_address}?subject=unsubscribe>"
+        # set_content() + add_alternative() builds a proper
+        # multipart/alternative - `body` is always the plain-text part
+        # (some clients/spam filters render only this), `html_body` (when
+        # given) is the richer part clients prefer to display. SES's
+        # open-tracking pixel only works when there's an HTML part.
         msg.set_content(body)
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
 
         kwargs: dict[str, object] = {
             "Source": source,
@@ -120,6 +143,7 @@ class EmailService:
             to_address=request.to_address,
             subject=request.subject,
             body=request.body,
+            html_body=request.html_body,
         )
         slug = request.company_slug or self._lookup(request.to_address)
         note_written = False

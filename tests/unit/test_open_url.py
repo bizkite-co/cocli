@@ -120,7 +120,7 @@ def test_open_url_spawns_first_successful_command(monkeypatch) -> None:
         spawned.append(command)
         return command[0] == "explorer.exe"
 
-    monkeypatch.setattr("cocli.utils.open_url._spawn_detached", fake_spawn)
+    monkeypatch.setattr("cocli.utils.open_url.spawn_detached", fake_spawn)
     webbrowser_called = {"value": False}
     monkeypatch.setattr(
         "cocli.utils.open_url._webbrowser_open",
@@ -134,7 +134,7 @@ def test_open_url_spawns_first_successful_command(monkeypatch) -> None:
 
 def test_open_url_does_not_claim_success_when_nothing_launches(monkeypatch) -> None:
     monkeypatch.setattr("cocli.utils.open_url._candidate_commands", lambda url: [])
-    monkeypatch.setattr("cocli.utils.open_url._spawn_detached", lambda command: False)
+    monkeypatch.setattr("cocli.utils.open_url.spawn_detached", lambda command: False)
     monkeypatch.setattr("cocli.utils.open_url._webbrowser_open", lambda url: False)
 
     assert open_url(URL) is False

@@ -403,6 +403,35 @@ ModalScreen {
     background: rgba(0, 0, 0, 0.7);
 }
 
+/* CallLogModal: left column is the existing form, right column is a
+   live-call reference panel (script, preferred phrases, comparison).
+   Full-size, no border/background decoration (Mark, 2026-09-16: the
+   double border ate ~15% off every edge for no benefit and looked bad -
+   this screen needs the space for two real columns, not a picture frame). */
+#call_log_form {
+    width: 100%;
+    height: 100%;
+}
+
+#call-log-columns {
+    height: 1fr;
+}
+
+#call-log-left {
+    width: 1fr;
+    padding-right: 2;
+}
+
+#call-log-right {
+    width: 1fr;
+    border-left: solid #333333;
+    padding-left: 2;
+}
+
+#call-log-right Markdown {
+    margin-bottom: 1;
+}
+
 #confirm-dialog {
     width: 40;
     height: auto;

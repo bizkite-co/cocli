@@ -34,7 +34,7 @@ def is_wsl() -> bool:
 def open_url(url: str) -> bool:
     """Launch ``url`` in the desktop browser. Returns True if a launcher started."""
     for command in _candidate_commands(url):
-        if _spawn_detached(command):
+        if spawn_detached(command):
             logger.debug("Opened URL with %s", command[0])
             return True
     if _webbrowser_open(url):
@@ -96,7 +96,7 @@ def _candidate_commands(url: str) -> list[list[str]]:
     return commands
 
 
-def _spawn_detached(command: Sequence[str]) -> bool:
+def spawn_detached(command: Sequence[str]) -> bool:
     try:
         subprocess.Popen(
             list(command),

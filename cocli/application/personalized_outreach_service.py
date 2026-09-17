@@ -304,6 +304,20 @@ class PersonalizedOutreachService:
             return []
         return sorted(p for p in base.rglob("*") if p.is_file())
 
+    def load_call_reference(self, initiative: str = "rta") -> dict[str, str]:
+        """The three reference files (call-opener, preferred-phrases,
+        product-comparison) shown in CallLogModal's right-side panel
+        while a rep is live on a call - initiatives/<i>/scripts/*.md.
+        Missing files return "" rather than raising, so the panel just
+        shows whichever exist."""
+        scripts_dir = self._initiatives_dir() / initiative / "scripts"
+        names = ("call-opener.md", "preferred-phrases.md", "product-comparison.md")
+        result: dict[str, str] = {}
+        for name in names:
+            path = scripts_dir / name
+            result[name] = path.read_text(encoding="utf-8") if path.is_file() else ""
+        return result
+
     def load_template(
         self, template_name: str = "email_01_pas_hook.md", initiative: str = "rta"
     ) -> tuple[str, str]:
@@ -474,16 +488,31 @@ class PersonalizedOutreachService:
 
         result = SendBatchResult(batch_id=batch_id)
         entries: list[SendLogEntry] = []
+        # A .html template's rendered body IS the HTML content - no
+        # separate authoring of two versions. A plain-text fallback is
+        # derived automatically (a real multipart/alternative email needs
+        # one for clients/spam filters that don't render HTML anyway).
+        is_html_template = template_id.endswith(".html")
         for match in matches:
             try:
-                send_result = email_service.send(
-                    SendMailRequest(
+                if is_html_template:
+                    from cocli.utils.html_to_text import html_to_text
+
+                    mail_request = SendMailRequest(
+                        to_address=match.recipient_email,
+                        subject=match.subject,
+                        body=html_to_text(match.body),
+                        html_body=match.body,
+                        company_slug=match.company_slug,
+                    )
+                else:
+                    mail_request = SendMailRequest(
                         to_address=match.recipient_email,
                         subject=match.subject,
                         body=match.body,
                         company_slug=match.company_slug,
                     )
-                )
+                send_result = email_service.send(mail_request)
                 entries.append(
                     SendLogEntry(
                         batch_id=batch_id,
@@ -590,7 +619,16 @@ class PersonalizedOutreachService:
         to_usv()) - reversed here, once, so both the review preview and
         the actual sent email see real line breaks instead of literal
         '<br>' text. This is the one place that conversion happens; don't
-        duplicate it."""
+        duplicate it.
+
+        HTML-templated entries (template_id ending .html) skip this
+        reversal - real HTML legitimately contains literal <br> tags,
+        indistinguishable at this point from a stored-newline <br>, and
+        HTML doesn't render bare \\n as a line break anyway (whitespace
+        is collapsed) - reversing here would silently turn intentional
+        <br> tags into invisible newline characters instead.
+        """
+        is_html = entry.template_id.endswith(".html")
         return ProspectContactMatch(
             company_slug=entry.company_slug,
             company_name=entry.company_slug,
@@ -598,8 +636,8 @@ class PersonalizedOutreachService:
             contact_name="",
             first_name="",
             role=None,
-            subject=entry.subject.replace("<br>", "\n"),
-            body=entry.body.replace("<br>", "\n"),
+            subject=entry.subject if is_html else entry.subject.replace("<br>", "\n"),
+            body=entry.body if is_html else entry.body.replace("<br>", "\n"),
         )
 
     def update_pending_entry(

@@ -3,8 +3,8 @@ from datetime import datetime, UTC, timedelta
 from typing import Any
 from textual.app import ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Label, TextArea, Static
-from textual.containers import Container
+from textual.widgets import Label, TextArea, Static, Markdown
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual import on, events
 
 from cocli.models.companies.company import Company
@@ -63,30 +63,45 @@ class CallLogModal(ModalScreen[bool]):
         # "rta" default matches every other unspecified-initiative call
         # site in this codebase (load_template/generate_copy/etc.) - this
         # form has no initiative context of its own to pick from yet.
-        template_names = PersonalizedOutreachService(get_campaign() or "default").list_initiative_templates("rta")
+        service = PersonalizedOutreachService(get_campaign() or "default")
+        template_names = service.list_initiative_templates("rta")
         template_choices = [(NO_EMAIL_FOLLOW_UP, "")] + [(name, name) for name in template_names]
+        reference = service.load_call_reference("rta")
 
         with Container(id="call_log_form"):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield Label(f"Phone: {self.phone}", classes="modal-subtitle")
 
-            yield Label("Call Disposition (type to filter, Enter to pick)", classes="field-label")
-            yield SearchSelect(DISPOSITION_CHOICES, initial_value="Follow Up Needed", id="call_disposition")
+            with Horizontal(id="call-log-columns"):
+                with VerticalScroll(id="call-log-left"):
+                    yield Label("Call Disposition (type to filter, Enter to pick)", classes="field-label")
+                    yield SearchSelect(DISPOSITION_CHOICES, initial_value="Follow Up Needed", id="call_disposition")
 
-            yield Label("Call Notes (VIM-ish keys supported)", classes="field-label")
-            yield TextArea(id="call_notes", classes="notes-area")
+                    yield Label("Call Notes (VIM-ish keys supported)", classes="field-label")
+                    yield TextArea(id="call_notes", classes="notes-area")
 
-            yield Label("Follow-up Date (YYYY-MM-DD, blank = don't re-queue)", classes="field-label")
-            yield CocliInput(value=default_callback, id="callback_date")
+                    yield Label("Follow-up Date (YYYY-MM-DD, blank = don't re-queue)", classes="field-label")
+                    yield CocliInput(value=default_callback, id="callback_date")
 
-            yield Label(
-                "Email Follow-up Template (separate from the call re-queue above)",
-                classes="field-label",
-            )
-            yield SearchSelect(template_choices, initial_value="", id="followup_template")
+                    yield Label(
+                        "Email Follow-up Template (separate from the call re-queue above)",
+                        classes="field-label",
+                    )
+                    yield SearchSelect(template_choices, initial_value="", id="followup_template")
 
-            yield Label("Email Follow-up Date (YYYY-MM-DD, only used if a template is picked)", classes="field-label")
-            yield CocliInput(value=default_callback, id="followup_email_date")
+                    yield Label(
+                        "Email Follow-up Date (YYYY-MM-DD, only used if a template is picked)",
+                        classes="field-label",
+                    )
+                    yield CocliInput(value=default_callback, id="followup_email_date")
+
+                with VerticalScroll(id="call-log-right"):
+                    # Missing files render as an empty Markdown widget
+                    # (harmless) rather than erroring - see
+                    # load_call_reference()'s per-file fallback.
+                    yield Markdown(reference["call-opener.md"], id="call-script-panel")
+                    yield Markdown(reference["preferred-phrases.md"], id="call-phrases-panel")
+                    yield Markdown(reference["product-comparison.md"], id="call-comparison-panel")
 
             yield Static("[bold reverse] CTRL+S: SAVE & REMOVE FROM LIST [/]  [dim] ESC: CANCEL [/]", id="modal_help")
 

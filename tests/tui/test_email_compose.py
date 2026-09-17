@@ -239,3 +239,49 @@ async def test_escape_with_drafted_body_requires_confirmation(
 
         assert app.screen is modal
         assert modal.query_one("#email-body").text == "Please don't lose this draft."
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.email_compose_modal.load_campaign_config")
+@patch("cocli.tui.widgets.email_compose_modal.get_campaign", return_value="roadmap")
+@patch("cocli.application.company_service.get_company_details_for_view")
+async def test_alt_s_while_typing_body_exits_insert_mode_not_the_screen(
+    mock_get_details: Any,
+    _mock_campaign: Any,
+    mock_config: Any,
+    mock_company_data: dict[str, Any],
+    tmp_path: Any,
+    monkeypatch: Any,
+) -> None:
+    """Same fix as CallLogModal (2026-09-16, second pass): alt+s while
+    the email body TextArea is focused must exit INSERT mode (defocus),
+    not offer to discard the draft - that's what "on all the screens"
+    means for this app-level shim."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    mock_get_details.return_value = mock_company_data
+    mock_config.return_value = {
+        "email": {"from_address": "mark@getretirementtaxanalyzer.com"},
+        "aws": {"profile": "westmonroe-support"},
+    }
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await driver.pause()
+        await driver.press("C")
+        await driver.pause()
+        assert isinstance(app.screen, EmailComposeModal)
+        modal = app.screen
+        body = modal.query_one("#email-body")
+        body.focus()
+        body.text = "Please don't lose this draft."
+        await driver.pause()
+
+        await driver.press("alt+s")
+        await driver.pause()
+
+        assert app.screen is modal
+        assert modal.query_one("#email-body").text == "Please don't lose this draft."
+        assert not body.has_focus

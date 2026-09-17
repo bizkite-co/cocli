@@ -729,11 +729,12 @@ class CompanyDetail(MarkPrefixMixin, Container):
             if not cleaned.startswith("1") and len(cleaned) == 10:
                 cleaned = "1" + cleaned
 
-            # 1. Open Google Voice
-            from ...utils.google_voice_url import google_voice_url
+            # 1. Open Google Voice (or whichever calling provider is configured)
+            from ...core.config import get_campaign
+            from ...utils.calling_provider import get_calling_provider
 
-            voice_url = google_voice_url(str(phone))
-            voice_opened = open_url(voice_url)
+            provider = get_calling_provider(get_campaign())
+            voice_opened = provider.dial(str(phone), get_campaign())
 
             # 2. Open Company Website if it exists
             if domain:

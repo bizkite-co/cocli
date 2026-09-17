@@ -4,6 +4,7 @@ import email as email_pkg
 from email import policy as email_policy
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 from cocli.application.email_service import Boto3SesSender, EmailService
@@ -14,11 +15,19 @@ from cocli.models.mail import EmailSettings, SendMailRequest
 
 class FakeSes:
     def __init__(self) -> None:
-        self.sent: list[dict[str, str]] = []
+        self.sent: list[dict[str, Optional[str]]] = []
 
-    def send_email(self, *, source: str, to_address: str, subject: str, body: str) -> str:
+    def send_email(
+        self,
+        *,
+        source: str,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: Optional[str] = None,
+    ) -> str:
         self.sent.append(
-            {"source": source, "to": to_address, "subject": subject, "body": body}
+            {"source": source, "to": to_address, "subject": subject, "body": body, "html_body": html_body}
         )
         return "ses-msg-1"
 
@@ -115,6 +124,48 @@ def test_boto3_sender_sets_list_unsubscribe_header_via_raw_send(mocker) -> None:
     assert parsed["Reply-To"] == "mark@getretirementtaxanalyzer.com"
     assert parsed["Subject"] == "Hello"
     assert parsed.get_content().strip() == "We would like to talk."
+
+
+def test_boto3_sender_sends_multipart_alternative_when_html_body_given(mocker) -> None:
+    mock_client = mocker.Mock()
+    mock_client.send_raw_email.return_value = {"MessageId": "ses-raw-html"}
+    mocker.patch("boto3.Session").return_value.client.return_value = mock_client
+
+    sender = Boto3SesSender("us-west-1")
+    message_id = sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="Plain fallback text.",
+        html_body="<p>Rich <b>HTML</b> body.</p>",
+    )
+
+    assert message_id == "ses-raw-html"
+    raw = mock_client.send_raw_email.call_args.kwargs["RawMessage"]["Data"]
+    parsed = email_pkg.message_from_bytes(raw, policy=email_policy.default)
+    assert parsed.is_multipart()
+    text_part = parsed.get_body(preferencelist=("plain",))
+    html_part = parsed.get_body(preferencelist=("html",))
+    assert text_part is not None and "Plain fallback text." in text_part.get_content()
+    assert html_part is not None and "<b>HTML</b>" in html_part.get_content()
+
+
+def test_boto3_sender_omits_html_part_when_not_given(mocker) -> None:
+    mock_client = mocker.Mock()
+    mock_client.send_raw_email.return_value = {"MessageId": "ses-raw-text-only"}
+    mocker.patch("boto3.Session").return_value.client.return_value = mock_client
+
+    sender = Boto3SesSender("us-west-1")
+    sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="Just text.",
+    )
+
+    raw = mock_client.send_raw_email.call_args.kwargs["RawMessage"]["Data"]
+    parsed = email_pkg.message_from_bytes(raw, policy=email_policy.default)
+    assert not parsed.is_multipart()
 
 
 def test_boto3_sender_list_unsubscribe_falls_back_to_source_without_reply_to(mocker) -> None:

@@ -96,6 +96,12 @@ cocli
             --output/-o (path)
         tui-actions - Dumps every action (keybinding or command-palette-only) exposed by the
             --output/-o (path)
+    calling - Configure the phone-dialer provider.
+        set-app-id - Save the Edge PWA app-id for the Google Voice provider.
+            app_id (text) [required]
+        status - Show the resolved calling provider config and whether the Edge PWA
+        test - Actually dial `phone` with the currently configured provider - use
+            phone (text) [required]
     campaign - Manage campaigns.
         achieve-goal - Deprecated - superseded by Discovery Gen; not called in production since ~2026-06.
             --emails/--limit (integer)

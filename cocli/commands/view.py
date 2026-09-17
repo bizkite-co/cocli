@@ -152,14 +152,14 @@ def _interactive_view_company(company_slug: str) -> None:
             console.print("\n[bold green]Initiating phone call...[/bold green]")
             phone_number = frontmatter_data.get('phone_number')
             if phone_number:
-                from ..utils.google_voice_url import google_voice_url
+                from ..utils.calling_provider import get_calling_provider
 
-                voice_url = google_voice_url(phone_number)
+                provider = get_calling_provider(campaign)
                 try:
-                    if open_url(voice_url):
+                    if provider.dial(phone_number, campaign):
                         console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
                     else:
-                        console.print(f"[bold red]Could not open browser for {voice_url}[/bold red]")
+                        console.print(f"[bold red]Could not open browser to call {phone_number}[/bold red]")
                     _add_meeting_logic(company_name=company_slug, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
                     console.print("[bold green]Meeting for call added. Press any key to continue.[/bold green]")
                 except Exception as e:

@@ -193,6 +193,48 @@ async def test_blank_followup_date_means_no_reschedule(
 
 @pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_right_column_shows_call_reference_files(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The live-call reference panel (script, phrases, comparison) - the
+    layout Mark asked for (2026-09-16): everything existing fits in the
+    left column, the right column is call-time reference material."""
+    from cocli.core.paths import paths
+    from cocli.tui.widgets.call_log_modal import Markdown
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Ref Co", slug="ref-co", domain="ref.test", phone="555-333-4444")
+    co.save()
+
+    scripts_dir = paths.campaigns / "roadmap" / "initiatives" / "rta" / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    (scripts_dir / "call-opener.md").write_text("# Opener\n\nSay hello.", encoding="utf-8")
+    (scripts_dir / "preferred-phrases.md").write_text("# Phrases\n\nUse trajectory.", encoding="utf-8")
+    (scripts_dir / "product-comparison.md").write_text("# Comparison\n\neMoney is bigger.", encoding="utf-8")
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="ref-co", phone="555-333-4444")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        script_panel = modal.query_one("#call-script-panel", Markdown)
+        phrases_panel = modal.query_one("#call-phrases-panel", Markdown)
+        comparison_panel = modal.query_one("#call-comparison-panel", Markdown)
+        assert "Say hello." in script_panel._markdown
+        assert "Use trajectory." in phrases_panel._markdown
+        assert "eMoney is bigger." in comparison_panel._markdown
+
+        # Left column still has everything it had before.
+        assert modal.query_one("#call_disposition") is not None
+        assert modal.query_one("#call_notes") is not None
+        assert modal.query_one("#callback_date") is not None
+        assert modal.query_one("#followup_template") is not None
+        assert modal.query_one("#followup_email_date") is not None
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
 async def test_email_follow_up_scheduled_when_template_picked(
     _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
 ) -> None:
@@ -318,13 +360,16 @@ async def test_escape_with_notes_requires_confirmation_before_discarding(
 
 @pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
-async def test_alt_s_with_notes_requires_confirmation_not_blind_dismiss(
+async def test_alt_s_while_typing_exits_insert_mode_not_the_screen(
     _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
 ) -> None:
-    """The app-level alt+s "universal escape" shim (app.py) used to call
-    dismiss(None) directly on any modal it didn't specifically recognize -
-    bypassing CallLogModal's own confirmation entirely. It must route
-    through action_cancel() instead."""
+    """Regression (2026-09-16, second pass): the app-level alt+s shim's
+    first fix routed alt+s through action_cancel() (confirm-before-
+    discard) - safer than a blind dismiss, but still wrong. Mark's actual
+    ask: alt+s while typing in a TextArea means "exit INSERT mode," i.e.
+    stop capturing keys as text, and must never leave the screen at all -
+    not even with a confirmation prompt. Only an explicit "escape"/cancel
+    gesture should offer to discard."""
     from cocli.core.paths import paths
 
     monkeypatch.setattr(paths, "root", tmp_path)
@@ -337,18 +382,16 @@ async def test_alt_s_with_notes_requires_confirmation_not_blind_dismiss(
         app.push_screen(modal)
         await driver.pause()
 
-        modal.query_one("#call_notes").text = "Do not lose this."
+        notes = modal.query_one("#call_notes")
+        notes.focus()
+        notes.text = "Do not lose this."
+        await driver.pause()
+
         await driver.press("alt+s")
         await driver.pause()
 
-        # A confirmation dialog, not an immediate blind dismiss.
-        from cocli.tui.widgets.confirm_screen import ConfirmScreen
-
-        assert isinstance(app.screen, ConfirmScreen)
-
-        await driver.press("n")
-        await driver.pause()
-
-        # Declining returns to the modal with notes intact.
+        # Still on the same screen - no confirmation dialog, no dismiss.
         assert app.screen is modal
         assert modal.query_one("#call_notes").text == "Do not lose this."
+        # Focus moved off the TextArea - that's the "exit insert mode" part.
+        assert not notes.has_focus

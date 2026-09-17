@@ -26,6 +26,11 @@ class SendMailRequest(BaseModel):
     body: str
     company_slug: Optional[str] = None
     from_address: Optional[str] = None
+    # When set, sent as a multipart/alternative with `body` as the
+    # plain-text fallback part - required for open-tracking (SES's pixel
+    # only works in HTML) and for any templated content that's actually
+    # HTML (e.g. initiatives/<x>/email-sequences/*.html).
+    html_body: Optional[str] = None
 
 
 class SendMailResult(BaseModel):

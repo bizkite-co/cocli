@@ -159,6 +159,50 @@ def _match(slug: str, email: str, subject: str = "Hi") -> ProspectContactMatch:
     )
 
 
+def test_send_batch_with_html_template_populates_html_body_and_text_fallback(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A .html template_id means the rendered body IS HTML - send_batch
+    must pass it as html_body with an auto-derived plain-text fallback,
+    not send raw HTML tags as the only (plain-text) body."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    match = _match("acme-co", "bob@acme.test")
+    match.body = "<p>Hi Bob,</p><p>Check out our <b>product</b>.</p>"
+    fake_email_service = _FakeEmailService()
+
+    service = PersonalizedOutreachService("roadmap")
+    result = service.send_batch(
+        [match], template_id="email_intro.html", email_service=fake_email_service
+    )
+
+    assert result.sent == 1
+    sent_request = fake_email_service.sent_requests[0]
+    assert sent_request.html_body == "<p>Hi Bob,</p><p>Check out our <b>product</b>.</p>"
+    assert "<" not in sent_request.body
+    assert "Hi Bob," in sent_request.body
+    assert "Check out our product" in sent_request.body
+
+
+def test_send_batch_with_md_template_never_sets_html_body(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    match = _match("acme-co", "bob@acme.test")
+    fake_email_service = _FakeEmailService()
+
+    service = PersonalizedOutreachService("roadmap")
+    service.send_batch(
+        [match], template_id="email_01_pas_hook.md", email_service=fake_email_service
+    )
+
+    assert fake_email_service.sent_requests[0].html_body is None
+
+
 def test_send_batch_isolates_per_recipient_failures(tmp_path: Any, monkeypatch: Any) -> None:
     """One failing recipient must not stop the others from being attempted
     and logged - same isolation discipline as requeue_enrichment_gaps."""
@@ -430,6 +474,44 @@ def test_send_pending_batch_restores_real_newlines_in_body(
     sent_body = fake_email_service.sent_requests[0].body
     assert "<br>" not in sent_body
     assert "\n" in sent_body
+
+
+def test_html_templated_entry_preserves_literal_br_tags_through_send(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Regression: to_usv()'s newline->'<br>' storage sanitization is
+    indistinguishable from a real, intentional <br> tag in HTML content -
+    entry_to_match() must not "unescape" those back into raw newlines for
+    an .html-templated entry, or genuine line breaks silently disappear
+    from the rendered email (HTML doesn't render bare \\n as a break)."""
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    service = PersonalizedOutreachService("roadmap")
+
+    html_body = "<p>Hi Bob,</p>\n<p>Line one<br>Line two</p>"
+    entry = PendingBatchEntry(
+        batch_id="b1",
+        template_id="email_intro.html",
+        company_slug="acme-co",
+        recipient="bob@acme.test",
+        subject="Hello",
+        body=html_body,
+    )
+    service.append_pending_batch_entries([entry])
+
+    fake_email_service = _FakeEmailService()
+    service.send_pending_batch("b1", email_service=fake_email_service)
+
+    sent = fake_email_service.sent_requests[0]
+    assert sent.html_body is not None
+    # The literal <br> between "Line one" and "Line two" must survive
+    # exactly - not be turned into an invisible raw newline. The other
+    # real \n in the source (between the two <p> tags) also becomes a
+    # <br> on the way through USV storage, which is harmless in HTML
+    # (an extra line break), unlike silently losing an intentional one.
+    assert "Line one<br>Line two" in sent.html_body
 
 
 def test_update_pending_entry_persists_edit_and_sends_it(
