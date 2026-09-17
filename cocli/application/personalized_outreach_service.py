@@ -117,42 +117,9 @@ class PersonalizedOutreachService:
             if self.exclusion_mgr.is_excluded(slug=company.slug, domain=company.domain):
                 continue
 
-            details = get_company_details_for_view(slug)
-            if not details:
-                continue
-
-            contacts = details.get("contacts") or []
-            selected_email: Optional[str] = None
-            selected_first_name: Optional[str] = None
-            selected_full_name: str = ""
-            selected_role: Optional[str] = None
-
-            # First search contacts with explicit first names & emails
-            for contact in contacts:
-                raw_name = str(contact.get("name") or "").strip()
-                email = str(contact.get("email") or "").strip()
-                fname = extract_first_name(raw_name)
-                if email and fname:
-                    selected_email = email
-                    selected_first_name = fname
-                    selected_full_name = raw_name
-                    selected_role = str(contact.get("role") or "")
-                    break
-
-            # Fallback if company email exists and a contact has a first name
-            if not selected_email and company.email:
-                co_email = str(company.email).strip()
-                for contact in contacts:
-                    raw_name = str(contact.get("name") or "").strip()
-                    fname = extract_first_name(raw_name)
-                    if fname:
-                        selected_email = co_email
-                        selected_first_name = fname
-                        selected_full_name = raw_name
-                        selected_role = str(contact.get("role") or "")
-                        break
-
-            if selected_email and selected_first_name:
+            selected = self._select_company_contact(company)
+            if selected:
+                selected_email, selected_first_name, selected_full_name, selected_role = selected
                 company_display_name = str(company.name) if company.name else slug.replace("-", " ").title()
                 subject, body = self.generate_copy(
                     first_name=selected_first_name,
@@ -229,6 +196,59 @@ class PersonalizedOutreachService:
 
         return matches
 
+    def _select_company_contact(
+        self, company: Company
+    ) -> Optional[tuple[str, str, str, Optional[str]]]:
+        """Extracted from find_eligible_prospects() (2026-09-16) so a
+        single-company lookup (FollowUpService, rendering a due email
+        follow-up) can reuse the exact same contact-selection rules
+        instead of duplicating them. Returns
+        (email, first_name, full_name, role) or None if nothing usable."""
+        details = get_company_details_for_view(company.slug)
+        if not details:
+            return None
+        contacts = details.get("contacts") or []
+
+        for contact in contacts:
+            raw_name = str(contact.get("name") or "").strip()
+            email = str(contact.get("email") or "").strip()
+            fname = extract_first_name(raw_name)
+            if email and fname:
+                return email, fname, raw_name, str(contact.get("role") or "")
+
+        if company.email:
+            co_email = str(company.email).strip()
+            for contact in contacts:
+                raw_name = str(contact.get("name") or "").strip()
+                fname = extract_first_name(raw_name)
+                if fname:
+                    return co_email, fname, raw_name, str(contact.get("role") or "")
+
+        return None
+
+    def find_contact_for_company(self, company_slug: str) -> Optional[ProspectContactMatch]:
+        """Single-company version of find_eligible_prospects() with no
+        template rendering - just resolves who/what to send to. Used by
+        FollowUpService to render a due email follow-up for one specific
+        company rather than scanning the whole campaign for candidates."""
+        company = Company.get(company_slug)
+        if not company:
+            return None
+        selected = self._select_company_contact(company)
+        if not selected:
+            return None
+        email, first_name, full_name, role = selected
+        company_display_name = str(company.name) if company.name else company_slug.replace("-", " ").title()
+        return ProspectContactMatch(
+            company_slug=company_slug,
+            company_name=company_display_name,
+            recipient_email=email,
+            contact_name=full_name,
+            first_name=first_name,
+            role=role,
+            subject="",
+            body="",
+        )
 
     def list_templates(self) -> list[str]:
         """Filenames available via load_template()'s fallback chain -
@@ -521,10 +541,6 @@ class PersonalizedOutreachService:
         matches = self.find_eligible_prospects(limit=limit, template_name=template_id, initiative=initiative)
 
         batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
-        index_dir.mkdir(parents=True, exist_ok=True)
-        pending_path = index_dir / "pending.usv"
-
         entries = [
             PendingBatchEntry(
                 batch_id=batch_id,
@@ -537,12 +553,21 @@ class PersonalizedOutreachService:
             )
             for match in matches
         ]
-        with open(pending_path, "a", encoding="utf-8") as f:
+        self.append_pending_batch_entries(entries)
+        return batch_id
+
+    def append_pending_batch_entries(self, entries: list["PendingBatchEntry"]) -> None:
+        """Shared tail of freeze_batch() - also used by FollowUpService
+        to queue a single due email follow-up as a "batch of one" that
+        shows up in TargetBatchesView for review like any other batch."""
+        from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        with open(index_dir / "pending.usv", "a", encoding="utf-8") as f:
             for entry in entries:
                 f.write(entry.to_usv())
         PendingBatchEntry.save_datapackage(index_dir, "email_pending_batch", "pending.usv")
-
-        return batch_id
 
     def list_pending_batches(self) -> list["PendingBatchEntry"]:
         """All rows across all not-yet-sent-or-discarded batches, current
@@ -576,6 +601,25 @@ class PersonalizedOutreachService:
             subject=entry.subject.replace("<br>", "\n"),
             body=entry.body.replace("<br>", "\n"),
         )
+
+    def update_pending_entry(
+        self, batch_id: str, company_slug: str, *, subject: str, body: str
+    ) -> bool:
+        """Overwrites one pending batch row's rendered subject/body in
+        place - the "add my own text on top of the template, then send"
+        step Mark asked for (2026-09-16), rather than requiring every
+        follow-up to be either a raw template or hand-composed from
+        scratch. Returns False if no matching row was found."""
+        entries = self.list_pending_batches()
+        found = False
+        for entry in entries:
+            if entry.batch_id == batch_id and entry.company_slug == company_slug:
+                entry.subject = subject
+                entry.body = body
+                found = True
+        if found:
+            self._rewrite_pending(entries)
+        return found
 
     def send_pending_batch(self, batch_id: str, *, email_service: "EmailService") -> SendBatchResult:
         """Sends exactly the frozen rows for batch_id (not a fresh

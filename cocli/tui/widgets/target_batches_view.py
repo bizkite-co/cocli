@@ -59,6 +59,7 @@ class TargetBatchesView(MasterDetailView):
 
     BINDINGS = [
         Binding("n", "new_batch", "New Batch", show=True),
+        Binding("e", "edit_entry", "Edit", show=True),
         Binding("s", "send_batch", "Send Batch", show=True),
         Binding("d", "discard_batch", "Discard Batch", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
@@ -138,6 +139,31 @@ class TargetBatchesView(MasterDetailView):
             return
 
         self.app.notify(f"Prepared batch {batch_id}")
+        self.refresh_batches()
+
+    def action_edit_entry(self) -> None:
+        entry = self._highlighted_entry()
+        if entry is None:
+            return
+        self.run_worker(self._edit_entry_flow(entry), exclusive=True)
+
+    async def _edit_entry_flow(self, entry: "PendingBatchEntry") -> None:
+        from .edit_pending_entry_modal import EditPendingEntryModal
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+        match = PersonalizedOutreachService.entry_to_match(entry)
+        result = await self.app.push_screen_wait(
+            EditPendingEntryModal(match.subject, match.body)
+        )
+        if result is None:
+            return
+        subject, body = result
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        service = PersonalizedOutreachService(campaign)
+        service.update_pending_entry(entry.batch_id, entry.company_slug, subject=subject, body=body)
+        self.app.notify(f"Updated draft for {entry.company_slug}")
         self.refresh_batches()
 
     def action_send_batch(self) -> None:

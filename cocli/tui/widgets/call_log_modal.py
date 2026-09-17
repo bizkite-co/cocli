@@ -11,11 +11,19 @@ from cocli.models.companies.company import Company
 from cocli.models.companies.meeting import Meeting
 from cocli.models.companies.call_note import CallNote
 from cocli.models.campaigns.queues.to_call import ToCallTask
+from cocli.application.follow_up_service import FollowUpService
+from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 from cocli.application.to_call_disposition_service import mark_to_call_invalid
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
 from .inputs import CocliInput
 from .search_select import SearchSelect
+
+# Email follow-ups always render from a template (Mark, 2026-09-16: "I
+# don't want to generate a whole email for just this one... It will be
+# templated, and then I can edit the rendered email before sending") -
+# this sentinel is the "don't schedule one" choice, always first/default.
+NO_EMAIL_FOLLOW_UP = "(No email follow-up)"
 
 DISPOSITION_CHOICES = [
     ("Follow Up Needed", "Follow Up Needed"),
@@ -39,7 +47,7 @@ class CallLogModal(ModalScreen[bool]):
     """An embedded, keyboard-driven call logger with follow-up scheduling."""
 
     BINDINGS = [
-        ("escape", "dismiss(False)", "Cancel"),
+        ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save_call", "Save & Close"),
     ]
 
@@ -51,6 +59,12 @@ class CallLogModal(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         # Default callback to 7 days from now
         default_callback = (datetime.now(UTC) + timedelta(days=7)).strftime("%Y-%m-%d")
+
+        # "rta" default matches every other unspecified-initiative call
+        # site in this codebase (load_template/generate_copy/etc.) - this
+        # form has no initiative context of its own to pick from yet.
+        template_names = PersonalizedOutreachService(get_campaign() or "default").list_initiative_templates("rta")
+        template_choices = [(NO_EMAIL_FOLLOW_UP, "")] + [(name, name) for name in template_names]
 
         with Container(id="call_log_form"):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
@@ -65,6 +79,15 @@ class CallLogModal(ModalScreen[bool]):
             yield Label("Follow-up Date (YYYY-MM-DD, blank = don't re-queue)", classes="field-label")
             yield CocliInput(value=default_callback, id="callback_date")
 
+            yield Label(
+                "Email Follow-up Template (separate from the call re-queue above)",
+                classes="field-label",
+            )
+            yield SearchSelect(template_choices, initial_value="", id="followup_template")
+
+            yield Label("Email Follow-up Date (YYYY-MM-DD, only used if a template is picked)", classes="field-label")
+            yield CocliInput(value=default_callback, id="followup_email_date")
+
             yield Static("[bold reverse] CTRL+S: SAVE & REMOVE FROM LIST [/]  [dim] ESC: CANCEL [/]", id="modal_help")
 
     def on_mount(self) -> None:
@@ -74,6 +97,34 @@ class CallLogModal(ModalScreen[bool]):
     def handle_keys(self, event: events.Key) -> None:
         if event.key == "ctrl+s":
             self.save_call()
+
+    def action_cancel(self) -> None:
+        """Real call notes were lost to an unconfirmed instant discard here
+        (2026-09-16, a live call to Jimmy Jean Insurance) - app.py's alt+s
+        "universal escape" shim and this screen's own plain "escape"
+        binding both used to call dismiss(False) directly with zero
+        confirmation. Now: empty notes discard immediately (nothing to
+        lose, no need to nag); non-empty notes require an explicit yes.
+
+        Sync dispatcher + run_worker: push_screen_wait requires an active
+        worker, which a BINDINGS-triggered action doesn't get for free -
+        matches the pattern in company_detail.py's action_delete_company.
+        """
+        notes = self.query_one("#call_notes", TextArea).text.strip()
+        if not notes:
+            self.dismiss(False)
+            return
+
+        async def run_cancel() -> None:
+            from .confirm_screen import ConfirmScreen
+
+            confirmed = await self.app.push_screen_wait(
+                ConfirmScreen("Discard unsaved call notes?")
+            )
+            if confirmed:
+                self.dismiss(False)
+
+        self.app.run_worker(run_cancel())
 
     def save_call(self) -> None:
         notes = self.query_one("#call_notes", TextArea).text.strip()
@@ -161,6 +212,30 @@ class CallLogModal(ModalScreen[bool]):
                     self.app.notify(f"Scheduled callback for {callback_str}")
                 except ValueError:
                     self.app.notify(f"Invalid date format: {callback_str}", severity="warning")
+
+            # 6. Schedule Email Follow-up, if a template was picked - a
+            # separate concept from the call re-queue above (queues/follow-up/,
+            # not queues/to-call/), since more than one can be pending for
+            # the same company (see FollowUpTask). Always requires a
+            # template - the personal touch is added by editing the
+            # rendered draft in Target Batches, not by composing from
+            # scratch (Mark, 2026-09-16).
+            followup_template = self.query_one("#followup_template", SearchSelect).value
+            if followup_template and followup_template != NO_EMAIL_FOLLOW_UP:
+                followup_date_str = self.query_one("#followup_email_date", CocliInput).value.strip()
+                try:
+                    followup_date = datetime.strptime(followup_date_str, "%Y-%m-%d").replace(tzinfo=UTC)
+                    FollowUpService(campaign).add_follow_up(
+                        company_slug=self.company_slug,
+                        domain=company.domain or "unknown",
+                        scheduled_at=followup_date,
+                        format="email",
+                        template_id=followup_template,
+                        initiative="rta",
+                    )
+                    self.app.notify(f"Scheduled email follow-up ({followup_template}) for {followup_date_str}")
+                except ValueError:
+                    self.app.notify(f"Invalid email follow-up date: {followup_date_str}", severity="warning")
 
             company.save()
             self.app.notify("Call logged.")

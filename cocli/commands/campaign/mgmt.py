@@ -633,6 +633,36 @@ def compile_to_call(
         raise typer.Exit(1)
 
 
+@app.command(name="process-follow-ups")
+def process_follow_ups(
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="The name of the campaign.")
+    ] = None,
+) -> None:
+    """Processes due entries in the follow-up queue (queues/follow-up/,
+    scheduled from the note screen's "add email follow-up" flow).
+
+    A due "call" follow-up creates a to-call task, folding into the
+    existing call queue. A due "email" follow-up renders its template
+    into the pending-batch review queue (see `email prepare-batch`'s
+    output, or the Messages TUI's Target Batches view) - it is never
+    sent automatically; review and send it from there.
+    """
+    name = _require_campaign(campaign_name)
+    from ...application.follow_up_service import FollowUpService
+
+    service = FollowUpService(name)
+    result = service.process_due()
+
+    console.print(
+        f"[bold green]Processed follow-ups for '{name}':[/bold green] "
+        f"{result.due} due, {result.calls_queued} call(s) queued, "
+        f"{result.emails_queued} email(s) rendered for review."
+    )
+    for error in result.errors:
+        console.print(f"[yellow]  - {error}[/yellow]")
+
+
 @app.command(name="path-check")
 def path_check(
     paths: Annotated[

@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging
 import os
 import asyncio
+import inspect
 import shutil
 import subprocess
 import time
@@ -761,6 +762,15 @@ class CocliApp(App[None]):
                 self.screen.dismiss(False)
             elif isinstance(self.screen, CommandPalette):
                 self.screen.dismiss()
+            elif hasattr(self.screen, "action_cancel"):
+                # Data-entry modals (CallLogModal, EmailComposeModal) define
+                # this to confirm before discarding unsaved content - a
+                # blind dismiss(None) here silently threw away real call
+                # notes (2026-09-16). Route through it instead of assuming
+                # every other ModalScreen is safe to just close.
+                result = self.screen.action_cancel()
+                if inspect.isawaitable(result):
+                    await result
             else:
                 self.screen.dismiss(None)
             return

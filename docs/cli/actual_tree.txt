@@ -207,6 +207,8 @@ cocli
             campaign_name (text)
             --ttl-days (integer)
             --debug (boolean)
+        process-follow-ups - Processes due entries in the follow-up queue (queues/follow-up/,
+            campaign_name (text)
         prospects - Manage prospects within a campaign
             enrich-from-queue - Consumes enrichment tasks from the campaign's queue.
                 campaign_name (text)

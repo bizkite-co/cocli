@@ -32,6 +32,7 @@ class QueueIdentity(str, Enum):
     DISCOVERY_GEN = "discovery-gen"
     EVENTS = "events"
     MAP_TILE = "map-tile"
+    FOLLOW_UP = "follow-up"
 
 # Typed Identities for strict static type safety
 CollectionName = CollectionIdentity

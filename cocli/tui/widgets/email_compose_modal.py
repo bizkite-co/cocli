@@ -21,7 +21,7 @@ from .inputs import CocliInput
 
 class EmailComposeModal(ModalScreen[bool]):
     BINDINGS = [
-        ("escape", "dismiss(False)", "Cancel"),
+        ("escape", "cancel", "Cancel"),
         ("ctrl+s", "send_mail", "Send"),
         ("ctrl+enter", "send_mail", "Send"),
         ("ctrl+j", "send_mail", "Send"),
@@ -144,6 +144,31 @@ class EmailComposeModal(ModalScreen[bool]):
 
     def action_send_mail(self) -> None:
         self.run_worker(self._send_mail())
+
+    def action_cancel(self) -> None:
+        """Same fix as CallLogModal.action_cancel() (2026-09-16) - escape/
+        alt+s must not silently discard a drafted email with zero
+        confirmation. Sync dispatcher + run_worker: push_screen_wait
+        requires an active worker, which a BINDINGS-triggered action
+        doesn't get for free.
+        """
+        body = self.query_one("#email-body", TextArea).text.strip()
+        to_address = self.query_one("#email-to", CocliInput).value.strip()
+        subject = self.query_one("#email-subject", CocliInput).value.strip()
+        if not (body or to_address or subject):
+            self.dismiss(False)
+            return
+
+        async def run_cancel() -> None:
+            from .confirm_screen import ConfirmScreen
+
+            confirmed = await self.app.push_screen_wait(
+                ConfirmScreen("Discard this draft email?")
+            )
+            if confirmed:
+                self.dismiss(False)
+
+        self.app.run_worker(run_cancel())
 
     async def _send_mail(self) -> None:
         if self._sending:

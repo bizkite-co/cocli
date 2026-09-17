@@ -194,3 +194,48 @@ async def test_compose_send_via_ctrl_enter(
             await driver.press("ctrl+enter")
             await driver.pause()
         assert not isinstance(app.screen, EmailComposeModal)
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.email_compose_modal.load_campaign_config")
+@patch("cocli.tui.widgets.email_compose_modal.get_campaign", return_value="roadmap")
+@patch("cocli.application.company_service.get_company_details_for_view")
+async def test_escape_with_drafted_body_requires_confirmation(
+    mock_get_details: Any,
+    _mock_campaign: Any,
+    mock_config: Any,
+    mock_company_data: dict[str, Any],
+    tmp_path: Any,
+    monkeypatch: Any,
+) -> None:
+    """Regression (2026-09-16): same fix as CallLogModal - a drafted
+    email must not be silently discarded by escape/alt+s."""
+    from cocli.core.paths import paths
+    from cocli.tui.widgets.confirm_screen import ConfirmScreen
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    mock_get_details.return_value = mock_company_data
+    mock_config.return_value = {
+        "email": {"from_address": "mark@getretirementtaxanalyzer.com"},
+        "aws": {"profile": "westmonroe-support"},
+    }
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await driver.pause()
+        await driver.press("C")
+        await driver.pause()
+        assert isinstance(app.screen, EmailComposeModal)
+        modal = app.screen
+        modal.query_one("#email-body").text = "Please don't lose this draft."
+
+        await driver.press("escape")
+        await driver.pause()
+
+        assert isinstance(app.screen, ConfirmScreen)
+        await driver.press("n")
+        await driver.pause()
+
+        assert app.screen is modal
+        assert modal.query_one("#email-body").text == "Please don't lose this draft."

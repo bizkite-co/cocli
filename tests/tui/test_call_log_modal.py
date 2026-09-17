@@ -189,3 +189,166 @@ async def test_blank_followup_date_means_no_reschedule(
 
     pending_dir = paths.campaign("roadmap").path / "queues" / "to-call" / "pending"
     assert not list(pending_dir.glob("*no-reschedule-co*"))
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_email_follow_up_scheduled_when_template_picked(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Jimmy Jean case (2026-09-16): a templated email follow-up,
+    separate from the call re-queue, must land in the follow-up queue
+    for later review/send - not sent automatically, not conflated with
+    ToCallTask's callback_at."""
+    from cocli.application.follow_up_service import FollowUpService
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Jimmy Jean Insurance", slug="jimmy-jean", domain="jimmyjean.test", phone="555-777-8888")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="jimmy-jean", phone="555-777-8888")
+        app.push_screen(modal)
+        await driver.pause()
+
+        modal.query_one("#followup_template").value = "email_02_screenshots.md"
+        modal.query_one("#followup_email_date").value = "2026-09-30"
+        await driver.press("ctrl+s")
+        await driver.pause()
+
+    follow_ups = FollowUpService("roadmap").list_pending(company_slug="jimmy-jean")
+    assert len(follow_ups) == 1
+    assert follow_ups[0].format == "email"
+    assert follow_ups[0].template_id == "email_02_screenshots.md"
+    assert follow_ups[0].scheduled_at.strftime("%Y-%m-%d") == "2026-09-30"
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_no_email_follow_up_scheduled_by_default(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Leaving the template picker on its default must not silently
+    schedule anything."""
+    from cocli.application.follow_up_service import FollowUpService
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="No Follow Up Co", slug="no-follow-up-co", domain="nofollowup.test", phone="555-000-1111")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="no-follow-up-co", phone="555-000-1111")
+        app.push_screen(modal)
+        await driver.pause()
+
+        await driver.press("ctrl+s")
+        await driver.pause()
+
+    assert FollowUpService("roadmap").list_pending(company_slug="no-follow-up-co") == []
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_escape_with_empty_notes_dismisses_without_confirmation(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Nothing typed yet - no need to nag for a confirmation."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Empty Co", slug="empty-co", domain="empty.com", phone="555-000-0000")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="empty-co", phone="555-000-0000")
+        app.push_screen(modal)
+        await driver.pause()
+
+        await driver.press("escape")
+        await driver.pause()
+
+        assert app.screen is not modal
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_escape_with_notes_requires_confirmation_before_discarding(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Regression (2026-09-16): real call notes were lost to an
+    unconfirmed instant discard on escape/alt+s during a live call to
+    Jimmy Jean Insurance. Declining the confirmation must keep the modal
+    open with the typed notes intact."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Notes Co", slug="notes-co", domain="notes.com", phone="555-111-0000")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="notes-co", phone="555-111-0000")
+        app.push_screen(modal)
+        await driver.pause()
+
+        modal.query_one("#call_notes").text = "Talked for 20 minutes, very interested."
+        await driver.press("escape")
+        await driver.pause()
+
+        # Declining must not discard - modal stays open, text intact.
+        await driver.press("n")
+        await driver.pause()
+
+        assert app.screen is modal
+        assert modal.query_one("#call_notes").text == "Talked for 20 minutes, very interested."
+
+        # Confirming discards for real.
+        await driver.press("escape")
+        await driver.pause()
+        await driver.press("y")
+        await driver.pause()
+
+        assert app.screen is not modal
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_alt_s_with_notes_requires_confirmation_not_blind_dismiss(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The app-level alt+s "universal escape" shim (app.py) used to call
+    dismiss(None) directly on any modal it didn't specifically recognize -
+    bypassing CallLogModal's own confirmation entirely. It must route
+    through action_cancel() instead."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Alt S Co", slug="alt-s-co", domain="alts.com", phone="555-222-0000")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="alt-s-co", phone="555-222-0000")
+        app.push_screen(modal)
+        await driver.pause()
+
+        modal.query_one("#call_notes").text = "Do not lose this."
+        await driver.press("alt+s")
+        await driver.pause()
+
+        # A confirmation dialog, not an immediate blind dismiss.
+        from cocli.tui.widgets.confirm_screen import ConfirmScreen
+
+        assert isinstance(app.screen, ConfirmScreen)
+
+        await driver.press("n")
+        await driver.pause()
+
+        # Declining returns to the modal with notes intact.
+        assert app.screen is modal
+        assert modal.query_one("#call_notes").text == "Do not lose this."

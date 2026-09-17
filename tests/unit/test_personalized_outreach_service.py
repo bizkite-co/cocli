@@ -74,6 +74,56 @@ def test_find_eligible_prospects(tmp_path: Any, monkeypatch: Any) -> None:
     assert matches[0].recipient_email == "edward@targetfinancial.com"
 
 
+def test_find_contact_for_company_matches_the_same_rules_as_the_scanner(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """FollowUpService needs a single-company lookup with the exact same
+    contact-selection rules as find_eligible_prospects()'s campaign-wide
+    scan - this is that lookup, extracted rather than duplicated."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    company = Company(
+        name="Target Financial",
+        slug="target-financial",
+        domain="targetfinancial.com",
+        email="info@targetfinancial.com",
+        tags=["roadmap"],
+    )
+    company.save()
+
+    person = Person(
+        name="Edward Miller",
+        email="edward@targetfinancial.com",
+        company_name="Target Financial",
+        slug="edward-miller",
+    )
+    person.save()
+
+    contacts_dir = paths.companies.entry("target-financial").path / "contacts"
+    contacts_dir.mkdir(parents=True, exist_ok=True)
+    (contacts_dir / "edward-miller").symlink_to(person.get_local_path())
+
+    service = PersonalizedOutreachService("roadmap")
+    match = service.find_contact_for_company("target-financial")
+
+    assert match is not None
+    assert match.first_name == "Edward"
+    assert match.recipient_email == "edward@targetfinancial.com"
+    assert match.company_slug == "target-financial"
+
+
+def test_find_contact_for_company_returns_none_when_unresolvable(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    service = PersonalizedOutreachService("roadmap")
+    assert service.find_contact_for_company("does-not-exist") is None
+
+
 class _FakeEmailResult:
     def __init__(self, message_id: str) -> None:
         self.message_id = message_id
@@ -380,6 +430,52 @@ def test_send_pending_batch_restores_real_newlines_in_body(
     sent_body = fake_email_service.sent_requests[0].body
     assert "<br>" not in sent_body
     assert "\n" in sent_body
+
+
+def test_update_pending_entry_persists_edit_and_sends_it(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The "add my own text on top of the template, then send" step
+    (Mark, 2026-09-16) - the edit must survive to the actual send, and
+    must not touch any other row in the same pending.usv."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths, slug="edit-me-co", email_addr="edit@me.test")
+    _make_eligible_prospect(paths, slug="leave-alone-co", email_addr="leave@alone.test")
+
+    service = PersonalizedOutreachService("roadmap")
+    batch_id = service.freeze_batch(limit=10, template_id="email_01_pas_hook.md")
+
+    updated = service.update_pending_entry(
+        batch_id,
+        "edit-me-co",
+        subject="Edited subject",
+        body="A quick personal note.\n\nRest of the template body.",
+    )
+    assert updated is True
+
+    pending = {e.company_slug: e for e in service.list_pending_batches()}
+    assert "A quick personal note." in pending["edit-me-co"].body.replace("<br>", "\n")
+    # The other row must be untouched.
+    assert pending["leave-alone-co"].subject != "Edited subject"
+
+    fake_email_service = _FakeEmailService()
+    service.send_pending_batch(batch_id, email_service=fake_email_service)
+
+    sent = {r.to_address: r for r in fake_email_service.sent_requests}
+    assert sent["edit@me.test"].subject == "Edited subject"
+    assert "A quick personal note." in sent["edit@me.test"].body
+
+
+def test_update_pending_entry_returns_false_when_not_found(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    service = PersonalizedOutreachService("roadmap")
+    assert service.update_pending_entry("no-such-batch", "no-co", subject="x", body="y") is False
 
 
 def test_discard_pending_batch_removes_without_sending(tmp_path: Any, monkeypatch: Any) -> None:
