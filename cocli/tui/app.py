@@ -835,20 +835,42 @@ class CocliApp(App[None]):
         if is_wsl():
             copy_to_windows_clipboard(text)
 
-    def action_copy_text(self) -> None:
-        """Copy mouse-selected (or TextArea-selected) text. Ctrl+C used to be
-        bound to Back, which made the TUI un-copyable (2026-09-18)."""
+    def _selected_text_for_copy(self) -> str:
         selection = self.screen.get_selected_text()
+        if selection:
+            return selection
+        focused = self.focused
+        selected = getattr(focused, "selected_text", None)
+        return str(selected) if selected else ""
+
+    def action_copy_text(self) -> None:
+        """Copy mouse-selected (or TextArea-selected) text."""
+        selection = self._selected_text_for_copy()
         if not selection:
-            focused = self.focused
-            selected = getattr(focused, "selected_text", None)
-            if selected:
-                selection = selected
-        if not selection:
-            self.notify("Nothing selected — drag to highlight, then Ctrl+C", severity="warning")
+            self.notify(
+                "Nothing selected — drag to highlight, then two-finger tap (or Ctrl+C)",
+                severity="warning",
+            )
             return
         self.copy_to_clipboard(selection)
         self.notify("Copied")
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        """Two-finger tap is a right-click in Windows Terminal.
+
+        Textual enables mouse tracking, so that tap is delivered here instead
+        of WT's native 'right-click copies the selection'. Copy whatever
+        Textual currently has highlighted. Shift+drag still uses WT's own
+        selection (Microsoft: hold Shift to bypass mouse mode).
+        """
+        if event.button != 3:
+            return
+        selection = self._selected_text_for_copy()
+        if not selection:
+            return
+        self.copy_to_clipboard(selection)
+        self.notify("Copied")
+        event.stop()
 
     def action_navigate_up(self) -> None:
         """

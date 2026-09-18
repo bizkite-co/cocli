@@ -167,7 +167,7 @@ class CallLogModal(ModalScreen[bool]):
                     yield Markdown(reference["product-comparison.md"], id="call-comparison-panel")
 
             yield Static(
-                "[bold reverse] CTRL+S: SAVE [/]  [dim] ESC: CANCEL  ·  drag + CTRL+C: COPY [/]",
+                "[bold reverse] CTRL+S: SAVE [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
                 id="modal_help",
             )
 

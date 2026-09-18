@@ -26,6 +26,24 @@ def test_ctrl_c_copies_instead_of_navigating_back() -> None:
     assert ("ctrl+c", "copy_text") in mapped
     assert ("ctrl+c", "navigate_up") not in mapped
 
+
+@pytest.mark.asyncio
+async def test_right_click_copies_textual_selection() -> None:
+    """Windows Terminal two-finger tap is a right-click. With mouse tracking
+    on, WT does not copy that itself — the app has to."""
+    from unittest.mock import patch
+
+    from textual.events import MouseUp
+
+    app = CocliApp(services=create_mock_services(), auto_show=False)
+    async with app.run_test():
+        with patch.object(app, "_selected_text_for_copy", return_value="555-123-4567"), patch.object(
+            app, "copy_to_clipboard"
+        ) as copy:
+            event = MouseUp(None, 1, 1, 0, 0, 3, False, False, False)
+            app.on_mouse_up(event)
+            copy.assert_called_once_with("555-123-4567")
+
 @pytest.mark.asyncio
 async def test_header_is_visible():
     """Test that the MenuBar widget is visible on app startup."""
