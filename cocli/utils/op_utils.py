@@ -35,6 +35,14 @@ def _op_env() -> dict[str, str]:
     return env
 
 
+def _op_disabled() -> bool:
+    return os.environ.get("COCLI_DISABLE_OP", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 def _cmd_exe() -> Optional[str]:
     for path in _CMD_EXE_CANDIDATES:
         if os.path.isfile(path):
@@ -89,6 +97,9 @@ def read_op_secrets(*op_paths: str) -> Optional[list[str]]:
     """
     refs = [path for path in op_paths if path]
     if not refs:
+        return None
+    if _op_disabled():
+        logger.debug("COCLI_DISABLE_OP set; skipping 1Password batch read")
         return None
     if all(r in _secret_cache for r in refs):
         return [_secret_cache[r] for r in refs]
@@ -174,6 +185,10 @@ def get_op_secret(op_path: str) -> Optional[str]:
     Expects a path like 'op://Vault/Item/Field'
     """
     if not op_path or not op_path.startswith("op://"):
+        return None
+
+    if _op_disabled():
+        logger.debug("COCLI_DISABLE_OP set; skipping 1Password read for %s", op_path)
         return None
 
     if op_path in _secret_cache:

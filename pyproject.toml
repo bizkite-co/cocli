@@ -157,6 +157,11 @@ version = {file = "VERSION"}
 [tool.uv]
 package = true
 
+[tool.pytest.ini_options]
+markers = [
+    "live_1password: allow real 1Password CLI/SDK and AWS credential_process",
+]
+
 [tool.mypy]
 strict = true
 ignore_missing_imports = false

@@ -19,10 +19,42 @@ from playwright.async_api import async_playwright
 # etc). None if the process never had it set.
 _REAL_DATA_HOME = os.environ.get("COCLI_DATA_HOME")
 
+_AWS_ENV_KEYS = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_PROFILE",
+    "AWS_DEFAULT_PROFILE",
+    "AWS_CONFIG_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_EC2_METADATA_DISABLED",
+)
+_REAL_AWS_ENV = {key: os.environ.get(key) for key in _AWS_ENV_KEYS}
+
 # GLOBAL ISOLATION: Set this BEFORE any cocli imports
 # This ensures the DataPaths singleton initializes to a safe temp location
 _TEST_DATA_HOME = Path(tempfile.gettempdir()) / "cocli_test_data"
 os.environ["COCLI_DATA_HOME"] = str(_TEST_DATA_HOME)
+
+# Dummy static AWS keys + empty config so boto3 never runs the user's
+# ~/.aws credential_process (1password-aws-credentials.sh → Windows Hello).
+# Confirmed live: EmailService.send() constructed SesSuppressionService
+# which called boto3.Session().client("sesv2") and triggered Hello.
+_TEST_DATA_HOME.mkdir(parents=True, exist_ok=True)
+_TEST_AWS_CONFIG = _TEST_DATA_HOME / "aws-config"
+_TEST_AWS_CREDS = _TEST_DATA_HOME / "aws-credentials"
+if not _TEST_AWS_CONFIG.exists():
+    _TEST_AWS_CONFIG.write_text("", encoding="utf-8")
+if not _TEST_AWS_CREDS.exists():
+    _TEST_AWS_CREDS.write_text("", encoding="utf-8")
+os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+os.environ["AWS_SESSION_TOKEN"] = "testing"
+os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+os.environ["AWS_CONFIG_FILE"] = str(_TEST_AWS_CONFIG)
+os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(_TEST_AWS_CREDS)
+os.environ.pop("AWS_PROFILE", None)
+os.environ.pop("AWS_DEFAULT_PROFILE", None)
 
 # DISABLE Zeroconf/Gossip globally for ALL tests
 # Prevent any zeroconf background activity
@@ -39,6 +71,25 @@ module_patch('cocli.core.gossip_bridge.GossipBridge.stop', lambda x: None).start
 module_patch('cocli.core.gossip_bridge.Zeroconf', MagicMock()).start()
 module_patch('cocli.core.gossip_bridge.ServiceBrowser', MagicMock()).start()
 
+def _restore_real_aws_env() -> None:
+    for key, value in _REAL_AWS_ENV.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def _apply_test_aws_env() -> None:
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_SESSION_TOKEN"] = "testing"
+    os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+    os.environ["AWS_CONFIG_FILE"] = str(_TEST_AWS_CONFIG)
+    os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(_TEST_AWS_CREDS)
+    os.environ.pop("AWS_PROFILE", None)
+    os.environ.pop("AWS_DEFAULT_PROFILE", None)
+
+
 @pytest.fixture(autouse=True)
 def _reset_op_secret_cache():
     """op_utils._secret_cache is a module-level, process-lifetime cache
@@ -54,6 +105,33 @@ def _reset_op_secret_cache():
     op_utils._secret_cache.clear()
     yield
     op_utils._secret_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _block_live_1password(request):
+    """Default suite must not spawn op/op.exe/credential_process (Hello).
+
+    Opt out with @pytest.mark.live_1password (e2e). tests/unit/test_op_utils.py
+    exercises the CLI fallbacks with mocked subprocess and needs the real
+    function body, so it is excluded from the COCLI_DISABLE_OP short-circuit.
+    """
+    path = str(getattr(request.module, "__file__", ""))
+    live = request.node.get_closest_marker("live_1password") is not None
+    op_unit = path.endswith(os.path.join("tests", "unit", "test_op_utils.py"))
+    if live:
+        os.environ.pop("COCLI_DISABLE_OP", None)
+        _restore_real_aws_env()
+        yield
+        _apply_test_aws_env()
+        os.environ["COCLI_DISABLE_OP"] = "1"
+        return
+    if not op_unit:
+        os.environ["COCLI_DISABLE_OP"] = "1"
+    else:
+        os.environ.pop("COCLI_DISABLE_OP", None)
+    _apply_test_aws_env()
+    yield
+    os.environ.pop("COCLI_DISABLE_OP", None)
 
 
 @pytest.fixture(scope="session")

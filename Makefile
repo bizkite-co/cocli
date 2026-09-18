@@ -46,7 +46,18 @@ test-op-read: ## Test 1Password read with Windows Hello
 # 1. Check if CAMPAIGN was passed in the command line (make CAMPAIGN=xyz)
 # 2. Fallback to default campaign in cocli_config.toml
 # 3. If neither, set to "ERROR" to trigger checks later.
+#
+# Skip the $(shell python ...) lookups for lint/test/install/help: those
+# targets do not use CAMPAIGN/AWS_PROFILE, and parse-time Python was four
+# extra processes on every `make lint` / `make test`. (Hello storms came
+# from pytest + boto3 credential_process, not these lookups — still don't
+# import cocli unless a recipe needs it.)
+_SKIP_CAMPAIGN_RESOLVE := help lint test test-unit test-tui test-tui-integration test-file test-e2e test-data install build dev clean list-packages
+ifneq ($(filter-out $(_SKIP_CAMPAIGN_RESOLVE),$(MAKECMDGOALS)),)
 RAW_CAMPAIGN := $(shell [ -f ./.venv/bin/python3 ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import get_campaign; print(get_campaign() or '')" 2>/dev/null)
+else
+RAW_CAMPAIGN :=
+endif
 CAMPAIGN ?= $(if $(RAW_CAMPAIGN),$(RAW_CAMPAIGN),ERROR)
 
 # Validation function to be called by targets that require a campaign
@@ -61,9 +72,15 @@ define validate_campaign
 endef
 
 # Dynamically resolve AWS_PROFILE and REGION from campaign config
+ifneq ($(filter-out $(_SKIP_CAMPAIGN_RESOLVE),$(MAKECMDGOALS)),)
 AWS_PROFILE := $(shell [ -f ./.venv/bin/python3 ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('profile', ''))" 2>/dev/null)
 REGION := $(shell [ -f ./.venv/bin/python3 ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('region', 'us-east-1'))" 2>/dev/null)
 IOT_PROFILE := $(shell [ -f ./.venv/bin/python3 ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$(CAMPAIGN)'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')" 2>/dev/null)
+else
+AWS_PROFILE :=
+REGION :=
+IOT_PROFILE :=
+endif
 
 open: activate ##Activate the venv and open
 	@cocli

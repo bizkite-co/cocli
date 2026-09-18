@@ -76,6 +76,28 @@ def test_send_writes_company_note(tmp_path: Path) -> None:
     assert "bob@acme.test" in text
 
 
+def test_send_with_injected_sender_does_not_open_boto3_session(tmp_path: Path) -> None:
+    """FakeSes tests must not hit boto3's default credential chain
+    (1Password credential_process / Windows Hello)."""
+    paths.root = tmp_path
+    settings = EmailSettings(from_address="outreach@example.com")
+    service = EmailService(
+        "test-campaign",
+        settings,
+        ses_sender=FakeSes(),
+        company_lookup=lambda addr: None,
+    )
+    with patch("boto3.Session") as session_ctor:
+        service.send(
+            SendMailRequest(
+                to_address="bob@acme.test",
+                subject="Hello",
+                body="Body",
+            )
+        )
+    session_ctor.assert_not_called()
+
+
 def test_ses_sender_constructed_once_and_cached(mocker) -> None:
     """A batch of N sends must trigger one 1Password/AWS credential
     resolution, not N - Boto3SesSender.__init__ calls boto3.Session(...),

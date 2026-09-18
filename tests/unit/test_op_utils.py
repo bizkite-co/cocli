@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from cocli.core.secrets import OnePasswordProvider
@@ -92,3 +93,15 @@ def test_read_op_secrets_caches_each_ref_individually() -> None:
     assert first == ["AKIATEST", "secretvalue"]
     assert second == "AKIATEST"
     run.assert_called_once()
+
+
+def test_get_op_secret_honors_cocli_disable_op(monkeypatch: Any) -> None:
+    monkeypatch.setenv("COCLI_DISABLE_OP", "1")
+    with patch("cocli.utils.op_utils._read_via_linux_op") as linux_op, patch(
+        "cocli.utils.op_utils.run_windows_cmd"
+    ) as paused:
+        value = get_op_secret("op://Private/Must_Not_Read/field")
+
+    assert value is None
+    linux_op.assert_not_called()
+    paused.assert_not_called()

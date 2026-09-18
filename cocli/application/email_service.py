@@ -138,11 +138,17 @@ class EmailService:
         if ex_mgr.is_excluded(slug=slug_for_check, domain=request.to_address):
             raise ValueError(f"Recipient {request.to_address} is locally excluded.")
 
-        ses_suppress = SesSuppressionService(
-            region=self.settings.ses_region, profile=self._aws_profile
-        )
-        if ses_suppress.is_suppressed(request.to_address):
-            raise ValueError(f"Recipient {request.to_address} is suppressed in AWS SES.")
+        # Injected senders are tests/fakes: do not open a live SES v2 client
+        # (boto3 default chain → ~/.aws credential_process → 1Password /
+        # Windows Hello) just to check the account suppression list.
+        if self._ses_sender is None:
+            ses_suppress = SesSuppressionService(
+                region=self.settings.ses_region, profile=self._aws_profile
+            )
+            if ses_suppress.is_suppressed(request.to_address):
+                raise ValueError(
+                    f"Recipient {request.to_address} is suppressed in AWS SES."
+                )
 
         sender = self._ses()
 
