@@ -1,22 +1,17 @@
 [
   {
     "name": "O'Reilly Auto Parts",
-    "reviews_count": 223,
-    "average_rating": 4.5
-  },
-  {
-    "name": "O'Reilly Auto Parts",
-    "reviews_count": 151,
-    "average_rating": 4.4
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": 400,
+    "reviews_count": 251,
     "average_rating": 4.3
   },
   {
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 367,
+    "average_rating": 4.5
+  },
+  {
     "name": "Pep Boys Auto Service & Tires",
-    "reviews_count": 395,
+    "reviews_count": 394,
     "average_rating": 4.0
   },
   {
@@ -41,7 +36,7 @@
   },
   {
     "name": "Valley Auto Parts and Engines",
-    "reviews_count": 48,
+    "reviews_count": 47,
     "average_rating": 3.8
   },
   {
@@ -50,39 +45,29 @@
     "average_rating": 5.0
   },
   {
-    "name": "O'Reilly Auto Parts",
-    "reviews_count": 354,
-    "average_rating": 4.6
-  },
-  {
     "name": "Peak Pro Auto Service",
     "reviews_count": 36,
     "average_rating": 5.0
   },
   {
     "name": "NAPA Auto Parts",
-    "reviews_count": 179,
+    "reviews_count": 178,
     "average_rating": 4.3
   },
   {
     "name": "Pick Your Part - Sun Valley",
-    "reviews_count": 1584,
+    "reviews_count": 1566,
     "average_rating": 3.3
   },
   {
     "name": "One Stop Automotive",
-    "reviews_count": 60,
-    "average_rating": 4.9
+    "reviews_count": 59,
+    "average_rating": 4.8
   },
   {
     "name": "Smokey Auto Parts Inc",
     "reviews_count": 3,
     "average_rating": 4.3
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": 680,
-    "average_rating": 4.1
   },
   {
     "name": "Motoarts",
@@ -93,11 +78,6 @@
     "name": "Green Light Used Auto Parts Inc.",
     "reviews_count": 47,
     "average_rating": 4.8
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": 825,
-    "average_rating": 4.5
   },
   {
     "name": "Borg Equipment & Supply",
@@ -141,7 +121,7 @@
   },
   {
     "name": "Auto Alex Used Parts",
-    "reviews_count": 52,
+    "reviews_count": 51,
     "average_rating": 4.1
   },
   {
@@ -191,18 +171,13 @@
   },
   {
     "name": "Jiffy Lube Oil Change",
-    "reviews_count": 1005,
+    "reviews_count": 997,
     "average_rating": 4.8
   },
   {
     "name": "L A World Auto Parts",
-    "reviews_count": 24,
+    "reviews_count": 23,
     "average_rating": 3.9
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": 312,
-    "average_rating": 4.4
   },
   {
     "name": "Hybrid Auto Parts",
@@ -213,11 +188,6 @@
     "name": "Diamond Auto Parts",
     "reviews_count": 56,
     "average_rating": 4.6
-  },
-  {
-    "name": "O'Reilly Auto Parts",
-    "reviews_count": 425,
-    "average_rating": 4.4
   },
   {
     "name": "DELUXE AUTO PARTS LA",
@@ -290,24 +260,9 @@
     "average_rating": 4.8
   },
   {
-    "name": "O'Reilly Auto Parts",
-    "reviews_count": 10,
-    "average_rating": 4.5
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": 786,
-    "average_rating": 4.4
-  },
-  {
     "name": "ST Products",
     "reviews_count": null,
     "average_rating": null
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": 498,
-    "average_rating": 4.4
   },
   {
     "name": "Rudy's Tires",

@@ -314,6 +314,10 @@ def requeue_stuck_details(
     from_file: Optional[Path] = typer.Option(
         None, "--from-file", help="File of place_ids, one per line, for batch mode."
     ),
+    from_audit_csv: Optional[Path] = typer.Option(
+        None, "--from-audit-csv",
+        help="A CSV from `cocli audit campaign` - place_ids with gap_category == 'Integrity Gap (gm-details-stuck)' are extracted automatically.",
+    ),
     campaign: str = typer.Option("roadmap", help="Campaign name"),
     index: str = typer.Option("google_maps_prospects", help="Index name"),
 ) -> None:
@@ -328,18 +332,46 @@ def requeue_stuck_details(
     Use `cocli index trace` first to confirm a place_id is actually stuck
     (gm-details: completed, pi-wal/checkpoint: absent) before requeuing it.
     """
-    if not place_id and not from_file:
-        console.print("[red]Provide a place_id argument or --from-file.[/red]")
+    sources = [place_id, from_file, from_audit_csv]
+    if sum(1 for s in sources if s) > 1:
+        console.print(
+            "[red]Provide at most one of: a place_id argument, --from-file, "
+            "or --from-audit-csv.[/red]"
+        )
         raise typer.Exit(1)
-    if place_id and from_file:
-        console.print("[red]Provide either a place_id or --from-file, not both.[/red]")
-        raise typer.Exit(1)
+
+    if not any(sources):
+        from cocli.core.config import get_campaign_exports_dir
+        exports_dir = get_campaign_exports_dir(campaign)
+        files = list(exports_dir.glob("campaign_audit_*.csv"))
+        if not files:
+            console.print(f"[red]No campaign_audit_*.csv found in {exports_dir}.[/red]")
+            raise typer.Exit(1)
+        from_audit_csv = max(files, key=lambda f: f.stat().st_mtime)
+        console.print(f"[dim]Auto-selected latest audit: {from_audit_csv.name}[/dim]")
 
     if place_id:
         ids = [place_id]
-    else:
-        assert from_file is not None
+    elif from_file:
         ids = [line.strip() for line in from_file.read_text().splitlines() if line.strip()]
+    else:
+        assert from_audit_csv is not None
+        import csv
+
+        with open(from_audit_csv, newline="") as f:
+            reader = csv.DictReader(f)
+            ids = [
+                row["place_id"] for row in reader
+                if row.get("gap_category") == "Integrity Gap (gm-details-stuck)"
+            ]
+        console.print(
+            f"[cyan]Extracted {len(ids)} place_id(s) with a gm-details-stuck "
+            f"gap from {from_audit_csv}.[/cyan]"
+        )
+
+    if not ids:
+        console.print("[yellow]No place_ids to requeue.[/yellow]")
+        return
 
     services = ServiceContainer(campaign_name=campaign)
     result = services.index_service.requeue_stuck_details(ids, index_name=index)
@@ -388,12 +420,22 @@ def requeue_enrichment_gaps(
     against a CSV that's gone slightly stale, or to re-run.
     """
     sources = [place_id, from_file, from_audit_csv]
-    if sum(1 for s in sources if s) != 1:
+    if sum(1 for s in sources if s) > 1:
         console.print(
-            "[red]Provide exactly one of: a place_id argument, --from-file, "
+            "[red]Provide at most one of: a place_id argument, --from-file, "
             "or --from-audit-csv.[/red]"
         )
         raise typer.Exit(1)
+
+    if not any(sources):
+        from cocli.core.config import get_campaign_exports_dir
+        exports_dir = get_campaign_exports_dir(campaign)
+        files = list(exports_dir.glob("campaign_audit_*.csv"))
+        if not files:
+            console.print(f"[red]No campaign_audit_*.csv found in {exports_dir}.[/red]")
+            raise typer.Exit(1)
+        from_audit_csv = max(files, key=lambda f: f.stat().st_mtime)
+        console.print(f"[dim]Auto-selected latest audit: {from_audit_csv.name}[/dim]")
 
     if place_id:
         ids = [place_id]
@@ -462,6 +504,10 @@ def requeue_missing_details(
     from_file: Optional[Path] = typer.Option(
         None, "--from-file", help="File of place_ids, one per line, for batch mode."
     ),
+    from_audit_csv: Optional[Path] = typer.Option(
+        None, "--from-audit-csv",
+        help="A CSV from `cocli audit campaign` - place_ids with gap_category == 'Identity Gap (detailing)' are extracted automatically.",
+    ),
     campaign: str = typer.Option("roadmap", help="Campaign name"),
     batch_size: int = typer.Option(
         1000, "--batch-size", help="place_ids per SSH call (not one call per record)."
@@ -479,18 +525,42 @@ def requeue_missing_details(
     Skips place_ids with no gmb_url in the checkpoint, and anything already
     gm-details-completed - safe to re-run.
     """
-    if not place_id and not from_file:
-        console.print("[red]Provide a place_id argument or --from-file.[/red]")
+    sources = [place_id, from_file, from_audit_csv]
+    if sum(1 for s in sources if s) > 1:
+        console.print(
+            "[red]Provide at most one of: a place_id argument, --from-file, "
+            "or --from-audit-csv.[/red]"
+        )
         raise typer.Exit(1)
-    if place_id and from_file:
-        console.print("[red]Provide either a place_id or --from-file, not both.[/red]")
-        raise typer.Exit(1)
+
+    if not any(sources):
+        from cocli.core.config import get_campaign_exports_dir
+        exports_dir = get_campaign_exports_dir(campaign)
+        files = list(exports_dir.glob("campaign_audit_*.csv"))
+        if not files:
+            console.print(f"[red]No campaign_audit_*.csv found in {exports_dir}.[/red]")
+            raise typer.Exit(1)
+        from_audit_csv = max(files, key=lambda f: f.stat().st_mtime)
+        console.print(f"[dim]Auto-selected latest audit: {from_audit_csv.name}[/dim]")
 
     if place_id:
         ids = [place_id]
-    else:
-        assert from_file is not None
+    elif from_file:
         ids = [line.strip() for line in from_file.read_text().splitlines() if line.strip()]
+    else:
+        assert from_audit_csv is not None
+        import csv
+
+        with open(from_audit_csv, newline="") as f:
+            reader = csv.DictReader(f)
+            ids = [
+                row["place_id"] for row in reader
+                if row.get("gap_category") == "Identity Gap (detailing)"
+            ]
+        console.print(
+            f"[cyan]Extracted {len(ids)} place_id(s) with a detailing "
+            f"gap from {from_audit_csv}.[/cyan]"
+        )
 
     if not ids:
         console.print("[yellow]No place_ids to requeue.[/yellow]")

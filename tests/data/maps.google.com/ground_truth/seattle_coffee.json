@@ -1,22 +1,22 @@
 [
   {
     "name": "Storyville Coffee Pike Place",
-    "reviews_count": 3179,
+    "reviews_count": 3168,
     "average_rating": 4.6
   },
   {
     "name": "Slow Day Coffee",
-    "reviews_count": 172,
+    "reviews_count": 164,
     "average_rating": 4.8
   },
   {
     "name": "URL Coffee",
-    "reviews_count": 459,
+    "reviews_count": 452,
     "average_rating": 4.8
   },
   {
     "name": "Overcast Coffee",
-    "reviews_count": 311,
+    "reviews_count": 309,
     "average_rating": 4.7
   },
   {
@@ -26,47 +26,47 @@
   },
   {
     "name": "Aroom Coffee Waterfront",
-    "reviews_count": 264,
+    "reviews_count": 260,
     "average_rating": 4.7
   },
   {
     "name": "Howdy Y'all Coffee (Central Library)",
-    "reviews_count": 122,
+    "reviews_count": 119,
     "average_rating": 4.9
   },
   {
     "name": "Analog Coffee",
-    "reviews_count": 1140,
+    "reviews_count": 1142,
     "average_rating": 4.7
   },
   {
     "name": "Konvene Coffee",
-    "reviews_count": 523,
+    "reviews_count": 519,
     "average_rating": 4.9
   },
   {
     "name": "Zeitgeist Coffee",
-    "reviews_count": 1635,
+    "reviews_count": 1632,
     "average_rating": 4.5
   },
   {
     "name": "Coffee TAB",
-    "reviews_count": 618,
+    "reviews_count": 615,
     "average_rating": 4.7
   },
   {
     "name": "Current Coffee",
-    "reviews_count": 175,
+    "reviews_count": 174,
     "average_rating": 4.8
   },
   {
     "name": "Anchorhead Coffee",
-    "reviews_count": 1954,
-    "average_rating": 4.6
+    "reviews_count": 555,
+    "average_rating": 4.7
   },
   {
     "name": "Numa Coffee Bar",
-    "reviews_count": 20,
+    "reviews_count": 17,
     "average_rating": 5.0
   },
   {
@@ -76,42 +76,42 @@
   },
   {
     "name": "The Good Coffee Company",
-    "reviews_count": 101,
+    "reviews_count": 87,
     "average_rating": 4.9
   },
   {
     "name": "Overcast Coffee Company",
-    "reviews_count": 201,
-    "average_rating": 4.8
+    "reviews_count": 199,
+    "average_rating": 4.7
   },
   {
     "name": "Drip Drip coffeehouse",
-    "reviews_count": 353,
+    "reviews_count": 348,
     "average_rating": 4.5
   },
   {
     "name": "Herkimer Coffee",
-    "reviews_count": 154,
+    "reviews_count": 152,
     "average_rating": 4.8
   },
   {
     "name": "Voxx Coffee Downtown",
-    "reviews_count": 298,
+    "reviews_count": 297,
     "average_rating": 4.6
   },
   {
     "name": "Victrola Coffee Roasters",
-    "reviews_count": 1226,
+    "reviews_count": 366,
     "average_rating": 4.5
   },
   {
     "name": "Mintish Coffee House",
-    "reviews_count": 1219,
+    "reviews_count": 1212,
     "average_rating": 5.0
   },
   {
     "name": "Ghost Note Coffee",
-    "reviews_count": 562,
+    "reviews_count": 563,
     "average_rating": 4.4
   },
   {
@@ -121,28 +121,23 @@
   },
   {
     "name": "Lune Cafe",
-    "reviews_count": 1334,
+    "reviews_count": 1335,
     "average_rating": 4.5
   },
   {
-    "name": "Anchorhead Coffee",
-    "reviews_count": 557,
-    "average_rating": 4.6
-  },
-  {
     "name": "Himalayan Coffee Roasters Seattle",
-    "reviews_count": 554,
+    "reviews_count": 551,
     "average_rating": 4.5
   },
   {
     "name": "Nudibranch Coffee",
-    "reviews_count": 131,
+    "reviews_count": 130,
     "average_rating": 4.7
   },
   {
     "name": "Piedmont Caf\u00e9",
-    "reviews_count": 304,
-    "average_rating": 4.7
+    "reviews_count": 299,
+    "average_rating": 4.8
   },
   {
     "name": "Cafe An'Clair - 9th & Thomas",
@@ -151,17 +146,17 @@
   },
   {
     "name": "Retro Coffee",
-    "reviews_count": 324,
+    "reviews_count": 322,
     "average_rating": 4.4
   },
   {
     "name": "Jollidaze Cafe",
-    "reviews_count": 145,
+    "reviews_count": 144,
     "average_rating": 4.8
   },
   {
     "name": "Cherry Street Coffee House",
-    "reviews_count": 1188,
+    "reviews_count": 1183,
     "average_rating": 4.4
   },
   {
@@ -176,12 +171,12 @@
   },
   {
     "name": "Bonito Caf\u00e9 y Mercadito",
-    "reviews_count": 354,
-    "average_rating": 4.7
+    "reviews_count": 351,
+    "average_rating": 4.6
   },
   {
     "name": "Broadcast Coffee",
-    "reviews_count": 668,
+    "reviews_count": 667,
     "average_rating": 4.6
   },
   {
@@ -191,28 +186,28 @@
   },
   {
     "name": "Milstead & Co.",
-    "reviews_count": 1178,
+    "reviews_count": 1177,
     "average_rating": 4.6
   },
   {
     "name": "Artisan Cafe",
-    "reviews_count": 325,
+    "reviews_count": 324,
     "average_rating": 4.7
   },
   {
     "name": "Fulcrum Caf\u00e9",
-    "reviews_count": 721,
+    "reviews_count": 719,
     "average_rating": 4.4
   },
   {
     "name": "Caffe Umbria Olive Way",
-    "reviews_count": 454,
+    "reviews_count": 453,
     "average_rating": 4.7
   },
   {
     "name": "Realfine Coffee",
-    "reviews_count": 260,
-    "average_rating": 4.6
+    "reviews_count": 241,
+    "average_rating": 4.8
   },
   {
     "name": "Ghost Note Coffee (Seattle Tower)",
@@ -221,18 +216,13 @@
   },
   {
     "name": "Ghost Alley Espresso",
-    "reviews_count": 764,
+    "reviews_count": 761,
     "average_rating": 4.6
   },
   {
     "name": "Monorail Espresso",
-    "reviews_count": 923,
+    "reviews_count": 921,
     "average_rating": 4.7
-  },
-  {
-    "name": "Victrola Coffee Roasters",
-    "reviews_count": 1411,
-    "average_rating": 4.4
   },
   {
     "name": "PHIN vietnamese coffee & etc.",
@@ -246,33 +236,23 @@
   },
   {
     "name": "The Seattle Grind",
-    "reviews_count": 232,
+    "reviews_count": 225,
     "average_rating": 4.6
   },
   {
-    "name": "Victrola Coffee Roasters",
-    "reviews_count": 366,
-    "average_rating": 4.5
-  },
-  {
     "name": "Eastlake Coffee & Cafe",
-    "reviews_count": 401,
+    "reviews_count": 399,
     "average_rating": 4.4
   },
   {
     "name": "Street Bean Cafe",
-    "reviews_count": 367,
-    "average_rating": 4.6
+    "reviews_count": 365,
+    "average_rating": 4.7
   },
   {
     "name": "Copper Tree Coffee House",
-    "reviews_count": 251,
+    "reviews_count": 250,
     "average_rating": 4.9
-  },
-  {
-    "name": "Realfine Coffee",
-    "reviews_count": 241,
-    "average_rating": 4.8
   },
   {
     "name": "Caffe Umbria",
@@ -281,7 +261,7 @@
   },
   {
     "name": "Two Kick Coffee",
-    "reviews_count": 202,
+    "reviews_count": 201,
     "average_rating": 4.7
   },
   {
@@ -306,17 +286,22 @@
   },
   {
     "name": "Lula Coffee Co",
-    "reviews_count": 290,
-    "average_rating": 4.5
-  },
-  {
-    "name": "Lula Coffee Co",
-    "reviews_count": 335,
+    "reviews_count": 333,
     "average_rating": 4.5
   },
   {
     "name": "Boon Boona Coffee",
     "reviews_count": 113,
     "average_rating": 4.3
+  },
+  {
+    "name": "Goldvine Coffee Bar & Gallery",
+    "reviews_count": 146,
+    "average_rating": 4.5
+  },
+  {
+    "name": "Black Arrows Coffee",
+    "reviews_count": 301,
+    "average_rating": 4.6
   }
 ]
