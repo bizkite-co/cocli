@@ -20,7 +20,12 @@ from cocli.application.personalized_outreach_service import PersonalizedOutreach
 from cocli.application.to_call_disposition_service import mark_to_call_invalid
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
-from cocli.utils.company_local_time import format_company_local_now
+from cocli.application.company_service import format_contact_line, list_known_contacts
+from cocli.utils.company_local_time import (
+    CompanyPlace,
+    format_company_local_now,
+    resolve_company_place,
+)
 from cocli.utils.when import parse_follow_up_when
 from .inputs import CocliInput
 from .search_select import SearchSelect
@@ -70,12 +75,43 @@ class CallLogModal(ModalScreen[bool]):
         self.company_slug = company_slug
         self.phone = phone
         company = Company.get(company_slug)
-        self._timezone_name: Optional[str] = company.timezone if company else None
-        self._state: Optional[str] = company.state if company else None
+        self._place: CompanyPlace = self._resolve_place(company)
+        self._contacts = list_known_contacts(company_slug)
+
+    @staticmethod
+    def _resolve_place(company: Optional[Company]) -> CompanyPlace:
+        if company is None:
+            return resolve_company_place()
+        address_bits = [
+            str(company.street_address or ""),
+            str(company.full_address or ""),
+            str(company.city or ""),
+            str(company.state or ""),
+            str(company.zip_code or ""),
+        ]
+        website_path = company.get_local_path() / "enrichments" / "website.md"
+        if website_path.exists():
+            from cocli.models.companies.website import Website
+
+            data = Website.read_existing_frontmatter(website_path)
+            if data:
+                address_bits.append(str(data.get("address") or ""))
+                # Body copy often has "Dallas, TX 75240" even when structured
+                # city/state were never copied onto the company record.
+                address_bits.append(str(data.get("description") or "")[:2000])
+        return resolve_company_place(
+            timezone_name=company.timezone,
+            state=company.state,
+            city=company.city,
+            zip_code=company.zip_code,
+            latitude=company.latitude,
+            longitude=company.longitude,
+            address_text="\n".join(bit for bit in address_bits if bit.strip()),
+        )
 
     def _local_time_markup(self) -> str:
-        stamp = format_company_local_now(self._timezone_name, self._state)
-        return f"[bold green]{stamp}[/bold green]  (company local)"
+        stamp = format_company_local_now(place=self._place)
+        return f"[bold green]{stamp}[/bold green]  ({self._place.place_label()})"
 
     def compose(self) -> ComposeResult:
         # Default callback to 7 days from now
@@ -94,6 +130,7 @@ class CallLogModal(ModalScreen[bool]):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield Label(self._local_time_markup(), id="company_local_time")
             yield Label(f"Phone: {phone_display}", classes="modal-subtitle", id="call_phone")
+            yield Static(self._contacts_markup(), id="call-contacts")
 
             with Horizontal(id="call-log-columns"):
                 with VerticalScroll(id="call-log-left"):
@@ -129,7 +166,18 @@ class CallLogModal(ModalScreen[bool]):
                     yield Markdown(reference["preferred-phrases.md"], id="call-phrases-panel")
                     yield Markdown(reference["product-comparison.md"], id="call-comparison-panel")
 
-            yield Static("[bold reverse] CTRL+S: SAVE & REMOVE FROM LIST [/]  [dim] ESC: CANCEL [/]", id="modal_help")
+            yield Static(
+                "[bold reverse] CTRL+S: SAVE [/]  [dim] ESC: CANCEL  ·  drag + CTRL+C: COPY [/]",
+                id="modal_help",
+            )
+
+    def _contacts_markup(self) -> str:
+        lines = [format_contact_line(c) for c in self._contacts]
+        lines = [line for line in lines if line][:12]
+        if not lines:
+            return "[dim]No known contacts on file[/dim]"
+        body = "\n".join(f"  {line}" for line in lines)
+        return f"[bold]Known contacts[/bold]\n{body}"
 
     def on_mount(self) -> None:
         self.set_interval(1.0, self._tick_local_time)

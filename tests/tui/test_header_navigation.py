@@ -1,3 +1,4 @@
+from textual.binding import Binding
 from textual.widgets import Label
 import pytest
 from unittest.mock import MagicMock
@@ -12,6 +13,18 @@ def create_mock_services():
     mock_search = MagicMock()
     mock_search.return_value = []
     return ServiceContainer(search_service=mock_search, sync_search=True)
+
+
+def test_ctrl_c_copies_instead_of_navigating_back() -> None:
+    """Ctrl+C used to be bound to Back, so nothing in the TUI could be copied."""
+    mapped: list[tuple[str, str]] = []
+    for binding in CocliApp.BINDINGS:
+        if isinstance(binding, Binding):
+            mapped.append((binding.key, binding.action))
+        else:
+            mapped.append((str(binding[0]), str(binding[1])))
+    assert ("ctrl+c", "copy_text") in mapped
+    assert ("ctrl+c", "navigate_up") not in mapped
 
 @pytest.mark.asyncio
 async def test_header_is_visible():

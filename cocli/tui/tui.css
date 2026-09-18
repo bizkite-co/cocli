@@ -420,6 +420,13 @@ ModalScreen {
     margin: 0 0 1 0;
 }
 
+#call-contacts {
+    height: auto;
+    max-height: 8;
+    color: #dddddd;
+    margin: 0 0 1 0;
+}
+
 #call-log-columns {
     height: 1fr;
 }

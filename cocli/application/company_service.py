@@ -218,6 +218,76 @@ async def update_company_from_website_data(
     return modified
 
 
+def list_known_contacts(company_slug: str) -> list[dict[str, Any]]:
+    """People and emails already on file for a live call — no full-tree scan.
+
+    Combines companies/<slug>/contacts/ (Person records) with website.md
+    personnel/emails and the company's own email / all_emails fields.
+    """
+    from ..core.paths import paths
+
+    entry = paths.companies.entry(company_slug)
+    contacts: list[dict[str, Any]] = []
+    if not entry.exists():
+        return contacts
+
+    contacts_dir = entry.path / "contacts"
+    if contacts_dir.exists():
+        for contact_symlink in sorted(contacts_dir.iterdir()):
+            if contact_symlink.is_symlink():
+                person = Person.from_directory(contact_symlink.resolve())
+                if person:
+                    contacts.append(person.model_dump())
+
+    known_emails = {
+        str(c.get("email") or "").strip().lower()
+        for c in contacts
+        if c.get("email")
+    }
+
+    website_path = entry.path / "enrichments" / "website.md"
+    website = _load_website_md(website_path)
+    if website:
+        for row in _website_emails_as_contacts(website):
+            key = str(row.get("email") or "").strip().lower()
+            if key and key in known_emails:
+                continue
+            if key:
+                known_emails.add(key)
+            contacts.append(row)
+
+    company = Company.from_directory(entry.path)
+    if company:
+        contexts = company.email_contexts or {}
+        extras = [company.email, *(company.all_emails or [])]
+        for raw in extras:
+            email = str(raw or "").strip()
+            key = email.lower()
+            if not email or key in known_emails:
+                continue
+            known_emails.add(key)
+            contacts.append(
+                {
+                    "name": "",
+                    "role": str(contexts.get(email) or contexts.get(key) or ""),
+                    "email": email,
+                    "source": "company",
+                }
+            )
+
+    return contacts
+
+
+def format_contact_line(contact: dict[str, Any]) -> str:
+    name = str(contact.get("name") or "").strip()
+    role = str(contact.get("role") or contact.get("title") or "").strip()
+    if role.lower() in {"website", "email"}:
+        role = ""
+    email = str(contact.get("email") or "").strip()
+    parts = [p for p in (name, role, email) if p]
+    return " — ".join(parts)
+
+
 def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
     """
     Retrieves all necessary data for displaying a company's detailed view.

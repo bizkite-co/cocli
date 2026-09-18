@@ -269,6 +269,44 @@ def test_view_lists_website_emails_in_contacts(
     assert "sales@hotlead.com" in [str(e) for e in details["company"]["all_emails"]]
 
 
+def test_list_known_contacts_includes_company_email_and_personnel(
+    sandboxed_companies_dir: Path,
+) -> None:
+    from cocli.application.company_service import format_contact_line, list_known_contacts
+
+    slug = "aquila-financial-tax-services"
+    company_dir = sandboxed_companies_dir / slug
+    enrich = company_dir / "enrichments"
+    enrich.mkdir(parents=True)
+    (company_dir / "_index.md").write_text(
+        "---\n"
+        "name: Aquila Financial\n"
+        f"slug: {slug}\n"
+        "email: info@aftaxservices.com\n"
+        "all_emails:\n"
+        "- info@aftaxservices.com\n"
+        "---\n"
+    )
+    (enrich / "website.md").write_text(
+        "---\n"
+        "url: aftaxservices.com\n"
+        "email: info@aftaxservices.com\n"
+        "personnel:\n"
+        "- name: James Aquila\n"
+        "  title: Founder\n"
+        "---\n"
+    )
+
+    contacts = list_known_contacts(slug)
+    names = {str(c.get("name") or "") for c in contacts}
+    emails = {str(c.get("email") or "") for c in contacts}
+    assert "James Aquila" in names
+    assert "info@aftaxservices.com" in emails
+    lines = [format_contact_line(c) for c in contacts]
+    assert any("James Aquila" in line and "Founder" in line for line in lines)
+    assert any("info@aftaxservices.com" in line for line in lines)
+
+
 def test_hydrate_fills_empty_domain_without_overwriting(
     sandboxed_companies_dir: Path,
 ) -> None:

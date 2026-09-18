@@ -438,7 +438,7 @@ class CocliApp(App[None]):
         ("h", "navigate_up", "Back"),
         ("q", "quit", "Quit"),
         Binding("escape", "navigate_up", "Back", show=False),
-        Binding("ctrl+c", "navigate_up", "Back", show=False),
+        Binding("ctrl+c", "copy_text", "Copy", show=False),
         ("alt+s", "navigate_up", "Navigate Up"),
         Binding("meta+s", "navigate_up", "Navigate Up", show=False),
         Binding("[", "focus_sidebar", "Focus Sidebar", show=False),
@@ -827,6 +827,28 @@ class CocliApp(App[None]):
     def reset_leader_mode(self) -> None:
         self.leader_mode = False
         self.leader_key_buffer = ""
+
+    def copy_to_clipboard(self, text: str) -> None:
+        super().copy_to_clipboard(text)
+        from ..utils.open_url import copy_to_windows_clipboard, is_wsl
+
+        if is_wsl():
+            copy_to_windows_clipboard(text)
+
+    def action_copy_text(self) -> None:
+        """Copy mouse-selected (or TextArea-selected) text. Ctrl+C used to be
+        bound to Back, which made the TUI un-copyable (2026-09-18)."""
+        selection = self.screen.get_selected_text()
+        if not selection:
+            focused = self.focused
+            selected = getattr(focused, "selected_text", None)
+            if selected:
+                selection = selected
+        if not selection:
+            self.notify("Nothing selected — drag to highlight, then Ctrl+C", severity="warning")
+            return
+        self.copy_to_clipboard(selection)
+        self.notify("Copied")
 
     def action_navigate_up(self) -> None:
         """

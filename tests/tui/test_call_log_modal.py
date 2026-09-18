@@ -237,7 +237,6 @@ async def test_right_column_shows_call_reference_files(
         assert "(555) 333-4444" in str(modal.query_one("#call_phone").content)
         local_time = str(modal.query_one("#company_local_time").content)
         assert "AM" in local_time or "PM" in local_time
-        assert "company local" in local_time
 
 
 @pytest.mark.asyncio
@@ -367,6 +366,59 @@ async def test_natural_language_follow_up_dates(
     follow_ups = FollowUpService("roadmap").list_pending(company_slug="when-co")
     assert len(follow_ups) == 1
     assert follow_ups[0].scheduled_at > datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_call_log_shows_dallas_time_and_known_contacts(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """aquila-shaped record: no timezone/state on the company, Dallas in
+    website copy, plus a founder name and office email."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="Aquila Financial",
+        slug="aquila-financial-tax-services",
+        domain="aftaxservices.com",
+        phone="2148884398",
+        street_address="13355 Noel Rd",
+        email="info@aftaxservices.com",
+    )
+    co.save()
+    enrich = paths.companies.entry("aquila-financial-tax-services").path / "enrichments"
+    enrich.mkdir(parents=True, exist_ok=True)
+    (enrich / "website.md").write_text(
+        "---\n"
+        "url: https://aftaxservices.com/\n"
+        "email: info@aftaxservices.com\n"
+        "personnel:\n"
+        "- name: James Aquila\n"
+        "  title: Founder\n"
+        "description: |\n"
+        "  Located in North Dallas.\n"
+        "  Dallas, TX 75240\n"
+        "---\n",
+        encoding="utf-8",
+    )
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(
+            company_slug="aquila-financial-tax-services", phone="2148884398"
+        )
+        app.push_screen(modal)
+        await driver.pause(0.2)
+
+        local_time = str(modal.query_one("#company_local_time").content)
+        assert "CDT" in local_time or "CST" in local_time
+        assert "Dallas" in local_time
+        assert "PDT" not in local_time and "PST" not in local_time
+
+        contacts = str(modal.query_one("#call-contacts").content)
+        assert "James Aquila" in contacts
+        assert "info@aftaxservices.com" in contacts
 
 
 @pytest.mark.asyncio
