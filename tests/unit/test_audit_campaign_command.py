@@ -66,9 +66,9 @@ def test_audit_campaign_reports_gap_tally_and_writes_csv(tmp_path: Path) -> None
     )
 
     export_dir = tmp_path / "campaigns" / "test-campaign" / "exports"
-    csv_files = list(export_dir.glob("campaign_audit_*.csv"))
-    assert len(csv_files) == 1
-    content = csv_files[0].read_text()
+    csv_file = export_dir / "campaign_audit.csv"
+    assert csv_file.exists()
+    content = csv_file.read_text()
     assert "PLACE_B" in content
     assert "Identity Gap (enrichment-enqueue)" in content
 
