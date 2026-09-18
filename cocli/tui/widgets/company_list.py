@@ -1,9 +1,10 @@
 from __future__ import annotations
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, UTC
 from typing import TYPE_CHECKING, cast, Any, Optional
 
+from rich.text import Text
 from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Label, ListView, ListItem, LoadingIndicator, Input, Static
@@ -22,6 +23,30 @@ from .mark_prefix import MarkPrefixMixin
 from ..base import CocliPanel
 
 logger = logging.getLogger(__name__)
+
+_DUE_SOON_WINDOW = timedelta(days=3)
+
+
+def _to_call_row_style(callback_at_raw: Optional[str]) -> Optional[str]:
+    """Color for a to-call list row based on its scheduled callback:
+    overdue -> orange (Mark's "approaching red"), due within
+    _DUE_SOON_WINDOW -> yellow, farther out or never-scheduled (None,
+    which also means "due now") -> no special style. See
+    to-call-list-sort-and-color-code-by-callback-due-status ticket."""
+    if not callback_at_raw:
+        return None
+    try:
+        callback_dt = datetime.fromisoformat(callback_at_raw)
+    except (ValueError, TypeError):
+        return None
+    if callback_dt.tzinfo is None:
+        callback_dt = callback_dt.replace(tzinfo=UTC)
+    now = datetime.now(UTC)
+    if callback_dt <= now:
+        return "bold orange1"
+    if callback_dt - now <= _DUE_SOON_WINDOW:
+        return "bold yellow"
+    return None
 
 
 class CompanyList(MarkPrefixMixin, CocliPanel):
@@ -452,9 +477,14 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                 return
 
             new_items = []
+            is_to_call_view = bool(self.current_filters.get("to_call"))
             for item in self.filtered_fz_items:
                 item_name = str(item.name) if item.name else ""
-                new_items.append(ListItem(Label(item_name, markup=False), name=item_name))
+                style = _to_call_row_style(item.to_call_callback_at) if is_to_call_view else None
+                label_renderable: Any = Text(item_name, style=style) if style else item_name
+                new_items.append(
+                    ListItem(Label(label_renderable, markup=False), name=item_name)
+                )
 
             # extend() is more synchronous for small lists and helps tests
             list_view.extend(new_items)

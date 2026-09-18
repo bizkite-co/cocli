@@ -35,3 +35,7 @@ class SearchResult(BaseModel):
     details_found_at: Optional[str] = None
     enqueued_at: Optional[str] = None
     last_enriched: Optional[str] = None
+    # Scheduled to-call callback (None = due now/never scheduled, a past
+    # timestamp = overdue, a future timestamp = scheduled) - lets the TUI
+    # sort/color the to-call list instead of hiding not-yet-due entries.
+    to_call_callback_at: Optional[str] = None

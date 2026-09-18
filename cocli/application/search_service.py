@@ -533,36 +533,51 @@ def get_fuzzy_search_results(
                     lifecycle_dp,
                 )
 
-                _con.execute("CREATE TABLE items_to_call (slug VARCHAR)")
+                # TIMESTAMPTZ, not TIMESTAMP - DuckDB's plain TIMESTAMP is
+                # timezone-NAIVE, so inserting a real UTC-aware
+                # datetime.datetime silently converts it to the DB
+                # connection's local wall-clock time and strips the
+                # offset on the way back out (confirmed empirically,
+                # 2026-09-17: a 2026-09-23T00:00:00Z callback_at came back
+                # as the naive string "2026-09-22 17:00:00" on a
+                # Pacific-timezone machine - correct instant, but
+                # unrecoverable as UTC downstream without the offset).
+                # TIMESTAMPTZ preserves the real instant with an explicit
+                # offset either way.
+                _con.execute("CREATE TABLE items_to_call (slug VARCHAR, callback_at TIMESTAMPTZ)")
                 if to_call_pending_dir and to_call_pending_dir.exists():
-                    # A pending task with a future callback_at is a
-                    # scheduled follow-up, not due yet (Mark, 2026-09-01:
-                    # scheduled/ used to be a separate directory nothing
-                    # ever read back, so follow-ups silently vanished -
-                    # merged into pending/ with callback_at as the due date
-                    # instead). Only surface tasks that are actually due.
+                    # Every pending task is on the queue and should be
+                    # findable/visible there - a future callback_at means
+                    # "scheduled for later," not "hidden until then" (Mark,
+                    # 2026-09-17: searching the to-call filter for a
+                    # specific company scheduled a few days out found
+                    # nothing - being unable to find a company you know is
+                    # queued is worse than an unsorted list). callback_at
+                    # is carried through so the TUI can sort
+                    # never-called/overdue first and color-code
+                    # near-term-vs-overdue scheduled entries, rather than
+                    # this layer silently dropping not-yet-due rows the
+                    # way it used to (2026-09-01 comment, since revised).
                     from cocli.models.campaigns.queues.to_call import ToCallTask
-                    from datetime import datetime, UTC
 
-                    now = datetime.now(UTC)
-                    items = []
+                    items: list[list[Any]] = []
                     for fname in os.listdir(to_call_pending_dir):
                         if not fname.endswith(".usv"):
                             continue
                         slug = fname.replace(".usv", "")
+                        callback_at = None
                         try:
                             content = (to_call_pending_dir / fname).read_text()
                             task = ToCallTask.from_usv(content)
-                            due = task.callback_at is None or task.callback_at <= now
+                            callback_at = task.callback_at
                         except Exception:
-                            # Malformed/unparsable file - fall back to the
-                            # previous filename-only behavior (due now)
-                            # rather than silently dropping it.
-                            due = True
-                        if due:
-                            items.append([slug])
+                            # Malformed/unparsable file - keep it visible
+                            # (callback_at=None sorts as "due now") rather
+                            # than silently dropping it.
+                            pass
+                        items.append([slug, callback_at])
                     if items:
-                        _con.executemany("INSERT INTO items_to_call VALUES (?)", items)
+                        _con.executemany("INSERT INTO items_to_call VALUES (?, ?)", items)
 
                 _con.execute("CREATE TABLE items_to_call_invalid (slug VARCHAR)")
                 if to_call_invalid_pending_dir and to_call_invalid_pending_dir.exists():
@@ -724,6 +739,7 @@ def get_fuzzy_search_results(
                         COALESCE({lc_enqueued}, CAST(NULL AS VARCHAR)) as enqueued_at,
                         COALESCE({lc_enriched}, CAST(NULL AS VARCHAR)) as last_enriched,
                         CASE WHEN tc.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_to_call,
+                        tc.callback_at as to_call_callback_at,
                         CASE WHEN tci.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_invalid,
                         CASE WHEN lfi.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_filter_in,
                         CASE WHEN lfo.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_filter_out
@@ -757,7 +773,7 @@ def get_fuzzy_search_results(
                     del _counts_cache[campaign]
 
             # 3. Build Query
-            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched FROM items WHERE 1=1"
+            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched, to_call_callback_at FROM items WHERE 1=1"
             params: list[Any] = []
 
             if item_type:
@@ -798,6 +814,14 @@ def get_fuzzy_search_results(
                 sql += " ORDER BY average_rating DESC NULLS LAST, reviews_count DESC NULLS LAST"
             elif sort_by == "reviews":
                 sql += " ORDER BY reviews_count DESC NULLS LAST, average_rating DESC NULLS LAST"
+            elif filters and filters.get("to_call") and not search_query:
+                # Never-called/due-now (NULL or past callback_at) first,
+                # then future-scheduled callbacks soonest-first - not
+                # buried alphabetically or hidden entirely (Mark,
+                # 2026-09-17: "Not recently called people should be at
+                # the top. Called but soon to be recalled people would be
+                # farther down").
+                sql += " ORDER BY to_call_callback_at ASC NULLS FIRST, name ASC"
             elif not search_query:
                 sql += " ORDER BY name ASC"
 
@@ -851,6 +875,7 @@ def get_fuzzy_search_results(
                         details_found_at=str(r[15]) if r[15] else None,
                         enqueued_at=str(r[16]) if r[16] else None,
                         last_enriched=str(r[17]) if r[17] else None,
+                        to_call_callback_at=str(r[18]) if r[18] else None,
                     )
                 )
 

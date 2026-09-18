@@ -66,8 +66,16 @@ def test_audit_campaign_reports_gap_tally_and_writes_csv(tmp_path: Path) -> None
     )
 
     export_dir = tmp_path / "campaigns" / "test-campaign" / "exports"
-    csv_file = export_dir / "campaign_audit.csv"
-    assert csv_file.exists()
+    # The command always timestamps the filename (campaign_audit_<ts>.csv,
+    # cocli/commands/audit.py's `out is None` branch) - there is no code
+    # path that produces a bare "campaign_audit.csv". Glob for it, matching
+    # how cocli/commands/index.py's own requeue-enrichment-gaps command
+    # discovers these files, rather than asserting a name the command has
+    # never actually written (stale pre-existing test bug, unrelated to
+    # this session's changes - surfaced 2026-09-17).
+    matches = list(export_dir.glob("campaign_audit_*.csv"))
+    assert len(matches) == 1, f"Expected exactly one campaign_audit_*.csv, found {matches}"
+    csv_file = matches[0]
     content = csv_file.read_text()
     assert "PLACE_B" in content
     assert "Identity Gap (enrichment-enqueue)" in content

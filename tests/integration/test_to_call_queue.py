@@ -197,13 +197,16 @@ def test_to_call_task_path_resolution(to_call_integration_env):
     )
 
 
-def test_a_future_scheduled_task_does_not_show_as_due_yet(to_call_integration_env):
-    """Regression (Mark, 2026-09-01): a pending task with a future
-    callback_at is a scheduled follow-up, not something due right now -
-    is_to_call/the to_call filter must not surface it until its date
-    arrives, otherwise "add more" would treat it as already-pending
-    correctly, but anything reading "what's due today" would call it too
-    early."""
+def test_a_future_scheduled_task_is_visible_but_sorted_after_due_items(to_call_integration_env):
+    """Changed 2026-09-17 (Mark): a pending task with a future callback_at
+    is a scheduled follow-up, not something to hide from the to-call view
+    entirely. Superseded 2026-09-01 regression test's premise - searching
+    the to-call filter for a specific company scheduled a few days out
+    found nothing under the old "not due yet = invisible" rule, which
+    turned out worse than an unsorted-but-visible list (confirmed via
+    the Jimmy Jean Insurance case). Both due-now and future-scheduled
+    entries are visible now, due-now sorted first; to_call_callback_at
+    carries the schedule so the TUI can sort/color the not-yet-due ones."""
     from datetime import datetime, timedelta, UTC
 
     campaign, _ = to_call_integration_env
@@ -231,7 +234,14 @@ def test_a_future_scheduled_task_does_not_show_as_due_yet(to_call_integration_en
         campaign_name=campaign,
         force_rebuild_cache=True,
     )
-    due_slugs = {r.slug for r in to_call_results}
+    by_slug = {r.slug: r for r in to_call_results}
 
-    assert "company-with-rating-1" in due_slugs
-    assert "company-with-rating-2" not in due_slugs
+    assert "company-with-rating-1" in by_slug
+    assert "company-with-rating-2" in by_slug
+    assert by_slug["company-with-rating-1"].to_call_callback_at is None
+    assert by_slug["company-with-rating-2"].to_call_callback_at is not None
+
+    slugs_in_order = [r.slug for r in to_call_results]
+    assert slugs_in_order.index("company-with-rating-1") < slugs_in_order.index(
+        "company-with-rating-2"
+    )

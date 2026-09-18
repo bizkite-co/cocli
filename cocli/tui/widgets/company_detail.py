@@ -1679,10 +1679,59 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 str(c.get("email") or ""),
             )
 
+    def _upcoming_schedule_rows(self) -> list[tuple[str, Text]]:
+        """Scheduled-but-not-yet-happened items for this company - a
+        pending to-call callback_at and/or pending FollowUpTask entries -
+        rendered as synthetic rows so they're visible right where you'd
+        look for "what's coming up," rather than requiring you to know to
+        check queues/to-call or queues/follow-up directly (Mark,
+        2026-09-17, re: Jimmy Jean: "there is not indication of an
+        upcoming meeting... he is also not in the to-call")."""
+        rows: list[tuple[str, Text]] = []
+        company = self.company_data.get("company", {})
+        callback_at_raw = company.get("callback_at")
+        if callback_at_raw:
+            try:
+                callback_dt = datetime.fromisoformat(str(callback_at_raw))
+                if callback_dt.tzinfo is None:
+                    callback_dt = callback_dt.replace(tzinfo=UTC)
+                overdue = callback_dt <= datetime.now(UTC)
+                style = "bold red" if overdue else "bold yellow"
+                dt_str = callback_dt.strftime("%Y-%m-%d %H:%M")
+                label = "Callback overdue" if overdue else "Callback scheduled"
+                rows.append((dt_str, Text(f"[{label}]", style=style)))
+            except (ValueError, TypeError):
+                pass
+
+        slug = company.get("slug")
+        campaign_name = None
+        try:
+            from ...core.config import get_campaign
+
+            campaign_name = get_campaign()
+        except Exception:
+            pass
+        if slug and campaign_name:
+            try:
+                from ...application.follow_up_service import FollowUpService
+
+                for task in FollowUpService(campaign_name).list_pending(slug):
+                    dt_str = task.scheduled_at.strftime("%Y-%m-%d %H:%M")
+                    detail = task.template_id or task.format
+                    rows.append(
+                        (dt_str, Text(f"[Follow-up: {task.format}] {detail}", style="bold cyan"))
+                    )
+            except Exception:
+                pass
+
+        return rows
+
     def _create_meetings_table(self) -> MeetingsTable:
         table = MeetingsTable(id="meetings-table")
         table.add_column("Date/Time", width=20)
         table.add_column("Preview", width=40)
+        for dt_str, preview_text in self._upcoming_schedule_rows():
+            table.add_row(dt_str, preview_text, height=PREVIEW_MAX_LINES)
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
             raw_dt = m.get("datetime_utc")
