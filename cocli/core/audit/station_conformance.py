@@ -40,24 +40,75 @@ class Finding:
     path: Path
 
 
+@dataclass(frozen=True)
+class IndexStationAudit:
+    """Result of comparing live index trees to StationDecls.
+
+    ``families_compared`` is the number of index directories visited.
+    Zero means nothing was compared — that is not a pass.
+    """
+
+    findings: list[Finding]
+    families_compared: int
+    campaigns_scanned: int
+    campaigns_with_indexes: int
+    campaigns_root: Path
+
+
+def summarize_index_station_audit(audit: IndexStationAudit) -> str:
+    """Human summary of comparison counts. Empty-tree is not a pass."""
+    root = audit.campaigns_root
+    if audit.families_compared == 0:
+        return (
+            f"No index families found under {root} "
+            f"({audit.campaigns_scanned} campaigns scanned). "
+            "Nothing compared — this is not a pass."
+        )
+    n = audit.families_compared
+    family_word = "index family" if n == 1 else "index families"
+    c = audit.campaigns_with_indexes
+    camp_word = "campaign" if c == 1 else "campaigns"
+    if not audit.findings:
+        return (
+            f"{n} {family_word} across {c} {camp_word} match their "
+            "station declarations."
+        )
+    return (
+        f"{len(audit.findings)} finding(s) across {n} {family_word} in "
+        f"{c} {camp_word}."
+    )
+
+
 def audit_index_stations(
     campaigns_root: Optional[Path] = None,
     campaign: Optional[str] = None,
-) -> list[Finding]:
+) -> IndexStationAudit:
     """Compare every campaign's indexes/ tree against its station decls."""
     root = campaigns_root if campaigns_root is not None else paths.campaigns
     findings: list[Finding] = []
+    campaigns_scanned = 0
+    campaigns_with_indexes = 0
+    families_compared = 0
     if not root.is_dir():
-        return findings
+        return IndexStationAudit(
+            findings=findings,
+            families_compared=0,
+            campaigns_scanned=0,
+            campaigns_with_indexes=0,
+            campaigns_root=root,
+        )
 
     for campaign_dir in sorted(p for p in root.iterdir() if p.is_dir()):
         if campaign and campaign_dir.name != campaign:
             continue
+        campaigns_scanned += 1
         indexes_dir = campaign_dir / "indexes"
         if not indexes_dir.is_dir():
             continue
+        campaigns_with_indexes += 1
         for entry in sorted(indexes_dir.iterdir()):
             if entry.is_dir():
+                families_compared += 1
                 findings.extend(_audit_family(campaign_dir.name, entry))
             else:
                 findings.append(
@@ -69,7 +120,13 @@ def audit_index_stations(
                         path=entry,
                     )
                 )
-    return findings
+    return IndexStationAudit(
+        findings=findings,
+        families_compared=families_compared,
+        campaigns_scanned=campaigns_scanned,
+        campaigns_with_indexes=campaigns_with_indexes,
+        campaigns_root=root,
+    )
 
 
 def _audit_family(campaign: str, family_dir: Path) -> list[Finding]:

@@ -1,9 +1,13 @@
 """Station defs: campaigns/{campaign}/indexes/google_maps_prospects/ (0010).
 
 Data tree:
-  indexes/google_maps_prospects/wal/     — write-ahead USV segments
-  indexes/google_maps_prospects/prospects.usv  — product checkpoint (IndexPaths)
-  indexes/google_maps_prospects/CURRENT  — stations commit pointer
+  indexes/google_maps_prospects/wal/          — write-ahead USV segments (phase)
+  indexes/google_maps_prospects/processing/   — FIMC local staging (phase)
+  indexes/google_maps_prospects/prospects.usv — product checkpoint (IndexPaths)
+  indexes/google_maps_prospects/CURRENT       — stations commit pointer
+
+``runs/`` is INDEX_RUNS_LAYOUT (operation logs), not a phase. Live ``archive/``
+(turboship) and leftover ``inbox/`` (roadmap) are hygiene, not declared.
 """
 
 from __future__ import annotations

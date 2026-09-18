@@ -224,15 +224,22 @@ def audit_stations(
     """
     Reports where live index directories disagree with their StationDecl (0010).
     """
-    from ..core.audit.station_conformance import FindingKind, audit_index_stations
+    from ..core.audit.station_conformance import (
+        FindingKind,
+        audit_index_stations,
+        summarize_index_station_audit,
+    )
 
-    findings = audit_index_stations(campaign=campaign)
-    if not findings:
-        console.print(
-            "[green]Every index family matches its station declaration.[/green]"
-        )
+    audit = audit_index_stations(campaign=campaign)
+    summary = summarize_index_station_audit(audit)
+    if audit.families_compared == 0:
+        console.print(f"[yellow]{summary}[/yellow]")
+        return
+    if not audit.findings:
+        console.print(f"[green]{summary}[/green]")
         return
 
+    console.print(f"[dim]{summary}[/dim]")
     colors = {
         FindingKind.UNDECLARED_FAMILY: "yellow",
         FindingKind.UNDECLARED_CHILD: "magenta",
@@ -240,7 +247,7 @@ def audit_stations(
         FindingKind.DECLARED_PHASE_ABSENT: "dim",
     }
     for kind in FindingKind:
-        group = [f for f in findings if f.kind is kind]
+        group = [f for f in audit.findings if f.kind is kind]
         if not group:
             continue
         console.print(f"\n[bold]{kind.value}[/bold] ({len(group)})")

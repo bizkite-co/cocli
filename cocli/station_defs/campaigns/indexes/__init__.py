@@ -20,6 +20,11 @@ from cocli.station_defs.campaigns.indexes.google_maps_prospects import (  # noqa
     PROSPECTS_INDEX,
 )
 
+# Operation-log overlay under a campaign index (emails + prospects compaction
+# journals). Not a StationDecl phase — OperationService writes here. Same
+# class of layout constant as DISCOVERY_GEN_INPUTS_LAYOUT.
+INDEX_RUNS_LAYOUT = "runs"
+
 # Index family (directory name under indexes/) → root StationDecl.
 # domains/ deliberately has no entry: domains.py declares that index global
 # rather than campaign-scoped, and the campaign-scoped directories on disk are

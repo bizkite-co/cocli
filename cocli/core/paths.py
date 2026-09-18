@@ -138,27 +138,67 @@ class QueuePaths(PathObject):
 
 
 class IndexPaths(PathObject):
+    """Phase directories for one campaign index.
+
+    Which phases exist is declared by the index's ``StationDecl`` (0010), not
+    by this class. Unlike ``QueuePaths`` this does not raise yet: only a
+    minority of live index families are declared, so a raising ``IndexPaths``
+    would break working code before ``cocli audit stations`` could report it.
+    ``runs/`` is layout (operation logs), not a phase.
+    """
+
+    def __init__(
+        self, path_factory: Callable[[], Path], index_name: Optional[str] = None
+    ):
+        super().__init__(path_factory)
+        self.index_name = index_name
+
+    def _declared_phases(self) -> Optional["Phases"]:
+        if self.index_name is None:
+            return None
+        from stations.segments import collect_phases
+
+        from cocli.station_defs.campaigns.indexes import station_for_index
+
+        station = station_for_index(self.index_name)
+        if station is None:
+            return None
+        return collect_phases(station.segments)
+
+    def declared_phases(self) -> Optional[tuple[str, ...]]:
+        """Phase names from this family's StationDecl, or None if undeclared."""
+        phases = self._declared_phases()
+        return phases.names if phases is not None else None
+
+    def state(self, folder: str) -> Path:
+        """Return ``<index>/<folder>``.
+
+        When this family is declared, ``folder`` should be a declared phase.
+        This method does not raise if it is not — the validator reports that
+        drift. Known layout names belong on ``.runs``, not here.
+        """
+        return self.path / folder
+
     @property
     def wal(self) -> Path:
-        return self.path / "wal"
+        return self.state("wal")
 
     @property
     def checkpoint(self) -> Path:
-        if self.path.name == IndexIdentity.PROSPECTS:
+        name = self.index_name or self.path.name
+        if name == IndexIdentity.PROSPECTS:
             return self.path / "prospects.usv"
-        return self.path / f"{self.path.name}.usv"
+        return self.path / f"{name}.usv"
 
     @property
     def checkpoint_filename(self) -> str:
         return self.checkpoint.name
 
-
-
-
-
     @property
     def runs(self) -> Path:
-        return self.path / "runs"
+        from cocli.station_defs.campaigns.indexes import INDEX_RUNS_LAYOUT
+
+        return self.path / INDEX_RUNS_LAYOUT
 
     @property
     def datapackage(self) -> Path:
@@ -172,7 +212,7 @@ class CampaignPaths(PathObject):
 
     def index(self, name: Union[IndexIdentity, str], ensure: bool = False) -> IndexPaths:
         str_name = name.value if isinstance(name, IndexIdentity) else name
-        obj = IndexPaths(lambda: self.indexes / str_name)
+        obj = IndexPaths(lambda: self.indexes / str_name, index_name=str_name)
         if ensure:
             obj.ensure()
         return obj
