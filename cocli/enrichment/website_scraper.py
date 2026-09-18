@@ -5,6 +5,7 @@ import asyncio
 import socket
 import os
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Optional, Callable, Coroutine, Any, Union
 from playwright.async_api import Page, Browser, BrowserContext
 from bs4 import BeautifulSoup
@@ -119,6 +120,40 @@ class WebsiteScraper:
         if lowered in ("about:blank", "chrome://newtab/"):
             return False
         return not lowered.startswith("chrome-error://")
+
+    @staticmethod
+    def _browser_session_state_path(domain: str) -> Path:
+        """Where a domain's persisted cookies/localStorage live, so a
+        solved bot-challenge (or any other session-scoped state) carries
+        forward to the next scrape instead of starting cookie-less every
+        single run. Technical scraper-infra cache, not campaign business
+        data - lives under the app data dir, not paths.root."""
+        from ..core.config import get_cocli_app_data_dir
+
+        safe_domain = "".join(c if c.isalnum() or c in ".-_" else "_" for c in domain)
+        session_dir = get_cocli_app_data_dir() / "browser_sessions"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return session_dir / f"{safe_domain}.json"
+
+    @staticmethod
+    def _looks_like_bot_challenge(page: Page) -> bool:
+        """SiteGround's PoW bot-challenge redirects to one of these two
+        .well-known paths (confirmed 2026-09-17, alliedwealth.com) before
+        either solving through to the real page or bouncing to a fallback
+        retry. Checks the URL only (not page.title(), which can raise
+        "Execution context was destroyed" mid-navigation - a plain
+        string property is safe to read at any point).
+
+        str(...) rather than a bare `or ""` fallback - a loosely-typed
+        test double's .url can be a MagicMock (truthy, not None, but not
+        a string either); `or ""` doesn't catch that, and .lower() on a
+        MagicMock returns another MagicMock that blows up on `in` with a
+        TypeError - which the outer scrape_website_internal exception
+        handler then flattened into the wrong error category (regression
+        test_scrape_website_internal_preserves_navigation_error_through_outer_catch).
+        """
+        url = str(getattr(page, "url", "") or "").lower()
+        return "/.well-known/sgcaptcha/" in url or "/.well-known/captcha/" in url
 
     def _index_emails(self, website_data: Website, campaign_name: str) -> None:
         """Helper to record all found emails in the centralized email index."""
@@ -442,12 +477,27 @@ class WebsiteScraper:
         # ----------------------------------
 
         context: BrowserContext
+        session_state_path: Optional[Path] = None
         if isinstance(browser, Browser):
-            context = await browser.new_context(
-                ignore_https_errors=True,
-                user_agent=self.user_agent,
-                extra_http_headers=self.headers,
-            )
+            # Persist cookies/localStorage per domain across scrape runs -
+            # a fresh, cookie-less context every single run means a
+            # proof-of-work bot-challenge (e.g. SiteGround's, 2026-09-17
+            # alliedwealth.com investigation) has to be re-solved from
+            # scratch on every attempt, never accumulating the trust a
+            # real returning browser session naturally would (confirmed:
+            # Mark's own browser refreshes this site repeatedly with zero
+            # friction from the SAME IP, ruling out IP reputation as the
+            # differentiator - the missing ingredient is session/cookie
+            # persistence, not fingerprint spoofing).
+            session_state_path = self._browser_session_state_path(domain)
+            new_context_kwargs: dict[str, Any] = {
+                "ignore_https_errors": True,
+                "user_agent": self.user_agent,
+                "extra_http_headers": self.headers,
+            }
+            if session_state_path.exists():
+                new_context_kwargs["storage_state"] = str(session_state_path)
+            context = await browser.new_context(**new_context_kwargs)
             await setup_stealth_context(context)
         else:
             context = browser
@@ -482,11 +532,52 @@ class WebsiteScraper:
                     e,
                 )
             website_data.url = page.url or canonical_url
+            initial_status = response.status if response is not None else None
             if response is not None:
                 try:
                     website_data.http_status = int(response.status)
                 except (TypeError, ValueError):
                     website_data.http_status = None
+
+            # SiteGround's PoW bot-challenge ("Robot Challenge Screen",
+            # .well-known/sgcaptcha or .well-known/captcha) takes real,
+            # uninterrupted wall-clock time to solve - it spawns Web
+            # Workers that grind a client-side SHA1 proof-of-work puzzle,
+            # then JS-redirects to the real page once solved (or bounces
+            # through a fallback URL and retries, sometimes landing back
+            # at the bare root with another 202 before the real 200
+            # finally comes through). A 202 passes response.ok (it's in
+            # the 2xx range), so without this wait the scraper would
+            # silently treat the challenge shell as a successful load and
+            # screenshot/extract THAT instead of real content (2026-09-17:
+            # alliedwealth.com, "checking site connection security"
+            # screenshot). Confirmed empirically the challenge resolves in
+            # headless Chromium given enough uninterrupted time - the
+            # scraper just never gave it that time before this fix, and
+            # the resolve itself is non-deterministic (2-4 hops observed),
+            # so this only improves the odds, it doesn't guarantee success
+            # on every single run.
+            #
+            # Note: this site's 202 doesn't reliably mean "still
+            # challenged" (a resolved run can still report 202 while
+            # showing real content) - the URL shape is the only signal
+            # trustworthy enough to use for the loop's own exit condition;
+            # 202 is only used to decide whether to enter the wait at all.
+            if initial_status == 202 or self._looks_like_bot_challenge(page):
+                for _ in range(4):
+                    if not self._looks_like_bot_challenge(page):
+                        break
+                    try:
+                        async with page.expect_navigation(
+                            wait_until="domcontentloaded", timeout=25000
+                        ):
+                            pass
+                    except Exception as e:
+                        logger.debug(
+                            "Bot-challenge wait did not resolve for %s: %s", domain, e
+                        )
+                        break
+                website_data.url = page.url or canonical_url
 
             try:
                 # Viewport of whatever loaded - including a 404/parked page.
@@ -681,6 +772,13 @@ class WebsiteScraper:
             logger.error(f"Error scraping {domain}: {e}")
             raise EnrichmentError(str(e)) from e
         finally:
+            if isinstance(browser, Browser) and session_state_path is not None:
+                try:
+                    await context.storage_state(path=str(session_state_path))
+                except Exception as e:
+                    logger.debug(
+                        "Could not persist browser session state for %s: %s", domain, e
+                    )
             await page.close()
             if isinstance(browser, Browser):
                 await context.close()
