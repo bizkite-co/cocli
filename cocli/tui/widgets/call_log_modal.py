@@ -2,6 +2,7 @@
 from datetime import datetime, UTC, timedelta
 from typing import Any
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Label, TextArea, Static, Markdown
 from textual.containers import Container, Horizontal, VerticalScroll
@@ -49,6 +50,14 @@ class CallLogModal(ModalScreen[bool]):
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save_call", "Save & Close"),
+        # priority=True so these fire even while call_notes (a TextArea)
+        # has focus and would otherwise consume plain "j"/"k" as typed
+        # text. Bound to both key-id spellings ("J" vs "shift+j") since
+        # which one a terminal reports for Shift+letter varies with its
+        # keyboard-protocol support - untested which this environment
+        # sends, so cover both rather than guess (2026-09-18).
+        Binding("J,shift+j", "scroll_reference_down", "Scroll Ref Down", show=False, priority=True),
+        Binding("K,shift+k", "scroll_reference_up", "Scroll Ref Up", show=False, priority=True),
     ]
 
     def __init__(self, company_slug: str, phone: str, *args: Any, **kwargs: Any):
@@ -107,6 +116,12 @@ class CallLogModal(ModalScreen[bool]):
 
     def on_mount(self) -> None:
         self.query_one("#call_notes", TextArea).focus()
+
+    def action_scroll_reference_down(self) -> None:
+        self.query_one("#call-log-right", VerticalScroll).scroll_down()
+
+    def action_scroll_reference_up(self) -> None:
+        self.query_one("#call-log-right", VerticalScroll).scroll_up()
 
     @on(events.Key)
     def handle_keys(self, event: events.Key) -> None:

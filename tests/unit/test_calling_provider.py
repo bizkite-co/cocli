@@ -65,8 +65,10 @@ def test_google_voice_edge_app_provider_builds_expected_command() -> None:
         "cocli.utils.calling_provider.find_msedge_proxy",
         return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
     ), patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn), patch(
-        "cocli.core.config.get_campaign", return_value=None
-    ), patch("cocli.core.config.load_global_config", return_value={}):
+        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    ), patch("cocli.core.config.get_campaign", return_value=None), patch(
+        "cocli.core.config.load_global_config", return_value={}
+    ):
         assert provider.dial("5551234567") is True
 
     command = captured["command"]
@@ -75,6 +77,42 @@ def test_google_voice_edge_app_provider_builds_expected_command() -> None:
         "--profile-directory=Default",
         "--app-id=bbcbahpbnakjldhdcgiblnjnfgaejidg",
     ]
+
+
+def test_google_voice_edge_app_provider_copies_cleaned_number_to_clipboard() -> None:
+    """The PWA has no confirmed way to pre-fill its own dial box (Mark,
+    2026-09-18), so the cleaned E.164 number must land on the Windows
+    clipboard as a "paste it in" fallback whenever the PWA actually
+    launches."""
+    provider = GoogleVoiceEdgeAppProvider("bbcbahpbnakjldhdcgiblnjnfgaejidg")
+
+    with patch(
+        "cocli.utils.calling_provider.find_msedge_proxy",
+        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+    ), patch("cocli.utils.calling_provider.spawn_detached", return_value=True), patch(
+        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    ) as fake_copy, patch("cocli.core.config.get_campaign", return_value=None), patch(
+        "cocli.core.config.load_global_config", return_value={}
+    ):
+        assert provider.dial("5551234567") is True
+
+    fake_copy.assert_called_once_with("+15551234567")
+
+
+def test_google_voice_edge_app_provider_skips_clipboard_when_proxy_launch_fails() -> None:
+    provider = GoogleVoiceEdgeAppProvider("bbcbahpbnakjldhdcgiblnjnfgaejidg")
+
+    with patch(
+        "cocli.utils.calling_provider.find_msedge_proxy",
+        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+    ), patch("cocli.utils.calling_provider.spawn_detached", return_value=False), patch(
+        "cocli.utils.calling_provider.copy_to_windows_clipboard"
+    ) as fake_copy, patch("cocli.utils.calling_provider.open_url", return_value=True), patch(
+        "cocli.core.config.get_campaign", return_value=None
+    ), patch("cocli.core.config.load_global_config", return_value={}):
+        assert provider.dial("5551234567") is True
+
+    fake_copy.assert_not_called()
 
 
 def test_google_voice_edge_app_provider_falls_back_when_proxy_missing() -> None:

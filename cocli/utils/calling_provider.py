@@ -23,8 +23,8 @@ import shutil
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
-from .google_voice_url import google_voice_url
-from .open_url import is_wsl, open_url, spawn_detached
+from .google_voice_url import clean_phone_e164, google_voice_url
+from .open_url import copy_to_windows_clipboard, is_wsl, open_url, spawn_detached
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +86,19 @@ class GoogleVoiceEdgeAppProvider:
         # the *install-time* shortcut of a sibling PWA rather than
         # verified against a real launch - that guess was wrong: it made
         # msedge_proxy.exe fall back to a plain browser tab instead of the
-        # PWA window (2026-09-17, Mark). Until a real way to pre-fill the
-        # number is confirmed, this only focuses/opens the PWA - the
-        # number still needs to be typed in manually.
+        # PWA window (2026-09-17, Mark). No confirmed way to pre-fill the
+        # number into the PWA itself exists yet, so the number is put on
+        # the Windows clipboard instead (2026-09-18, Mark: "it didn't
+        # inject the phone number") - one paste (Ctrl+V) into Google
+        # Voice's own dial box once the window is focused, rather than
+        # typing it by hand.
         command = [
             proxy,
             "--profile-directory=Default",
             f"--app-id={self.edge_app_id}",
         ]
         if spawn_detached(command):
+            copy_to_windows_clipboard(clean_phone_e164(phone))
             return True
         return BrowserTabCallingProvider().dial(phone, campaign_name)
 

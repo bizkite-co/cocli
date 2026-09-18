@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
+from textual.containers import VerticalScroll
+
 from cocli.core.exclusions import ExclusionManager
 from cocli.models.campaigns.queues.to_call import ToCallTask
 from cocli.models.companies.company import Company
@@ -231,6 +233,56 @@ async def test_right_column_shows_call_reference_files(
         assert modal.query_one("#callback_date") is not None
         assert modal.query_one("#followup_template") is not None
         assert modal.query_one("#followup_email_date") is not None
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_shift_j_k_scroll_reference_pane_without_leaking_into_notes(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark (2026-09-18): shift+j/shift+k should scroll the right-hand
+    reference pane down/up - including while call_notes (a TextArea) has
+    focus, since that's where typing happens during a live call. Bound
+    with priority=True so the TextArea never gets a chance to insert the
+    letter as text first."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Scroll Co", slug="scroll-co", domain="scroll.test", phone="555-666-7777")
+    co.save()
+
+    scripts_dir = paths.campaigns / "roadmap" / "initiatives" / "rta" / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    long_body = "\n\n".join(f"Paragraph {i} of the call opener." for i in range(60))
+    (scripts_dir / "call-opener.md").write_text(f"# Opener\n\n{long_body}", encoding="utf-8")
+    (scripts_dir / "preferred-phrases.md").write_text("# Phrases", encoding="utf-8")
+    (scripts_dir / "product-comparison.md").write_text("# Comparison", encoding="utf-8")
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="scroll-co", phone="555-666-7777")
+        app.push_screen(modal)
+        await driver.pause(0.2)
+
+        notes = modal.query_one("#call_notes")
+        notes.focus()
+        assert notes.has_focus
+
+        right_pane = modal.query_one("#call-log-right", VerticalScroll)
+        assert right_pane.scroll_target_y == 0
+
+        await driver.press("shift+j")
+        await driver.pause()
+
+        assert right_pane.scroll_target_y > 0
+        assert notes.text == ""  # the "J" never leaked into the TextArea
+
+        scrolled_down_to = right_pane.scroll_target_y
+        await driver.press("shift+k")
+        await driver.pause()
+
+        assert right_pane.scroll_target_y < scrolled_down_to
+        assert notes.text == ""
 
 
 @pytest.mark.asyncio

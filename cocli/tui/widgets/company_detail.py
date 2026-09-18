@@ -731,16 +731,25 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
             # 1. Open Google Voice (or whichever calling provider is configured)
             from ...core.config import get_campaign
-            from ...utils.calling_provider import get_calling_provider
+            from ...utils.calling_provider import GoogleVoiceEdgeAppProvider, get_calling_provider
 
             provider = get_calling_provider(get_campaign())
             voice_opened = provider.dial(str(phone), get_campaign())
+            # The Edge PWA has no confirmed way to pre-fill the number
+            # itself - it's on the clipboard instead (see
+            # GoogleVoiceEdgeAppProvider.dial()), so say so here rather
+            # than implying it was auto-dialed.
+            paste_hint = (
+                " (number copied - paste with Ctrl+V)"
+                if isinstance(provider, GoogleVoiceEdgeAppProvider)
+                else ""
+            )
 
             # 2. Open Company Website if it exists
             if domain:
                 site_opened = open_url(f"http://{domain}")
                 if voice_opened:
-                    self.app.notify(f"Calling {phone} & Opening Website...")
+                    self.app.notify(f"Calling {phone}{paste_hint} & Opening Website...")
                 elif site_opened:
                     self.app.notify(
                         f"Opened website; could not open Google Voice for {phone}",
@@ -752,7 +761,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
                         severity="error",
                     )
             elif voice_opened:
-                self.app.notify(f"Calling {phone}...")
+                self.app.notify(f"Calling {phone}{paste_hint}...")
             else:
                 self.app.notify(
                     f"Could not open browser to call {phone}",

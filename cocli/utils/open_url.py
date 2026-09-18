@@ -126,6 +126,26 @@ def spawn_detached(command: Sequence[str]) -> bool:
     return True
 
 
+def copy_to_windows_clipboard(text: str) -> bool:
+    """Put `text` on the Windows clipboard via clip.exe (WSL2 only) - used
+    where a real single-instance app launch (e.g. the Google Voice PWA)
+    has no confirmed way to pre-fill content, so the fallback is "make it
+    one paste away" instead (Mark, 2026-09-18: msedge_proxy.exe's
+    --app-url flag doesn't do what a sibling PWA's install-time shortcut
+    suggested - see calling_provider.py's GoogleVoiceEdgeAppProvider)."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    clip = shutil.which("clip.exe")
+    if not clip:
+        return False
+    try:
+        subprocess.run([clip], input=text.encode("utf-8"), timeout=5, check=True)
+    except (OSError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+        logger.debug("Failed to copy to Windows clipboard: %s", exc)
+        return False
+    return True
+
+
 def _webbrowser_open(url: str) -> bool:
     # Same rationale as the guard in spawn_detached() - this is the other
     # path open_url() can use to actually launch something.

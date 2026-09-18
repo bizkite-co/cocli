@@ -4,6 +4,7 @@ from typing import Optional
 from cocli.utils.open_url import (
     _candidate_commands,
     _escape_for_cmd_exe,
+    copy_to_windows_clipboard,
     open_url,
     spawn_detached,
 )
@@ -159,3 +160,39 @@ def test_spawn_detached_refuses_to_launch_under_pytest() -> None:
     # "true" is a real, harmless binary - if the guard didn't fire this
     # would actually spawn it (and return True).
     assert spawn_detached(["true"]) is False
+
+
+def test_copy_to_windows_clipboard_refuses_under_pytest() -> None:
+    """Same PYTEST_CURRENT_TEST rationale as spawn_detached above - this
+    must never actually shell out to clip.exe during a test run."""
+    import os
+
+    assert "PYTEST_CURRENT_TEST" in os.environ
+    assert copy_to_windows_clipboard("+15551234567") is False
+
+
+def test_copy_to_windows_clipboard_pipes_text_to_clip_exe(monkeypatch) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(
+        "cocli.utils.open_url.shutil.which",
+        lambda name: "/mnt/c/WINDOWS/system32/clip.exe" if name == "clip.exe" else None,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run(command, input, timeout, check):  # noqa: A002
+        captured["command"] = command
+        captured["input"] = input
+        return None
+
+    monkeypatch.setattr("cocli.utils.open_url.subprocess.run", fake_run)
+
+    assert copy_to_windows_clipboard("+15551234567") is True
+    assert captured["command"] == ["/mnt/c/WINDOWS/system32/clip.exe"]
+    assert captured["input"] == b"+15551234567"
+
+
+def test_copy_to_windows_clipboard_returns_false_when_clip_exe_missing(monkeypatch) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr("cocli.utils.open_url.shutil.which", lambda name: None)
+
+    assert copy_to_windows_clipboard("+15551234567") is False

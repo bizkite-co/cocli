@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from cocli.utils.google_voice_url import google_voice_url
+from cocli.utils.google_voice_url import clean_phone_e164, google_voice_url
+
+
+def test_clean_phone_e164_adds_country_code_to_bare_ten_digit() -> None:
+    assert clean_phone_e164("5551234567") == "+15551234567"
+
+
+def test_clean_phone_e164_preserves_existing_country_code() -> None:
+    assert clean_phone_e164("15551234567") == "+15551234567"
+
+
+def test_clean_phone_e164_strips_formatting() -> None:
+    assert clean_phone_e164("(555) 123-4567") == "+15551234567"
 
 
 def test_google_voice_url_default() -> None:

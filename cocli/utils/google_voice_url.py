@@ -6,6 +6,16 @@ import re
 from typing import Optional
 
 
+def clean_phone_e164(phone: str) -> str:
+    """Normalize to a bare "+1XXXXXXXXXX"-style E.164 string - shared by
+    google_voice_url() and calling_provider.py's clipboard-copy fallback
+    so both use the same digit-cleaning rules."""
+    cleaned = re.sub(r"\D", "", str(phone))
+    if not cleaned.startswith("1") and len(cleaned) == 10:
+        cleaned = "1" + cleaned
+    return f"+{cleaned}"
+
+
 def google_voice_url(phone: str, campaign_name: Optional[str] = None) -> str:
     """
     Build a Google Voice call URL targeting the configured Google Voice account.
@@ -22,11 +32,7 @@ def google_voice_url(phone: str, campaign_name: Optional[str] = None) -> str:
     account_email = gv_cfg.get("account_email") or "bizkitellc@gmail.com"
     account_index = gv_cfg.get("account_index", 0)
 
-    cleaned = re.sub(r"\D", "", str(phone))
-    if not cleaned.startswith("1") and len(cleaned) == 10:
-        cleaned = "1" + cleaned
-    elif cleaned.startswith("1") and len(cleaned) == 11:
-        pass
+    cleaned = clean_phone_e164(phone).lstrip("+")
 
     params: list[str] = []
     if account_email:
