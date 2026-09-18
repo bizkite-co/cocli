@@ -47,6 +47,55 @@ async def test_typing_filters_the_visible_list() -> None:
 
 
 @pytest.mark.asyncio
+async def test_selected_label_shows_the_committed_choice() -> None:
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        widget = SearchSelect(CHOICES, initial_value="Not Interested", id="ds")
+        await app.query_one("#app_content").mount(widget)
+        await pilot.pause()
+
+        label = widget.query_one("#ss_selected")
+        assert "Not Interested" in str(label.content)
+        assert "Enter or Space" in str(label.content)
+
+
+@pytest.mark.asyncio
+async def test_space_selects_when_filter_is_empty() -> None:
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        widget = SearchSelect(CHOICES, id="ds")
+        await app.query_one("#app_content").mount(widget)
+        await pilot.pause()
+        widget.focus_filter()
+        await pilot.pause()
+
+        await pilot.press("down")
+        await pilot.press("space")
+        await pilot.pause()
+
+        assert widget.value == "Interested"
+        assert "Interested" in str(widget.query_one("#ss_selected").content)
+
+
+@pytest.mark.asyncio
+async def test_highlight_updates_value_without_enter() -> None:
+    """Moving the highlight is enough - save reads .value, so the user
+    should not have to guess Enter vs Space to 'commit' a choice."""
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        widget = SearchSelect(CHOICES, id="ds")
+        await app.query_one("#app_content").mount(widget)
+        await pilot.pause()
+        widget.focus_filter()
+        await pilot.pause()
+
+        await pilot.press("down")
+        await pilot.pause()
+
+        assert widget.value == "Interested"
+
+
+@pytest.mark.asyncio
 async def test_enter_selects_the_highlighted_choice() -> None:
     """Checking widget.value (set synchronously in _select_current before
     the message posts) rather than capturing the Selected message itself -

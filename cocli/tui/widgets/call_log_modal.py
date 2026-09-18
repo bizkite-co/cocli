@@ -1,6 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
+from __future__ import annotations
+
 from datetime import datetime, UTC, timedelta
-from typing import Any
+from typing import Any, Optional
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
@@ -12,11 +14,14 @@ from cocli.models.companies.company import Company
 from cocli.models.companies.meeting import Meeting
 from cocli.models.companies.call_note import CallNote
 from cocli.models.campaigns.queues.to_call import ToCallTask
+from cocli.models.phone import format_us_phone
 from cocli.application.follow_up_service import FollowUpService
 from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 from cocli.application.to_call_disposition_service import mark_to_call_invalid
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
+from cocli.utils.company_local_time import format_company_local_now
+from cocli.utils.when import parse_follow_up_when
 from .inputs import CocliInput
 from .search_select import SearchSelect
 
@@ -64,6 +69,13 @@ class CallLogModal(ModalScreen[bool]):
         super().__init__(*args, **kwargs)
         self.company_slug = company_slug
         self.phone = phone
+        company = Company.get(company_slug)
+        self._timezone_name: Optional[str] = company.timezone if company else None
+        self._state: Optional[str] = company.state if company else None
+
+    def _local_time_markup(self) -> str:
+        stamp = format_company_local_now(self._timezone_name, self._state)
+        return f"[bold green]{stamp}[/bold green]  (company local)"
 
     def compose(self) -> ComposeResult:
         # Default callback to 7 days from now
@@ -76,30 +88,35 @@ class CallLogModal(ModalScreen[bool]):
         template_names = service.list_initiative_templates("rta")
         template_choices = [(NO_EMAIL_FOLLOW_UP, "")] + [(name, name) for name in template_names]
         reference = service.load_call_reference("rta")
+        phone_display = format_us_phone(self.phone) or self.phone
 
         with Container(id="call_log_form"):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
-            yield Label(f"Phone: {self.phone}", classes="modal-subtitle")
+            yield Label(self._local_time_markup(), id="company_local_time")
+            yield Label(f"Phone: {phone_display}", classes="modal-subtitle", id="call_phone")
 
             with Horizontal(id="call-log-columns"):
                 with VerticalScroll(id="call-log-left"):
-                    yield Label("Call Disposition (type to filter, Enter to pick)", classes="field-label")
+                    yield Label("Call Disposition (type to filter, Enter or Space to pick)", classes="field-label")
                     yield SearchSelect(DISPOSITION_CHOICES, initial_value="Follow Up Needed", id="call_disposition")
 
                     yield Label("Call Notes (VIM-ish keys supported)", classes="field-label")
                     yield TextArea(id="call_notes", classes="notes-area")
 
-                    yield Label("Follow-up Date (YYYY-MM-DD, blank = don't re-queue)", classes="field-label")
+                    yield Label(
+                        "Follow-up Date (YYYY-MM-DD, 'monday', 'next week'; blank = don't re-queue)",
+                        classes="field-label",
+                    )
                     yield CocliInput(value=default_callback, id="callback_date")
 
                     yield Label(
-                        "Email Follow-up Template (separate from the call re-queue above)",
+                        "Email Follow-up Template (Up/Down, Enter or Space to pick)",
                         classes="field-label",
                     )
                     yield SearchSelect(template_choices, initial_value="", id="followup_template")
 
                     yield Label(
-                        "Email Follow-up Date (YYYY-MM-DD, only used if a template is picked)",
+                        "Email Follow-up Date (YYYY-MM-DD, 'monday', 'next week'; only if a template is picked)",
                         classes="field-label",
                     )
                     yield CocliInput(value=default_callback, id="followup_email_date")
@@ -115,7 +132,11 @@ class CallLogModal(ModalScreen[bool]):
             yield Static("[bold reverse] CTRL+S: SAVE & REMOVE FROM LIST [/]  [dim] ESC: CANCEL [/]", id="modal_help")
 
     def on_mount(self) -> None:
+        self.set_interval(1.0, self._tick_local_time)
         self.query_one("#call_notes", TextArea).focus()
+
+    def _tick_local_time(self) -> None:
+        self.query_one("#company_local_time", Label).update(self._local_time_markup())
 
     def action_scroll_reference_down(self) -> None:
         self.query_one("#call-log-right", VerticalScroll).scroll_down()
@@ -228,7 +249,7 @@ class CallLogModal(ModalScreen[bool]):
             # 5. Schedule Follow-up if requested and not excluded
             if should_schedule and not is_excluded_disposition:
                 try:
-                    cb_date = datetime.strptime(callback_str, "%Y-%m-%d").replace(tzinfo=UTC)
+                    cb_date = parse_follow_up_when(callback_str)
                     company.callback_at = cb_date
 
                     scheduled_task = ToCallTask(
@@ -239,9 +260,9 @@ class CallLogModal(ModalScreen[bool]):
                         ack_token=None
                     )
                     scheduled_task.save()
-                    self.app.notify(f"Scheduled callback for {callback_str}")
+                    self.app.notify(f"Scheduled callback for {cb_date.strftime('%Y-%m-%d %H:%M')} UTC")
                 except ValueError:
-                    self.app.notify(f"Invalid date format: {callback_str}", severity="warning")
+                    self.app.notify(f"Invalid date: {callback_str}", severity="warning")
 
             # 6. Schedule Email Follow-up, if a template was picked - a
             # separate concept from the call re-queue above (queues/follow-up/,
@@ -254,7 +275,7 @@ class CallLogModal(ModalScreen[bool]):
             if followup_template and followup_template != NO_EMAIL_FOLLOW_UP:
                 followup_date_str = self.query_one("#followup_email_date", CocliInput).value.strip()
                 try:
-                    followup_date = datetime.strptime(followup_date_str, "%Y-%m-%d").replace(tzinfo=UTC)
+                    followup_date = parse_follow_up_when(followup_date_str)
                     FollowUpService(campaign).add_follow_up(
                         company_slug=self.company_slug,
                         domain=company.domain or "unknown",
@@ -263,7 +284,10 @@ class CallLogModal(ModalScreen[bool]):
                         template_id=followup_template,
                         initiative="rta",
                     )
-                    self.app.notify(f"Scheduled email follow-up ({followup_template}) for {followup_date_str}")
+                    self.app.notify(
+                        f"Scheduled email follow-up ({followup_template}) for "
+                        f"{followup_date.strftime('%Y-%m-%d %H:%M')} UTC"
+                    )
                 except ValueError:
                     self.app.notify(f"Invalid email follow-up date: {followup_date_str}", severity="warning")
 

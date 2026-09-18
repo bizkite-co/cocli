@@ -735,12 +735,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
             provider = get_calling_provider(get_campaign())
             voice_opened = provider.dial(str(phone), get_campaign())
-            # The Edge PWA has no confirmed way to pre-fill the number
-            # itself - it's on the clipboard instead (see
-            # GoogleVoiceEdgeAppProvider.dial()), so say so here rather
-            # than implying it was auto-dialed.
             paste_hint = (
-                " (number copied - paste with Ctrl+V)"
+                " (Google Voice PWA)"
                 if isinstance(provider, GoogleVoiceEdgeAppProvider)
                 else ""
             )

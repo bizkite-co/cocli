@@ -413,6 +413,13 @@ ModalScreen {
     height: 100%;
 }
 
+#company_local_time {
+    color: #00ff00;
+    text-style: bold;
+    height: 1;
+    margin: 0 0 1 0;
+}
+
 #call-log-columns {
     height: 1fr;
 }

@@ -72,18 +72,19 @@ def test_google_voice_edge_app_provider_builds_expected_command() -> None:
         assert provider.dial("5551234567") is True
 
     command = captured["command"]
-    assert command == [
-        "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
-        "--profile-directory=Default",
-        "--app-id=bbcbahpbnakjldhdcgiblnjnfgaejidg",
-    ]
+    assert command[0] == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe"
+    assert command[1] == "--profile-directory=Default"
+    assert command[2] == "--app-id=bbcbahpbnakjldhdcgiblnjnfgaejidg"
+    assert command[3] == "--app-launch-source=4"
+    assert command[4].startswith("--app-launch-url-for-shortcuts-menu-item=")
+    assert "voice.google.com" in command[4]
+    assert "a=nc,%2B15551234567" in command[4]
+    assert not any(part.startswith("--app-url=") for part in command)
 
 
 def test_google_voice_edge_app_provider_copies_cleaned_number_to_clipboard() -> None:
-    """The PWA has no confirmed way to pre-fill its own dial box (Mark,
-    2026-09-18), so the cleaned E.164 number must land on the Windows
-    clipboard as a "paste it in" fallback whenever the PWA actually
-    launches."""
+    """Clipboard is a paste fallback if Voice doesn't auto-dial from the
+    shortcuts-menu URL; still copy whenever the PWA launch succeeds."""
     provider = GoogleVoiceEdgeAppProvider("bbcbahpbnakjldhdcgiblnjnfgaejidg")
 
     with patch(

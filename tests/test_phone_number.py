@@ -1,6 +1,6 @@
 from __future__ import annotations
 import pytest
-from cocli.models.phone import PhoneNumber
+from cocli.models.phone import PhoneNumber, format_us_phone
 
 def test_parse_nanp_basic():
     p = PhoneNumber.model_validate("5125551212")
@@ -54,6 +54,15 @@ def test_formatting():
     assert p.format("digits") == "15125551212"
     assert p.format("e164") == "+15125551212"
     assert p.format("{ndc}-{sn_prefix}-{sn_line}") == "512-555-1212"
+
+
+def test_format_us_phone_national():
+    assert format_us_phone("5551234567") == "(555) 123-4567"
+    assert format_us_phone("15551234567") == "(555) 123-4567"
+    assert format_us_phone("+1 555-123-4567") == "(555) 123-4567"
+    assert format_us_phone("(555) 123-4567") == "(555) 123-4567"
+    assert format_us_phone(None) == ""
+
 
 def test_parse_with_extension():
     p = PhoneNumber.model_validate("(512) 555-1212 x101")

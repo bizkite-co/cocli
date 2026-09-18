@@ -79,23 +79,21 @@ class GoogleVoiceEdgeAppProvider:
         if not proxy:
             logger.warning("msedge_proxy.exe not found; falling back to browser tab")
             return BrowserTabCallingProvider().dial(phone, campaign_name)
-        # Only --profile-directory and --app-id are confirmed (2026-09-16
-        # manual test: launching with exactly these two flags opened the
-        # correct, single-instance Google Voice PWA window). An earlier
-        # version of this also passed --app-url=<dial url>, guessed from
-        # the *install-time* shortcut of a sibling PWA rather than
-        # verified against a real launch - that guess was wrong: it made
-        # msedge_proxy.exe fall back to a plain browser tab instead of the
-        # PWA window (2026-09-17, Mark). No confirmed way to pre-fill the
-        # number into the PWA itself exists yet, so the number is put on
-        # the Windows clipboard instead (2026-09-18, Mark: "it didn't
-        # inject the phone number") - one paste (Ctrl+V) into Google
-        # Voice's own dial box once the window is focused, rather than
-        # typing it by hand.
+        # --app-id + --profile-directory is the single-instance PWA launch
+        # (reuses the existing Google Voice window if it's already open).
+        # --app-url=<dial url> is the *wrong* flag: Edge treats it as "open
+        # this URL in a browser tab" and never focuses the PWA (2026-09-17).
+        # Chromium's documented way to navigate an installed PWA to a URL
+        # is --app-launch-url-for-shortcuts-menu-item (same-origin start
+        # URL, which voice.google.com/calls?a=nc,+<number> is). Clipboard
+        # copy stays as a paste fallback if Voice doesn't auto-dial.
+        url = google_voice_url(phone, campaign_name)
         command = [
             proxy,
             "--profile-directory=Default",
             f"--app-id={self.edge_app_id}",
+            "--app-launch-source=4",
+            f"--app-launch-url-for-shortcuts-menu-item={url}",
         ]
         if spawn_detached(command):
             copy_to_windows_clipboard(clean_phone_e164(phone))

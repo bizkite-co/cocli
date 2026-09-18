@@ -234,6 +234,11 @@ async def test_right_column_shows_call_reference_files(
         assert modal.query_one("#followup_template") is not None
         assert modal.query_one("#followup_email_date") is not None
 
+        assert "(555) 333-4444" in str(modal.query_one("#call_phone").content)
+        local_time = str(modal.query_one("#company_local_time").content)
+        assert "AM" in local_time or "PM" in local_time
+        assert "company local" in local_time
+
 
 @pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
@@ -317,6 +322,51 @@ async def test_email_follow_up_scheduled_when_template_picked(
     assert follow_ups[0].format == "email"
     assert follow_ups[0].template_id == "email_02_screenshots.md"
     assert follow_ups[0].scheduled_at.strftime("%Y-%m-%d") == "2026-09-30"
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_natural_language_follow_up_dates(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from cocli.application.follow_up_service import FollowUpService
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.queues.to_call import ToCallTask as PendingToCall
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="When Co",
+        slug="when-co",
+        domain="when.test",
+        phone="555-888-9999",
+        timezone="America/Chicago",
+    )
+    co.save()
+    PendingToCall(company_slug="when-co", domain="when.test", campaign_name="roadmap").save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="when-co", phone="5558889999")
+        app.push_screen(modal)
+        await driver.pause()
+
+        modal.query_one("#callback_date").value = "monday"
+        modal.query_one("#followup_template").value = "email_02_screenshots.md"
+        modal.query_one("#followup_email_date").value = "next week"
+        await driver.press("ctrl+s")
+        await driver.pause()
+
+    company = Company.get("when-co")
+    assert company is not None
+    assert company.callback_at is not None
+    assert company.callback_at.weekday() == 0
+    assert company.callback_at > datetime.now(UTC) - timedelta(seconds=5)
+
+    follow_ups = FollowUpService("roadmap").list_pending(company_slug="when-co")
+    assert len(follow_ups) == 1
+    assert follow_ups[0].scheduled_at > datetime.now(UTC)
 
 
 @pytest.mark.asyncio

@@ -307,3 +307,21 @@ class PhoneNumber:
 
 
 OptionalPhone = Annotated[Optional[PhoneNumber], BeforeValidator(empty_to_none)]
+
+
+def format_us_phone(phone: Any) -> str:
+    """Render a stored phone as (555) 123-4567. Falls back to the original string."""
+    if phone is None:
+        return ""
+    if isinstance(phone, PhoneNumber):
+        return phone.format("national")
+    text = str(phone).strip()
+    if not text:
+        return ""
+    try:
+        parsed = PhoneNumber.validate(text)
+    except ValueError:
+        return text
+    if parsed is None:
+        return text
+    return parsed.format("national")
