@@ -130,10 +130,11 @@ class CallLogModal(ModalScreen[bool]):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield Label(self._local_time_markup(), id="company_local_time")
             yield Label(f"Phone: {phone_display}", classes="modal-subtitle", id="call_phone")
-            yield Static(self._contacts_markup(), id="call-contacts")
 
             with Horizontal(id="call-log-columns"):
                 with VerticalScroll(id="call-log-left"):
+                    yield Static(self._contacts_markup(), id="call-contacts")
+
                     yield Label("Call Disposition (type to filter, Enter or Space to pick)", classes="field-label")
                     yield SearchSelect(DISPOSITION_CHOICES, initial_value="Follow Up Needed", id="call_disposition")
 
