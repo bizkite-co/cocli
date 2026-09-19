@@ -18,12 +18,28 @@ from .cluster_view import ClusterView
 from .queues_view import QueueSelection, QueueDetail
 from .indexes_view import IndexSelection, IndexDetail
 from .log_viewer import LogViewerModal, capture_logs
+from pydantic import ValidationError
+
 from cocli.models.campaigns.campaign import Campaign
 
 if TYPE_CHECKING:
     from ..app import CocliApp
 
 logger = logging.getLogger(__name__)
+
+
+def _format_campaign_load_error(exc: Exception) -> str:
+    """Pydantic's default str(ValidationError) buries the field name after
+    a huge input_value dump; the TUI only showed 'Field required' for
+    image-annex missing [import] (2026-09-19)."""
+    if isinstance(exc, ValidationError):
+        lines = []
+        for err in exc.errors():
+            loc = ".".join(str(part) for part in err.get("loc", ())) or "(unknown)"
+            lines.append(f"{loc}: {err.get('msg', 'invalid')}")
+        if lines:
+            return "\n".join(lines)
+    return str(exc)
 
 
 class ApplicationView(Container):
@@ -769,7 +785,7 @@ class ApplicationView(Container):
                 detail = self.app.query_one("#campaign-detail", CampaignDetail)
                 detail.display_error(
                     "Error Loading Campaign",
-                    f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}",
+                    f"Invalid Campaign: {message.campaign_name}\n\n{_format_campaign_load_error(e)}",
                 )
             except Exception:
                 pass
@@ -797,7 +813,7 @@ class ApplicationView(Container):
                     detail = self.app.query_one("#campaign-detail", CampaignDetail)
                     detail.display_error(
                         "Error Loading Campaign",
-                        f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}",
+                        f"Invalid Campaign: {message.campaign_name}\n\n{_format_campaign_load_error(e)}",
                     )
                 except Exception:
                     pass

@@ -98,14 +98,15 @@ if not c.has_section(section):
     c.add_section(section)
 
 if c.has_option(section, "credential_process"): c.remove_option(section, "credential_process")
-c.set(section, "credential_process", f"/root/.cocli/iot/get_tokens.sh {campaign}")
+home = os.path.expanduser("~")
+c.set(section, "credential_process", f"{{home}}/.cocli/iot/get_tokens.sh {campaign}")
 c.set(section, "region", "us-east-1")
 
 if "{role}" == "scraper":
     legacy = f"profile {campaign}-iot"
     if not c.has_section(legacy): c.add_section(legacy)
     if c.has_option(legacy, "credential_process"): c.remove_option(legacy, "credential_process")
-    c.set(legacy, "credential_process", f"/root/.cocli/iot/get_tokens.sh {campaign}")
+    c.set(legacy, "credential_process", f"{{home}}/.cocli/iot/get_tokens.sh {campaign}")
     c.set(legacy, "region", "us-east-1")
 
 
@@ -147,7 +148,9 @@ def main() -> None:
     priv_key = response["keyPair"]["PrivateKey"]
     
     # 2. Attach IoT Policy (Created by CDK)
-    policy_name = f"CocliIoTAssumeRolePolicy-{args.campaign}"
+    # CDK CdkScraperDeploymentStack names this V2; the unversioned name is
+    # stale and attach_policy 404s on new campaigns.
+    policy_name = f"CocliIoTAssumeRolePolicyV2-{args.campaign}"
     print(f"Attaching policy {policy_name} to certificate...")
     iot.attach_policy(policyName=policy_name, target=cert_arn)
     

@@ -78,7 +78,13 @@ class Campaign(BaseModel):
     domain: str
     company_slug: str = Field(..., alias='company-slug')
     workflows: list[str]
-    import_settings: CampaignImport = Field(..., alias='import')
+    # Optional: new campaigns (image-annex) have no Shopify/CSV import
+    # stage. Missing [import] used to fail Campaign.load with a bare
+    # "Field required" in the TUI (2026-09-19).
+    import_settings: CampaignImport = Field(
+        default_factory=lambda: CampaignImport(format="csv"),
+        alias="import",
+    )
     google_maps: GoogleMaps
     prospecting: Prospecting
     aws: Optional[AwsSettings] = None
