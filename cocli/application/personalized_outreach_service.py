@@ -449,6 +449,15 @@ class PersonalizedOutreachService:
             logger.warning("Error loading email template %s: %s", template_path, err)
             return default_subject, default_body
 
+    def _landing_url(self) -> str:
+        from cocli.core.config import load_campaign_config
+
+        cfg = load_campaign_config(self.campaign_name) or {}
+        domain = (cfg.get("campaign") or {}).get("domain") or cfg.get("domain")
+        if domain:
+            return f"https://{domain}"
+        return DEFAULT_LANDING_URL
+
     def generate_copy(
         self,
         first_name: str,
@@ -461,17 +470,18 @@ class PersonalizedOutreachService:
         subject_template, body_template = self.load_template(template_name, initiative=initiative)
 
         clean_co_name = company_name.split("-")[0].strip() if "-" in company_name else company_name
+        landing_url = self._landing_url()
 
         subject = subject_template.format(
             first_name=first_name,
             company_name=clean_co_name,
-            landing_url=DEFAULT_LANDING_URL,
+            landing_url=landing_url,
         )
 
         raw_body = body_template.format(
             first_name=first_name,
             company_name=clean_co_name,
-            landing_url=DEFAULT_LANDING_URL,
+            landing_url=landing_url,
         )
 
         if template_name.endswith(".html"):
