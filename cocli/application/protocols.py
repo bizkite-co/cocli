@@ -3,7 +3,7 @@ from typing import Protocol, Any, Optional, Iterator, Callable, runtime_checkabl
 from pathlib import Path
 from datetime import datetime
 from cocli.models.search import SearchResult
-from cocli.models.companies.meeting import CompanyMeeting
+from cocli.models.companies.meeting import CompanyCall, CompanyMeeting
 from cocli.models import TileStatusResult, MissionReconciliationResult
 from cocli.models.tasks import MissionTask
 from cocli.models.cli_help import CliCommandMatch
@@ -110,6 +110,8 @@ class MeetingServiceProvider(Protocol):
     def get_upcoming_meetings(self) -> list[CompanyMeeting]:
         ...
     def get_recent_meetings(self, days_limit: int = 180) -> list[CompanyMeeting]:
+        ...
+    def get_recent_calls(self, days_limit: int = 30) -> list[CompanyCall]:
         ...
 
 
@@ -465,6 +467,5 @@ class SecretServiceProvider(Protocol):
     def get_secret(self, key: str) -> Optional[str]: ...
     def get_secrets(self, *keys: str) -> list[Optional[str]]: ...
     def get_item(self, item_id: str) -> Optional[dict[str, Any]]: ...
-
 
 

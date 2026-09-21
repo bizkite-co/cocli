@@ -35,6 +35,7 @@ class PendingBatchListItem(ListItem):
 class PendingBatchPreview(VerticalScroll):
     def compose(self) -> Any:
         yield Label("Select a recipient to review the exact email that would be sent", id="batch-preview-empty")
+        yield Label("", id="scheduled-followup-summary", classes="detail-row")
         yield Label("", id="batch-preview-subject", classes="detail-row")
         yield Static("", id="batch-preview-body")
 
@@ -58,6 +59,7 @@ class TargetBatchesView(MasterDetailView):
     currently-highlighted row's batch_id."""
 
     BINDINGS = [
+        Binding("p", "process_follow_ups", "Prepare Due Follow-ups", show=True),
         Binding("n", "new_batch", "New Batch", show=True),
         Binding("e", "edit_entry", "Edit", show=True),
         Binding("o", "open_preview", "Open HTML Preview", show=True),
@@ -81,6 +83,20 @@ class TargetBatchesView(MasterDetailView):
         campaign = app.services.campaign_name
         service = PersonalizedOutreachService(campaign)
         entries = service.list_pending_batches()
+        from cocli.application.follow_up_service import FollowUpService
+
+        scheduled = [
+            task for task in FollowUpService(campaign).list_pending() if task.format == "email"
+        ]
+        scheduled_summary = self.batch_preview.query_one("#scheduled-followup-summary", Label)
+        if scheduled:
+            next_due = scheduled[0].scheduled_at.strftime("%Y-%m-%d %H:%M UTC")
+            scheduled_summary.update(
+                f"[bold]Scheduled email follow-ups:[/bold] {len(scheduled)} "
+                f"(next due {next_due}; press p to prepare due follow-ups)"
+            )
+        else:
+            scheduled_summary.update("")
 
         self.batch_list.clear()
         for entry in entries:
@@ -118,6 +134,28 @@ class TargetBatchesView(MasterDetailView):
 
     def action_new_batch(self) -> None:
         self.run_worker(self._new_batch_flow(), exclusive=True)
+
+    def action_process_follow_ups(self) -> None:
+        self.run_worker(self._process_follow_ups(), exclusive=True)
+
+    async def _process_follow_ups(self) -> None:
+        from cocli.application.follow_up_service import FollowUpService
+
+        app = cast("CocliApp", self.app)
+        result = await asyncio.to_thread(
+            FollowUpService(app.services.campaign_name).process_due
+        )
+        if result.errors:
+            self.app.notify(
+                f"Prepared {result.emails_queued} email follow-up(s); "
+                f"{len(result.errors)} could not be prepared",
+                severity="warning",
+            )
+        else:
+            self.app.notify(
+                f"Prepared {result.emails_queued} email and {result.calls_queued} call follow-up(s)"
+            )
+        self.refresh_batches()
 
     async def _new_batch_flow(self) -> None:
         from .new_batch_modal import NewBatchModal

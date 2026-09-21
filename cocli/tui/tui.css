@@ -78,6 +78,17 @@ Screen {
     background: #000000;
 }
 
+#messages-sidebar {
+    width: 30;
+    background: #000000;
+    border-right: solid #333333;
+}
+
+#messages-content {
+    width: 1fr;
+    background: #000000;
+}
+
 #app_main_content {
     width: 1fr;
     background: #000000;

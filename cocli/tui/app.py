@@ -489,6 +489,7 @@ class CocliApp(App[None]):
         self.command_mru: list[str] = []
         self.nav_manager = NavigationStateManager(self)
         self.browser_manager = BrowserManager()
+        self._return_to_messages_recent_calls = False
 
         # Explicitly ensure the OperationService uses our shared services container
         # to prevent it from spawning its own ServiceContainer (which breaks mocks)
@@ -879,6 +880,11 @@ class CocliApp(App[None]):
         """
         tui_debug_log("APP: action_navigate_up triggered")
 
+        if self._return_to_messages_recent_calls:
+            self._return_to_messages_recent_calls = False
+            self.run_worker(self._return_to_recent_calls())
+            return
+
         target_node = self._get_active_nav_node()
 
         if not target_node:
@@ -1009,7 +1015,16 @@ class CocliApp(App[None]):
     ) -> None:
         self.open_company_detail(message.company_slug)
 
-    def open_company_detail(self, company_slug: str) -> None:
+    async def _return_to_recent_calls(self) -> None:
+        await self.action_show_messages()
+        self.query_one(MessagesView).action_focus_recent_calls()
+
+    def open_company_detail(
+        self,
+        company_slug: str,
+        *,
+        return_to_messages_recent_calls: bool = False,
+    ) -> None:
         """Navigate to a company's detail view by slug - the same
         auto-materialize-on-demand path CompanyList.CompanySelected uses,
         callable directly from anywhere else in the TUI that only has a
@@ -1052,9 +1067,9 @@ class CocliApp(App[None]):
                 content = self.query_one("#app_content")
                 # Hide Branch Roots, Remove Details
                 for child in content.children:
-                    if isinstance(
-                        child, (CompanySearchView, PersonList, ApplicationView)
-                    ):
+                    if isinstance(child, MessagesView) and return_to_messages_recent_calls:
+                        child.display = False
+                    elif isinstance(child, (CompanySearchView, PersonList, ApplicationView)):
                         child.display = False
                     else:
                         child.remove()
@@ -1062,6 +1077,7 @@ class CocliApp(App[None]):
                 company_detail = CompanyDetail(company_data)
                 content.mount(company_detail)
                 company_detail.styles.display = "block"
+                self._return_to_messages_recent_calls = return_to_messages_recent_calls
             else:
                 # A "lead" shown in the list can come from raw prospects
                 # data (google_maps_prospects checkpoint) that was never

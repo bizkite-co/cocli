@@ -108,3 +108,12 @@ class CompanyMeeting(BaseModel):
     title: str
     file_path: Path
 
+
+class CompanyCall(BaseModel):
+    datetime_utc: datetime
+    datetime_local: datetime
+    company_name: str
+    company_slug: str
+    title: str
+    content: str
+    file_path: Path

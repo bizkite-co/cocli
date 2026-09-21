@@ -1,45 +1,102 @@
-"""Top-level Messages branch (Space m). Thin wrapper around
-InitiativesView, which owns the actual list-above-a-list navigation
-(Initiatives top list, Category second list, mirroring ApplicationView's
-Admin sidebar) - kept as a separate class so InitiativesView stays
-independently mountable/testable. There is no longer a "Sections" picker
-in front of it: the Initiatives/Category lists ARE the Messages sidebar,
-the same way Admin's own nav_list/sub_nav ARE its sidebar - a wrapping
-picker list here was a mistake, not a second navigation layer."""
+"""Top-level Messages branch (Space m)."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal, Vertical
+from textual.widgets import Label, ListItem, ListView
 
 from .initiatives_view import InitiativesView
+from .recent_calls_view import RecentCallsView
+from .send_log_view import SendLogView
+from .target_batches_view import TargetBatchesView
+
+
+class MessagesSectionItem(ListItem):
+    def __init__(self, section: str, label: str) -> None:
+        super().__init__()
+        self.section = section
+        self.label = label
+
+    def compose(self) -> ComposeResult:
+        yield Label(self.label)
 
 
 class MessagesView(Container):
-    """The Messages branch root (is_branch_root=True in app.py's nav_tree)."""
+    """Message operations: drafts, call history, campaign copy, and sent email."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.initiatives_view = InitiativesView()
+        self.section_list = ListView(
+            MessagesSectionItem("follow-ups", "Follow-up Drafts"),
+            MessagesSectionItem("batch-emails", "Batch Email Drafts"),
+            MessagesSectionItem("recent-calls", "Recent Calls"),
+            MessagesSectionItem("initiatives", "Initiatives"),
+            MessagesSectionItem("sent-email", "Sent Email"),
+            id="messages-section-list",
+        )
+        self.content = Container(id="messages-content")
 
     def compose(self) -> ComposeResult:
-        yield self.initiatives_view
+        with Horizontal():
+            with Vertical(id="messages-sidebar"):
+                yield Label("Messages", classes="sidebar-title")
+                yield self.section_list
+            yield self.content
 
     async def on_mount(self) -> None:
+        self.section_list.index = 0
+        await self._show_section("follow-ups")
         self.action_focus_master()
 
     def action_focus_sidebar(self) -> None:
-        """Same conventional name app.py's action_navigate_up() already
-        looks for (see CompanySearchView/PersonList) - this is what makes
-        bare "h" ("Back") return focus to the Initiatives list instead of
-        falling through to the no-active-node fallback."""
-        self.initiatives_view.action_focus_master()
+        self.action_focus_master()
 
     def action_focus_master(self) -> None:
-        """Matches the interface app.action_show_messages() expects when
-        reusing an already-mounted view (same as EventCurationView, whose
-        MasterDetailView base provides this - MessagesView isn't a
-        MasterDetailView itself, so it's defined explicitly here)."""
-        self.initiatives_view.action_focus_master()
+        self.section_list.focus()
+
+    def action_focus_recent_calls(self) -> None:
+        recent_calls = self.content.query_one(RecentCallsView)
+        recent_calls.action_focus_master()
+
+    @on(ListView.Selected, "#messages-section-list")
+    async def on_section_selected(self, event: ListView.Selected) -> None:
+        if isinstance(event.item, MessagesSectionItem):
+            await self._show_section(event.item.section)
+
+    async def _show_section(self, section: str) -> None:
+        for child in list(self.content.children):
+            await child.remove()
+
+        view: Container
+        if section == "follow-ups":
+            from .follow_up_queue_view import FollowUpQueueView
+            view = FollowUpQueueView()
+        elif section == "batch-emails":
+            view = TargetBatchesView()
+        elif section == "recent-calls":
+            view = RecentCallsView()
+        elif section == "initiatives":
+            view = InitiativesView()
+        else:
+            view = SendLogView()
+        await self.content.mount(view)
+        if section == "recent-calls":
+            view.action_focus_master()
+
+    def on_key(self, event: events.Key) -> None:
+        if self.app.focused is not self.section_list:
+            return
+        if event.key == "j":
+            self.section_list.action_cursor_down()
+        elif event.key == "k":
+            self.section_list.action_cursor_up()
+        elif event.key in ("l", "enter"):
+            self.section_list.action_select_cursor()
+        elif event.key != "h":
+            return
+        event.prevent_default()
+        event.stop()

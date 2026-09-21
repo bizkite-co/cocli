@@ -9,11 +9,12 @@ import pytest
 from cocli.tui.app import CocliApp
 from cocli.application.services import ServiceContainer
 from cocli.tui.widgets.messages_view import MessagesView
-from cocli.tui.widgets.initiatives_view import InitiativesView
+from cocli.tui.widgets.follow_up_queue_view import FollowUpQueueView
+from cocli.tui.widgets.recent_calls_view import RecentCallListItem, RecentCallsView
 from cocli.tui.widgets.target_batches_view import TargetBatchesView
 from cocli.tui.widgets.send_log_view import SendLogView, SendLogListItem
 from cocli.tui.widgets.unsubscribe_rate_view import UnsubscribeRateView
-from textual.widgets import ListView, Label
+from textual.widgets import ListView, Label, Static
 
 CAMPAIGN = "test/default"
 
@@ -44,7 +45,7 @@ def _write_pending_batch(
 
 
 @pytest.mark.asyncio
-async def test_leader_key_opens_messages_view_with_initiatives_section(mock_cocli_env, mocker) -> None:
+async def test_leader_key_opens_messages_view_with_follow_up_drafts(mock_cocli_env, mocker) -> None:
     app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
     async with app.run_test() as pilot:
         await pilot.pause(0.2)
@@ -55,23 +56,17 @@ async def test_leader_key_opens_messages_view_with_initiatives_section(mock_cocl
 
         assert len(app.query(MessagesView)) == 1
         assert app.query_one("#menu-messages").has_class("active-menu-item")
-        assert len(app.query(InitiativesView)) == 1
+        assert len(app.query(FollowUpQueueView)) == 1
+        assert str(app.query_one("#messages-sidebar").styles.width) == "30"
+        assert str(app.query_one("#messages-content").styles.width) == "1fr"
 
 
 @pytest.mark.asyncio
-async def test_initiatives_list_has_real_focus_j_navigates_and_h_stays_put(
+async def test_messages_section_list_has_real_focus_j_navigates_and_h_stays_put(
     mock_cocli_env, mocker
 ) -> None:
-    """Regression for a real bug (2026-09-15): entering Messages focused
-    nothing in the DOM (the default content pane isn't focusable), so
-    _get_active_nav_node() found no active branch, "j" had no focused
-    ListView to move, and "h" ("Back") fell through to its no-active-node
-    fallback and jumped to Companies."""
-    from cocli.core.paths import paths
+    """Messages must retain focus and navigation within its section list."""
     from cocli.tui.widgets.company_list import CompanyList
-
-    for initiative in ("rta", "wealth-manager-products"):
-        (paths.campaigns / CAMPAIGN / "initiatives" / initiative).mkdir(parents=True, exist_ok=True)
 
     app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
     async with app.run_test() as pilot:
@@ -81,19 +76,78 @@ async def test_initiatives_list_has_real_focus_j_navigates_and_h_stays_put(
         await pilot.press("m")
         await pilot.pause(0.3)
 
-        initiatives_list = app.query_one("#initiatives_list", ListView)
-        assert initiatives_list.has_focus
-
-        assert initiatives_list.index == 0
+        section_list = app.query_one("#messages-section-list", ListView)
+        assert section_list.has_focus
+        assert section_list.index == 0
         await pilot.press("j")
         await pilot.pause(0.1)
-        assert initiatives_list.index == 1
+        assert section_list.index == 1
 
         await pilot.press("h")
         await pilot.pause(0.2)
         assert len(app.query(MessagesView)) == 1
         assert len(app.query(CompanyList)) == 0
         assert app.query_one("#menu-messages").has_class("active-menu-item")
+
+
+@pytest.mark.asyncio
+async def test_messages_recent_calls_lists_logged_phone_calls(mock_cocli_env, mocker) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from cocli.core.paths import paths
+    from cocli.models.companies.company import Company
+    from cocli.models.companies.meeting import Meeting
+    from cocli.tui.widgets.company_detail import CompanyDetail
+
+    company = Company(name="Friday Caller", slug="friday-caller", tags=[CAMPAIGN])
+    company.save()
+    meetings_dir = paths.companies.entry(company.slug).path / "meetings"
+    Meeting(
+        timestamp=datetime.now(UTC) - timedelta(days=2),
+        title="Logged Call: Interested",
+        type="phone-call",
+        content="Asked for an email with the product overview.",
+    ).to_file(meetings_dir)
+    Meeting(
+        timestamp=datetime.now(UTC) - timedelta(days=3),
+        title="Logged Call: Follow-up",
+        type="phone-call",
+        content="Requested a call next week.",
+    ).to_file(meetings_dir)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.press("m")
+        await pilot.pause(0.2)
+        await pilot.press("j")
+        await pilot.press("j")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        assert len(app.query(RecentCallsView)) == 1
+        call_list = app.query_one("#recent-call-list", ListView)
+        assert len(call_list.children) == 2
+        assert call_list.has_focus
+        assert call_list.index == 0
+        assert isinstance(call_list.children[0], RecentCallListItem)
+        assert call_list.children[0].call.company_slug == "friday-caller"
+        preview = app.query_one("#recent-call-preview-body", Static)
+        assert "Asked for an email with the product overview." in str(preview.content)
+
+        await pilot.press("j")
+        await pilot.pause(0.3)
+        assert "Requested a call next week." in str(preview.content)
+
+        await pilot.press("l")
+        await pilot.pause(0.2)
+        assert len(app.query(CompanyDetail)) == 1
+
+        await pilot.press("h")
+        await pilot.pause(0.2)
+        assert len(app.query(RecentCallsView)) == 1
+        assert call_list.has_focus
 
 
 @pytest.mark.asyncio
@@ -120,6 +174,58 @@ async def test_target_batches_shows_full_rendered_body_on_selection(mock_cocli_e
         assert "<br>" not in str(body_text)
         assert "Line one" in str(body_text)
         assert "Line two" in str(body_text)
+
+
+
+@pytest.mark.asyncio
+async def test_follow_up_queue_view_lists_pending_tasks(mock_cocli_env, mocker) -> None:
+    """FollowUpQueueView should list items from queues/follow-up/pending/."""
+    from datetime import UTC, datetime, timedelta
+    from cocli.application.follow_up_service import FollowUpService
+    from cocli.tui.widgets.follow_up_queue_view import FollowUpQueueListItem
+
+    FollowUpService(CAMPAIGN).add_follow_up(
+        company_slug="acme-financial",
+        domain="acme.test",
+        scheduled_at=datetime.now(UTC) + timedelta(days=5),
+        format="email",
+        template_id="t1",
+    )
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = FollowUpQueueView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        task_list = widget.query_one("#fu-queue-list", ListView)
+        assert len(task_list.children) == 1
+        assert isinstance(task_list.children[0], FollowUpQueueListItem)
+        assert task_list.children[0].follow_up.company_slug == "acme-financial"
+        assert task_list.children[0].follow_up.template_id == "t1"
+
+
+@pytest.mark.asyncio
+async def test_follow_up_queue_view_prepare_due_follow_ups(mock_cocli_env, mocker) -> None:
+    """p key on FollowUpQueueView calls FollowUpService.process_due()."""
+    from cocli.application.follow_up_service import ProcessFollowUpsResult
+
+    process_due = mocker.patch(
+        "cocli.application.follow_up_service.FollowUpService.process_due",
+        return_value=ProcessFollowUpsResult(due=1, emails_queued=1),
+    )
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = FollowUpQueueView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        widget.task_list.focus()
+        await pilot.press("p")
+        await pilot.pause(0.2)
+
+    process_due.assert_called_once_with()
+
 
 
 @pytest.mark.asyncio

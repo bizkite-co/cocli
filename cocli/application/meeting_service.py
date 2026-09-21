@@ -7,7 +7,7 @@ from pytz import timezone
 from tzlocal import get_localzone
 
 from cocli.core.paths import paths
-from cocli.models.companies.meeting import CompanyMeeting
+from cocli.models.companies.meeting import CompanyCall, CompanyMeeting, Meeting
 
 logger = logging.getLogger(__name__)
 
@@ -137,3 +137,22 @@ class MeetingService:
             reverse=True,
         )
 
+    def get_recent_calls(self, days_limit: int = 30) -> list[CompanyCall]:
+        """Return recent phone-call meetings with their recorded notes."""
+        calls: list[CompanyCall] = []
+        for meeting_summary in self.get_recent_meetings(days_limit=days_limit):
+            meeting = Meeting.from_file(meeting_summary.file_path)
+            if meeting is None or meeting.type != "phone-call":
+                continue
+            calls.append(
+                CompanyCall(
+                    datetime_utc=meeting_summary.datetime_utc,
+                    datetime_local=meeting_summary.datetime_local,
+                    company_name=meeting_summary.company_name,
+                    company_slug=meeting_summary.file_path.parent.parent.name,
+                    title=meeting.title,
+                    content=meeting.content,
+                    file_path=meeting_summary.file_path,
+                )
+            )
+        return calls
