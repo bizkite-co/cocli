@@ -29,26 +29,51 @@ class PendingBatchListItem(ListItem):
 
     def compose(self) -> Any:
         e = self.entry
-        yield Label(f"[{e.batch_id[:15]}] {e.company_slug} <{e.recipient}> ({e.template_id})")
+        yield Label(f"{e.company_slug} <{e.recipient}>")
 
 
 class PendingBatchPreview(VerticalScroll):
     def compose(self) -> Any:
         yield Label("Select a recipient to review the exact email that would be sent", id="batch-preview-empty")
         yield Label("", id="scheduled-followup-summary", classes="detail-row")
+        yield Static("", id="batch-preview-metadata")
         yield Label("", id="batch-preview-subject", classes="detail-row")
         yield Static("", id="batch-preview-body")
 
-    def update_preview(self, subject: str | None, body: str | None) -> None:
+    def update_preview(
+        self,
+        subject: str | None,
+        body: str | None,
+        entry: "PendingBatchEntry | None" = None,
+    ) -> None:
         empty = self.query_one("#batch-preview-empty", Label)
+        metadata_static = self.query_one("#batch-preview-metadata", Static)
         subject_label = self.query_one("#batch-preview-subject", Label)
         body_static = self.query_one("#batch-preview-body", Static)
         if subject is None:
             empty.display = True
+            metadata_static.update("")
             subject_label.update("")
             body_static.update("")
             return
         empty.display = False
+        if entry is not None:
+            created_str = (
+                entry.created_at.strftime("%Y-%m-%d %H:%M UTC")
+                if getattr(entry, "created_at", None)
+                else entry.batch_id
+            )
+            meta_lines = [
+                f"[bold]Created:[/bold]   {created_str}",
+                f"[bold]Template:[/bold]  {entry.template_id}",
+                f"[bold]Company:[/bold]   {entry.company_slug}",
+                f"[bold]To:[/bold]        {entry.recipient}",
+                f"[bold]Initiative:[/bold]{entry.initiative}",
+            ]
+            metadata_static.update("\n".join(meta_lines))
+        else:
+            metadata_static.update("")
+
         subject_label.update(f"[bold]Subject:[/bold] {subject}")
         body_static.update(body or "")
 
@@ -102,7 +127,11 @@ class TargetBatchesView(MasterDetailView):
         for entry in entries:
             self.batch_list.append(PendingBatchListItem(entry))
 
-        if not entries:
+        if entries:
+            self.batch_list.index = 0
+            match = service.entry_to_match(entries[0])
+            self.batch_preview.update_preview(match.subject, match.body, entry=entries[0])
+        else:
             self.batch_preview.update_preview(None, None)
 
     def on_key(self, event: events.Key) -> None:
@@ -114,6 +143,18 @@ class TargetBatchesView(MasterDetailView):
             self.batch_list.action_cursor_up()
             event.prevent_default()
 
+    @on(ListView.Highlighted, "#target-batch-list")
+    def on_batch_row_highlighted(self, message: ListView.Highlighted) -> None:
+        if not isinstance(message.item, PendingBatchListItem):
+            return
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+        entry = message.item.entry
+        app = cast("CocliApp", self.app)
+        service = PersonalizedOutreachService(app.services.campaign_name)
+        match = service.entry_to_match(entry)
+        self.batch_preview.update_preview(match.subject, match.body, entry=entry)
+
     @on(ListView.Selected)
     def on_batch_row_selected(self, message: ListView.Selected) -> None:
         if not isinstance(message.item, PendingBatchListItem):
@@ -124,7 +165,7 @@ class TargetBatchesView(MasterDetailView):
         app = cast("CocliApp", self.app)
         service = PersonalizedOutreachService(app.services.campaign_name)
         match = service.entry_to_match(entry)
-        self.batch_preview.update_preview(match.subject, match.body)
+        self.batch_preview.update_preview(match.subject, match.body, entry=entry)
 
     def _highlighted_entry(self) -> "PendingBatchEntry | None":
         item = self.batch_list.highlighted_child

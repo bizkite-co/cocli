@@ -81,7 +81,7 @@ def test_requeue_missing_details_from_file(tmp_path) -> None:  # type: ignore[no
 
     assert result.exit_code == 0, result.output
     fake_container.index_service.requeue_missing_details.assert_called_once_with(
-        ["PLACE_A", "PLACE_B"], batch_size=1000
+        ["PLACE_A", "PLACE_B"], batch_size=1000, derive_gmb_url=False
     )
 
 
@@ -101,5 +101,25 @@ def test_requeue_missing_details_batch_size_flag() -> None:
 
     assert result.exit_code == 0, result.output
     fake_container.index_service.requeue_missing_details.assert_called_once_with(
-        ["PLACE_A"], batch_size=50
+        ["PLACE_A"], batch_size=50, derive_gmb_url=False
+    )
+
+
+def test_requeue_missing_details_derive_gmb_url_flag() -> None:
+    fake_container = MagicMock()
+    fake_container.index_service.requeue_missing_details.return_value = RequeueResult(
+        campaign_name="test-campaign",
+        index_name="google_maps_prospects",
+        rows=[RequeueRow(place_id="PLACE_A", status="requeued", detail="")],
+    )
+
+    with patch("cocli.commands.index.ServiceContainer", return_value=fake_container):
+        result = runner.invoke(
+            app,
+            ["requeue-missing-details", "PLACE_A", "--campaign", "test-campaign", "--derive-gmb-url"],
+        )
+
+    assert result.exit_code == 0, result.output
+    fake_container.index_service.requeue_missing_details.assert_called_once_with(
+        ["PLACE_A"], batch_size=1000, derive_gmb_url=True
     )

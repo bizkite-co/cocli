@@ -512,6 +512,9 @@ def requeue_missing_details(
     batch_size: int = typer.Option(
         1000, "--batch-size", help="place_ids per SSH call (not one call per record)."
     ),
+    derive_gmb_url: bool = typer.Option(
+        False, "--derive-gmb-url", help="Derive Google Maps search URL dynamically from name/address if missing in checkpoint."
+    ),
 ) -> None:
     """
     Push a fresh gm-details task for place_ids the checkpoint already knows
@@ -567,7 +570,9 @@ def requeue_missing_details(
         return
 
     services = ServiceContainer(campaign_name=campaign)
-    result = services.index_service.requeue_missing_details(ids, batch_size=batch_size)
+    result = services.index_service.requeue_missing_details(
+        ids, batch_size=batch_size, derive_gmb_url=derive_gmb_url
+    )
 
     from collections import Counter
 

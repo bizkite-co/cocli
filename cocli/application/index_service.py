@@ -1125,7 +1125,10 @@ class IndexService:
     # ------------------------------------------------------------------
 
     def requeue_missing_details(
-        self, place_ids: list[str], batch_size: int = 1000
+        self,
+        place_ids: list[str],
+        batch_size: int = 1000,
+        derive_gmb_url: bool = False,
     ) -> RequeueResult:
         """Push a fresh gm-details task for each place_id, built directly
         from the prospects checkpoint (name/company_slug/category/gmb_url) -
@@ -1202,7 +1205,9 @@ class IndexService:
             r[0]: r
             for r in con.execute(
                 "SELECT place_id, name, slug, "
-                "gmb_url, discovery_phrase, discovery_tile_id FROM prospects "
+                "gmb_url, discovery_phrase, discovery_tile_id, "
+                "street_address, city, full_address "
+                "FROM prospects "
                 f"WHERE place_id IN ({placeholders})",
                 place_ids,
             ).fetchall()
@@ -1216,10 +1221,32 @@ class IndexService:
 
         out_rows: list[RequeueRow] = []
         tasks_to_push: list[tuple[str, str]] = []  # (place_id, task_json)
+        
+        from cocli.utils.google_maps_url import google_maps_url
+        
         for place_id in place_ids:
             row = rows_by_id.get(place_id)
-            gmb_url = row[3] if row else None
-            if not row or not gmb_url or not gmb_url.strip():
+            if not row:
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id, status="not_found",
+                        detail="no checkpoint row found",
+                    )
+                )
+                continue
+                
+            gmb_url = row[3]
+            
+            if derive_gmb_url and (not gmb_url or not gmb_url.strip()):
+                # Derive gmb_url using name, street_address, city, full_address
+                name = row[1]
+                street_address = row[6]
+                city = row[7]
+                full_address = row[8]
+                address = street_address if street_address else full_address
+                gmb_url = google_maps_url(place_id=place_id, name=name, street_address=address, city=city)
+
+            if not gmb_url or not gmb_url.strip():
                 out_rows.append(
                     RequeueRow(
                         place_id=place_id, status="not_found",

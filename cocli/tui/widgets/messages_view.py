@@ -49,7 +49,7 @@ class MessagesView(Container):
 
     async def on_mount(self) -> None:
         self.section_list.index = 0
-        await self._show_section("follow-ups")
+        await self._show_section("follow-ups", focus=False)
         self.action_focus_master()
 
     def action_focus_sidebar(self) -> None:
@@ -65,26 +65,32 @@ class MessagesView(Container):
     @on(ListView.Selected, "#messages-section-list")
     async def on_section_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, MessagesSectionItem):
-            await self._show_section(event.item.section)
+            await self._show_section(event.item.section, focus=True)
 
-    async def _show_section(self, section: str) -> None:
+    async def _show_section(self, section: str, focus: bool = False) -> None:
+        from .follow_up_queue_view import FollowUpQueueView
+
+        view_classes = {
+            "follow-ups": FollowUpQueueView,
+            "batch-emails": TargetBatchesView,
+            "recent-calls": RecentCallsView,
+            "initiatives": InitiativesView,
+            "sent-email": SendLogView,
+        }
+        target_cls = view_classes.get(section, SendLogView)
+
+        current_view = self.content.children[0] if self.content.children else None
+        if current_view is not None and isinstance(current_view, target_cls):
+            if focus and hasattr(current_view, "action_focus_master"):
+                current_view.action_focus_master()
+            return
+
         for child in list(self.content.children):
             await child.remove()
 
-        view: Container
-        if section == "follow-ups":
-            from .follow_up_queue_view import FollowUpQueueView
-            view = FollowUpQueueView()
-        elif section == "batch-emails":
-            view = TargetBatchesView()
-        elif section == "recent-calls":
-            view = RecentCallsView()
-        elif section == "initiatives":
-            view = InitiativesView()
-        else:
-            view = SendLogView()
+        view = target_cls()
         await self.content.mount(view)
-        if section == "recent-calls":
+        if focus and hasattr(view, "action_focus_master"):
             view.action_focus_master()
 
     def on_key(self, event: events.Key) -> None:

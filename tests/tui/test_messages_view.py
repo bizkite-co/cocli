@@ -91,6 +91,32 @@ async def test_messages_section_list_has_real_focus_j_navigates_and_h_stays_put(
 
 
 @pytest.mark.asyncio
+async def test_messages_l_navigates_into_follow_up_queue_list(mock_cocli_env, mocker) -> None:
+    """Pressing l on Follow-up Drafts in the sidebar moves focus to the queue list, and h returns."""
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.pause(0.1)
+        await pilot.press("m")
+        await pilot.pause(0.3)
+
+        section_list = app.query_one("#messages-section-list", ListView)
+        assert section_list.has_focus
+        assert section_list.index == 0
+
+        await pilot.press("l")
+        await pilot.pause(0.2)
+
+        task_list = app.query_one("#fu-queue-list", ListView)
+        assert task_list.has_focus
+
+        await pilot.press("h")
+        await pilot.pause(0.2)
+        assert section_list.has_focus
+
+
+@pytest.mark.asyncio
 async def test_messages_recent_calls_lists_logged_phone_calls(mock_cocli_env, mocker) -> None:
     from datetime import UTC, datetime, timedelta
 
@@ -207,7 +233,7 @@ async def test_follow_up_queue_view_lists_pending_tasks(mock_cocli_env, mocker) 
 
 @pytest.mark.asyncio
 async def test_follow_up_queue_view_prepare_due_follow_ups(mock_cocli_env, mocker) -> None:
-    """p key on FollowUpQueueView calls FollowUpService.process_due()."""
+    """P key on FollowUpQueueView calls FollowUpService.process_due()."""
     from cocli.application.follow_up_service import ProcessFollowUpsResult
 
     process_due = mocker.patch(
@@ -221,10 +247,41 @@ async def test_follow_up_queue_view_prepare_due_follow_ups(mock_cocli_env, mocke
         await pilot.pause(0.2)
 
         widget.task_list.focus()
-        await pilot.press("p")
+        await pilot.press("P")
         await pilot.pause(0.2)
 
     process_due.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_follow_up_queue_view_prepare_selected_task(mock_cocli_env, mocker) -> None:
+    """p key on FollowUpQueueView calls FollowUpService.process_task() for selected item."""
+    from datetime import UTC, datetime, timedelta
+    from cocli.application.follow_up_service import FollowUpService
+
+    FollowUpService(CAMPAIGN).add_follow_up(
+        company_slug="acme-financial",
+        domain="acme.test",
+        scheduled_at=datetime.now(UTC) + timedelta(days=5),
+        format="email",
+        template_id="t1",
+    )
+    process_task = mocker.patch(
+        "cocli.application.follow_up_service.FollowUpService.process_task",
+        return_value=None,
+    )
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = FollowUpQueueView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        widget.task_list.focus()
+        await pilot.press("p")
+        await pilot.pause(0.2)
+
+    process_task.assert_called_once()
+    assert process_task.call_args[0][0].company_slug == "acme-financial"
 
 
 

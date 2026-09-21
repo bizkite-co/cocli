@@ -101,6 +101,28 @@ def test_requeue_missing_details_skips_no_gmb_url(tmp_path: Path) -> None:
     mock_run.assert_not_called()
 
 
+def test_requeue_missing_details_derives_gmb_url_when_enabled(tmp_path: Path) -> None:
+    campaign = "test-campaign"
+    _setup_campaign_dirs(tmp_path, campaign)
+    base = tmp_path / "campaigns" / campaign
+    (base / "indexes" / "google_maps_prospects" / "prospects.usv").write_text(
+        _checkpoint_row("PLACE_NO_GMB", "No GMB Inc", "no-gmb-inc") + "\n"
+    )
+
+    service = IndexService(campaign_name=campaign)
+
+    with patch(
+        "cocli.services.cluster_service.ClusterService.get_nodes",
+        return_value=[PiNodeConfig(host="cocli5x0", ip="10.0.0.1")],
+    ), patch("subprocess.run", side_effect=_all_ok_response) as mock_run:
+        result = service.requeue_missing_details(["PLACE_NO_GMB"], derive_gmb_url=True)
+
+    assert result.rows[0].status == "requeued"
+    mock_run.assert_called_once()
+    script = mock_run.call_args[1]["input"]
+    assert "google.com/maps/search" in script
+
+
 def test_requeue_missing_details_skips_place_id_not_in_checkpoint(tmp_path: Path) -> None:
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)

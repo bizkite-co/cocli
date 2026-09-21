@@ -77,7 +77,8 @@ class FollowUpQueuePreview(VerticalScroll):
             f"[bold]Scheduled:[/bold] {task.scheduled_at.strftime('%Y-%m-%d %H:%M UTC')}",
             f"[bold]Initiative:[/bold]{task.initiative}",
             "",
-            "[dim]p: Prepare now (render to Batch Drafts)[/dim]",
+            "[dim]p: Prepare selected[/dim]",
+            "[dim]P: Prepare all due follow-ups[/dim]",
             "[dim]e: Edit rendered copy then prepare[/dim]",
             "[dim]d: Delete this follow-up[/dim]",
         ]
@@ -91,7 +92,8 @@ class FollowUpQueueView(MasterDetailView):
     auto-sending."""
 
     BINDINGS = [
-        Binding("p", "prepare", "Prepare → Batch Drafts", show=True),
+        Binding("p", "prepare_selected", "Prepare Selected", show=True),
+        Binding("P", "prepare_all_due", "Prepare All Due", show=True),
         Binding("e", "edit_and_prepare", "Edit & Prepare", show=True),
         Binding("d", "delete_task", "Delete", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
@@ -165,7 +167,17 @@ class FollowUpQueueView(MasterDetailView):
         self.refresh_tasks()
 
     def action_prepare(self) -> None:
-        self.run_worker(self._prepare_flow(), exclusive=True)
+        self.action_prepare_selected()
+
+    def action_prepare_selected(self) -> None:
+        task = self._highlighted_task()
+        if task is None:
+            self.app.notify("No follow-up selected.", severity="warning")
+            return
+        self.run_worker(self._prepare_single_flow(task), exclusive=True)
+
+    def action_prepare_all_due(self) -> None:
+        self.run_worker(self._prepare_all_flow(), exclusive=True)
 
     def action_edit_and_prepare(self) -> None:
         task = self._highlighted_task()
@@ -183,7 +195,24 @@ class FollowUpQueueView(MasterDetailView):
     # Workers
     # ------------------------------------------------------------------
 
-    async def _prepare_flow(self) -> None:
+    async def _prepare_single_flow(self, task: "FollowUpTask") -> None:
+        """Render selected follow-up → PendingBatchEntry (Batch Email Drafts)."""
+        from cocli.application.follow_up_service import FollowUpService
+
+        app = cast("CocliApp", self.app)
+        try:
+            await asyncio.to_thread(
+                lambda: FollowUpService(app.services.campaign_name).process_task(task)
+            )
+        except Exception as exc:
+            self.app.notify(f"Prepare failed for {task.company_slug}: {exc}", severity="error")
+            return
+
+        fmt_desc = "email draft" if task.format == "email" else "call"
+        self.app.notify(f"Prepared {fmt_desc} for {task.company_slug} → Batch Email Drafts")
+        self.refresh_tasks()
+
+    async def _prepare_all_flow(self) -> None:
         """Render all due follow-ups → PendingBatchEntry rows (Batch Email Drafts)."""
         from cocli.application.follow_up_service import FollowUpService
 

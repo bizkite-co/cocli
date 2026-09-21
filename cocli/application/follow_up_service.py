@@ -77,17 +77,23 @@ class FollowUpService:
 
         for task in due:
             try:
+                self.process_task(task)
                 if task.format == "call":
-                    self._queue_call(task)
                     result.calls_queued += 1
                 else:
-                    self._queue_email(task)
                     result.emails_queued += 1
-                task.get_local_path().unlink(missing_ok=True)
             except Exception as exc:
                 result.errors.append(f"{task.company_slug}: {exc}")
 
         return result
+
+    def process_task(self, task: FollowUpTask) -> None:
+        """Process a single FollowUpTask (call or email), queueing it and removing the pending queue file."""
+        if task.format == "call":
+            self._queue_call(task)
+        else:
+            self._queue_email(task)
+        task.get_local_path().unlink(missing_ok=True)
 
     def _pending_dir(self) -> Path:
         from ..core.paths import paths
