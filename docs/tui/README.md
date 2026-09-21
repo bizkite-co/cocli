@@ -26,12 +26,24 @@ The hierarchical layout of the TUI is documented in the [Screen Structure](scree
 
 The TUI supports several keyboard-centric navigation methods, integrated with the master-detail paradigm:
 
-*   **Leader Key Navigation:** The main views (Campaigns, People, Companies, Prospects) are accessed using a leader key combination. Press `space` followed by a character (`a`, `p`, `c`, `s`) to navigate to the corresponding view.
+*   **Leader Key Navigation:** The main views are accessed using a leader key combination. Press `space` followed by a character to navigate:
+    *   `space c`: Companies list and details.
+    *   `space p`: People list.
+    *   `space a`: Campaigns overview.
+    *   `space m`: Messages hub (Recent Calls, Follow-up Drafts, Batch Email Drafts, Send Log).
 
-*   **VIM-like List Navigation:** In master lists (e.g., `CampaignSelection`, `CompanyList`), you can use:
+*   **VIM-like List Navigation:** In master lists (e.g., `CampaignSelection`, `CompanyList`, `RecentCallsView`):
     *   `j`: Move highlight down.
     *   `k`: Move highlight up.
-    *   `l` or `enter`: Select the highlighted item (for navigable lists) or trigger a detail view update (for searchable lists).
+    *   `l` or `enter`: Select the highlighted item or drill down into details.
+    *   `h` or `esc`: Return to previous view or exit quadrant.
+
+*   **Outreach & Follow-Up Workflow:**
+    *   `f` (in Recent Calls or Company Detail): Open `EnqueueFollowUpModal` to schedule a templated email follow-up for a specific contact.
+    *   `p` / `P` (in Messages > Follow-up Drafts): `p` generates a draft for the selected follow-up; `P` processes all due follow-ups.
+    *   `e` (in Messages > Batch Email Drafts): Edit the rendered email draft in `$EDITOR` / NVim before sending.
+    *   `s` / `S` (in Messages > Batch Email Drafts): `s` sends the selected email draft; `S` sends all pending drafts in the batch via SES.
+    *   `ctrl+r` (in Recent Calls): Force rescan and rebuild of recent calls cache.
 
 *   **Search List Navigation:** In searchable master lists (e.g., `CompanyList`):
     *   Typing in the search box filters the list.

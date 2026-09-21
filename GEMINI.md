@@ -27,6 +27,11 @@ The project is built using `typer` for the CLI, `pydantic` for data modeling, an
 ### Changing Code
 
 * Never perform distructiv Git actions, such as `git reset --hard HEAD`. You can use `git log`, `git show`, `git diff` or any other read operations.
+* Never circumvent commit verification hooks with `--no-verify`. All committed code must be verified by the commit hooks.
+    * **Partial Commits Stash Workflow:** When you have out-of-band or unfinished changes you do not want in the commit:
+        1. Stash the unstaged changes (`git stash --keep-index` or `git stash push -k -u`).
+        2. Execute the commit on the staged changes so the verification hook tests the committed code as an isolated unit.
+        3. After the commit passes, unstash the remaining changes (`git stash pop`).
 * Use a principle of step-and-test
     * Make your plan a sequence of small tests, each of which can be tested in some way.
         * Estimate the biggest step that you are certain that can be completed.
