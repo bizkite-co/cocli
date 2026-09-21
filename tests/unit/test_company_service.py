@@ -340,3 +340,90 @@ def test_hydrate_fills_empty_domain_without_overwriting(
     assert loaded is not None
     assert loaded.domain == "acme.com"
     assert loaded.website_url == "http://acme.com"
+
+
+def test_get_company_activity(sandboxed_companies_dir: Path) -> None:
+    from datetime import UTC, datetime, timedelta
+    from cocli.application.company_service import get_company_activity
+    from cocli.models.companies.call_note import CallNote
+    from cocli.models.companies.email_note import EmailNote
+    from cocli.models.companies.meeting import Meeting
+    from cocli.models.companies.note import Note
+
+    company_slug = "activity-test-co"
+    co_dir = sandboxed_companies_dir / company_slug
+    notes_dir = co_dir / "notes"
+    meetings_dir = co_dir / "meetings"
+    notes_dir.mkdir(parents=True)
+    meetings_dir.mkdir(parents=True)
+
+    t_now = datetime.now(UTC)
+
+    # 1. Email note sent 1 hour ago
+    email_note = EmailNote(
+        timestamp=t_now - timedelta(hours=1),
+        title="Proposal Details",
+        direction="sent",
+        from_address="sales@example.com",
+        to_addresses=["client@activity.com"],
+        content="Here is the proposal we promised.",
+    )
+    email_note.to_file(notes_dir)
+
+    # 2. Call logged via CallNote 2 hours ago
+    call_time = t_now - timedelta(hours=2)
+    call_note = CallNote(
+        timestamp=call_time,
+        title="Call Log: Follow Up Needed",
+        disposition="Follow Up Needed",
+        phone="555-123-4567",
+        content="Great conversation with the owner.",
+    )
+    call_note.to_file(notes_dir)
+
+    # 3. Duplicate Meeting logged at same call time (what CallLogModal does)
+    meeting_call = Meeting(
+        timestamp=call_time + timedelta(seconds=2),
+        title="Logged Call: Follow Up Needed",
+        type="phone-call",
+        content="Disposition: Follow Up Needed\n\nGreat conversation with the owner.",
+    )
+    meeting_call.to_file(meetings_dir)
+
+    # 4. General note 3 hours ago
+    gen_note = Note(
+        timestamp=t_now - timedelta(hours=3),
+        title="Internal research",
+        content="Company has 15 employees.",
+    )
+    gen_note.to_file(notes_dir)
+
+    # 5. In-person meeting 1 day ago
+    calendar_meeting = Meeting(
+        timestamp=t_now - timedelta(days=1),
+        title="Initial Consultation",
+        type="in-person",
+        content="Met at their downtown office.",
+    )
+    calendar_meeting.to_file(meetings_dir)
+
+    activities = get_company_activity(company_slug)
+
+    # Assert that call was deduplicated (4 distinct activities total)
+    assert len(activities) == 4
+
+    # Assert order is newest first
+    assert activities[0].activity_type == "email"
+    assert activities[0].icon == "✉"
+    assert "Proposal Details" in activities[0].title
+
+    assert activities[1].activity_type == "call"
+    assert activities[1].icon == "📞"
+    assert activities[1].metadata.get("disposition") == "Follow Up Needed"
+
+    assert activities[2].activity_type == "note"
+    assert activities[2].icon == "📝"
+
+    assert activities[3].activity_type == "meeting"
+    assert activities[3].icon == "📅"
+    assert activities[3].title == "Initial Consultation"

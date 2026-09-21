@@ -1,8 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
 
+import logging
 from datetime import datetime, UTC, timedelta
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
@@ -249,7 +252,29 @@ class CallLogModal(ModalScreen[bool]):
                 content=f"Disposition: {disposition}\n\n{notes}" if notes else f"Disposition: {disposition}"
             )
             meetings_dir = paths.companies.entry(self.company_slug).path / "meetings"
-            meeting.to_file(meetings_dir)
+            meeting_file = meeting.to_file(meetings_dir)
+
+            try:
+                from cocli.application.meeting_service import MeetingService
+                from cocli.models.companies.meeting import CompanyCall
+                from tzlocal import get_localzone
+                local_tz: Any
+                try:
+                    local_tz = get_localzone()
+                except Exception:
+                    local_tz = UTC
+                call_record = CompanyCall(
+                    datetime_utc=meeting.timestamp,
+                    datetime_local=meeting.timestamp.astimezone(local_tz),
+                    company_name=str(company.name or self.company_slug.replace("-", " ").title()),
+                    company_slug=self.company_slug,
+                    title=meeting.title,
+                    content=meeting.content,
+                    file_path=meeting_file,
+                )
+                MeetingService(campaign).record_call_in_cache(call_record)
+            except Exception as cache_err:
+                logger.warning(f"Could not update recent calls cache: {cache_err}")
 
             # 2. Log CallNote in company notes/ directory
             notes_dir = paths.companies.entry(self.company_slug).path / "notes"

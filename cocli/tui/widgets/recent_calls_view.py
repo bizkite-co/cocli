@@ -42,25 +42,45 @@ class RecentCallPreview(VerticalScroll):
             body.update("")
             return
         empty.display = False
-        body.update(
-            "\n".join(
-                [
-                    f"[bold]Company:[/bold] {call.company_name}",
-                    f"[bold]When:[/bold] {call.datetime_local:%Y-%m-%d %H:%M %Z}",
-                    f"[bold]Call:[/bold] {call.title}",
-                    "",
-                    call.content or "[dim]No call notes recorded[/dim]",
-                    "",
-                    "[dim]l: open company[/dim]",
-                ]
-            )
+
+        from cocli.application.company_service import get_company_activity
+
+        activities = get_company_activity(call.company_slug)
+        activity_lines: list[str] = []
+        if activities:
+            activity_lines.append("[bold cyan]Company Activity:[/bold cyan]")
+            for act in activities[:6]:
+                ts_str = act.timestamp.strftime("%Y-%m-%d %H:%M")
+                activity_lines.append(f"  {act.icon} [dim]{ts_str}[/dim] {act.preview}")
+        else:
+            activity_lines.append("[dim]No previous activity logged[/dim]")
+
+        preview_text = "\n".join(
+            [
+                f"[bold]Company:[/bold] {call.company_name}",
+                f"[bold]When:[/bold] {call.datetime_local:%Y-%m-%d %H:%M %Z}",
+                f"[bold]Call:[/bold] {call.title}",
+                "",
+                "[bold]Notes:[/bold]",
+                call.content or "[dim]No call notes recorded[/dim]",
+                "",
+                "─" * 40,
+                *activity_lines,
+                "─" * 40,
+                "",
+                "[dim]f: follow-up email    l: open company[/dim]",
+            ]
         )
+        body.update(preview_text)
 
 
 class RecentCallsView(MasterDetailView):
     """Master: recent calls, newest first. Detail: the logged call notes."""
 
-    BINDINGS = [Binding("ctrl+r", "refresh", "Refresh", show=True)]
+    BINDINGS = [
+        Binding("ctrl+r", "refresh", "Refresh", show=True),
+        Binding("f", "enqueue_follow_up", "Follow-up", show=True),
+    ]
 
     def __init__(self, **kwargs: Any) -> None:
         self.call_list = ListView(id="recent-call-list")
@@ -118,6 +138,31 @@ class RecentCallsView(MasterDetailView):
                 )
             event.prevent_default()
             event.stop()
+        elif event.key == "f":
+            self.action_enqueue_follow_up()
+            event.prevent_default()
+            event.stop()
+
+    def action_enqueue_follow_up(self) -> None:
+        item = self.call_list.highlighted_child
+        if not isinstance(item, RecentCallListItem):
+            return
+        from .enqueue_follow_up_modal import EnqueueFollowUpModal
+
+        def on_dismiss(result: bool | None) -> None:
+            if result:
+                self.call_preview.update_preview(item.call)
+
+        self.app.push_screen(
+            EnqueueFollowUpModal(
+                company_slug=item.call.company_slug,
+                company_name=item.call.company_name,
+            ),
+            on_dismiss,
+        )
 
     def action_refresh(self) -> None:
+        app = cast("CocliApp", self.app)
+        app.services.meeting_service.rebuild_recent_calls_cache()
         self.refresh_calls()
+

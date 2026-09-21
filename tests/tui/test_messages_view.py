@@ -165,10 +165,38 @@ async def test_messages_recent_calls_lists_logged_phone_calls(mock_cocli_env, mo
         await pilot.press("j")
         await pilot.pause(0.3)
         assert "Requested a call next week." in str(preview.content)
+        assert "Company Activity:" in str(preview.content)
 
+        # Test f key in RecentCallsView opens EnqueueFollowUpModal
+        await pilot.press("f")
+        await pilot.pause(0.2)
+        from cocli.tui.widgets.enqueue_follow_up_modal import EnqueueFollowUpModal
+
+        assert isinstance(app.screen, EnqueueFollowUpModal)
+
+        # Submit follow-up modal
+        await pilot.press("ctrl+s")
+        await pilot.pause(0.2)
+        assert not isinstance(app.screen, EnqueueFollowUpModal)
+
+        from cocli.application.follow_up_service import FollowUpService
+
+        pending = FollowUpService(CAMPAIGN).list_pending("friday-caller")
+        assert len(pending) == 1
+        assert pending[0].company_slug == "friday-caller"
+
+        # Open CompanyDetail
         await pilot.press("l")
         await pilot.pause(0.2)
         assert len(app.query(CompanyDetail)) == 1
+
+        # Test f key in CompanyDetail also opens EnqueueFollowUpModal
+        await pilot.press("f")
+        await pilot.pause(0.2)
+        assert isinstance(app.screen, EnqueueFollowUpModal)
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        assert not isinstance(app.screen, EnqueueFollowUpModal)
 
         await pilot.press("h")
         await pilot.pause(0.2)

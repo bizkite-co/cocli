@@ -6,6 +6,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 import logging
 from .email_note import EmailNote
+from .call_note import CallNote
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class Note(BaseModel):
     content: str
 
     @classmethod
-    def from_file(cls, note_path: Path) -> Optional[Union["Note", EmailNote]]:
+    def from_file(cls, note_path: Path) -> Optional[Union["Note", EmailNote, CallNote]]:
         """
         Loads a Note or EmailNote from a Markdown file with YAML frontmatter.
         Supports both modern frontmatter email notes and legacy notes.
@@ -83,6 +84,15 @@ class Note(BaseModel):
                 frontmatter=frontmatter_data,
                 markdown_content=markdown_content,
             )
+
+        # Check if note is a Call Note
+        is_call = (
+            frontmatter_data.get("type") == "call"
+            or "disposition" in frontmatter_data
+            or title.lower().startswith("call log:")
+        )
+        if is_call:
+            return CallNote.from_file(note_path)
 
         try:
             return cls(

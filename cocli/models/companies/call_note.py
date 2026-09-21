@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from datetime import datetime, UTC
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 import yaml
 from pydantic import BaseModel, Field, ConfigDict
 import logging
@@ -53,3 +53,51 @@ class CallNote(BaseModel):
         file_content = f"---\n{frontmatter}---\n{self.content.strip()}\n"
         note_path.write_text(file_content, encoding="utf-8")
         return note_path
+
+    @classmethod
+    def from_file(cls, note_path: Path) -> Optional[CallNote]:
+        """Loads a CallNote from a markdown file with YAML frontmatter."""
+        if not note_path.exists():
+            return None
+        try:
+            content = note_path.read_text(encoding="utf-8")
+            frontmatter_data: dict[str, Any] = {}
+            markdown_content = ""
+            if content.startswith("---") and "---" in content[3:]:
+                parts = content.split("---", 2)
+                frontmatter_str = parts[1]
+                markdown_content = parts[2] if len(parts) > 2 else ""
+                try:
+                    frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                except yaml.YAMLError as e:
+                    logger.warning(f"Error parsing YAML frontmatter in {note_path}: {e}")
+                    return None
+            else:
+                markdown_content = content
+
+            title = frontmatter_data.get("title") or note_path.stem.replace("-", " ").title()
+            timestamp_str = frontmatter_data.get("timestamp")
+            if not timestamp_str:
+                try:
+                    timestamp_part = "-".join(note_path.stem.split("-")[:6])
+                    timestamp = datetime.strptime(timestamp_part, "%Y-%m-%dT%H-%M-%SZ")
+                except ValueError:
+                    timestamp = datetime.fromtimestamp(note_path.stat().st_mtime, tz=UTC)
+            else:
+                try:
+                    timestamp = datetime.fromisoformat(str(timestamp_str).replace("Z", "+00:00"))
+                except ValueError:
+                    timestamp = datetime.fromtimestamp(note_path.stat().st_mtime, tz=UTC)
+
+            return cls(
+                timestamp=timestamp,
+                title=title,
+                type="call",
+                disposition=str(frontmatter_data.get("disposition") or ""),
+                phone=str(frontmatter_data.get("phone") or ""),
+                content=markdown_content.strip(),
+            )
+        except Exception as e:
+            logger.error(f"Error loading CallNote from {note_path}: {e}")
+            return None
+

@@ -7,6 +7,7 @@ from ..models.companies.company import Company
 from ..models.people.person import Person
 from ..models.companies.note import Note
 from ..models.companies.meeting import Meeting
+from ..models.companies.activity import CompanyActivity
 from ..core.website_cache import WebsiteCache  # Corrected import
 
 from ..models.companies.website import Website
@@ -728,3 +729,147 @@ def backfill_campaigns_from_tags(*, dry_run: bool = True) -> dict[str, Any]:
         "by_campaign": {k: v for k, v in sorted(by_campaign.items()) if v},
         "slugs": slugs,
     }
+
+
+def get_company_activity(company_slug: str) -> list[CompanyActivity]:
+    """Return a unified, chronological activity feed (calls, emails, notes, meetings)
+    for a company, with duplicate calls across notes/ and meetings/ reconciled.
+    """
+    from ..core.paths import paths
+    from ..models.companies.activity import CompanyActivity
+    from ..models.companies.call_note import CallNote
+    from ..models.companies.email_note import EmailNote
+    from ..models.companies.meeting import Meeting
+    from ..models.companies.note import Note
+
+    entry = paths.companies.entry(company_slug)
+    if not entry.exists():
+        return []
+
+    activities: list[CompanyActivity] = []
+
+    # 1. Parse notes (CallNote, EmailNote, general Note)
+    notes_dir = entry.path / "notes"
+    if notes_dir.exists():
+        for note_file in sorted(notes_dir.iterdir()):
+            if not (note_file.is_file() and note_file.suffix == ".md"):
+                continue
+            item = Note.from_file(note_file)
+            if item is None:
+                continue
+
+            if isinstance(item, CallNote):
+                disposition = item.disposition or "Call"
+                clean_body = item.content.replace("\n", " ").strip()
+                preview = f"[{disposition}] {clean_body[:80]}" if clean_body else f"[{disposition}]"
+                activities.append(
+                    CompanyActivity(
+                        timestamp=item.timestamp,
+                        activity_type="call",
+                        icon="📞",
+                        title=item.title,
+                        preview=preview,
+                        content=item.content,
+                        file_path=note_file,
+                        metadata={"disposition": item.disposition, "phone": item.phone},
+                    )
+                )
+            elif isinstance(item, EmailNote):
+                direction = item.direction or "email"
+                clean_body = item.content.replace("\n", " ").strip()
+                preview = f"[{direction.upper()}] {item.title}: {clean_body[:80]}"
+                activities.append(
+                    CompanyActivity(
+                        timestamp=item.timestamp,
+                        activity_type="email",
+                        icon="✉",
+                        title=f"Email ({direction}): {item.title}",
+                        preview=preview,
+                        content=item.content,
+                        file_path=note_file,
+                        metadata={
+                            "direction": item.direction,
+                            "from_address": item.from_address,
+                            "to_addresses": item.to_addresses,
+                            "message_id": item.message_id,
+                        },
+                    )
+                )
+            elif isinstance(item, Note):
+                clean_body = item.content.replace("\n", " ").strip()
+                preview = clean_body[:80] or item.title
+                activities.append(
+                    CompanyActivity(
+                        timestamp=item.timestamp,
+                        activity_type="note",
+                        icon="📝",
+                        title=item.title,
+                        preview=preview,
+                        content=item.content,
+                        file_path=note_file,
+                    )
+                )
+
+    # 2. Parse meetings (calendar meetings and phone-call meetings)
+    meetings_dir = entry.path / "meetings"
+    if meetings_dir.exists():
+        for meeting_file in sorted(meetings_dir.iterdir()):
+            if not (meeting_file.is_file() and meeting_file.suffix == ".md"):
+                continue
+            meeting = Meeting.from_file(meeting_file)
+            if meeting is None:
+                continue
+
+            is_call_meeting = (
+                meeting.type == "phone-call"
+                or meeting.title.lower().startswith(("logged call:", "call log:"))
+            )
+
+            if is_call_meeting:
+                # Deduplicate against existing CallNote entries within 120s
+                is_dupe = False
+                for existing in activities:
+                    if existing.activity_type == "call":
+                        dt_diff = abs((existing.timestamp - meeting.timestamp).total_seconds())
+                        if dt_diff < 120:
+                            is_dupe = True
+                            break
+                if not is_dupe:
+                    clean_content = meeting.content.replace("\n", " ").strip()
+                    activities.append(
+                        CompanyActivity(
+                            timestamp=meeting.timestamp,
+                            activity_type="call",
+                            icon="📞",
+                            title=meeting.title,
+                            preview=f"[Call] {clean_content[:80]}",
+                            content=meeting.content,
+                            file_path=meeting_file,
+                            metadata={"meeting_type": meeting.type},
+                        )
+                    )
+            else:
+                clean_content = meeting.content.replace("\n", " ").strip()
+                activities.append(
+                    CompanyActivity(
+                        timestamp=meeting.timestamp,
+                        activity_type="meeting",
+                        icon="📅",
+                        title=meeting.title,
+                        preview=f"[{meeting.type}] {clean_content[:80]}",
+                        content=meeting.content,
+                        file_path=meeting_file,
+                        metadata={"meeting_type": meeting.type},
+                    )
+                )
+
+    # Sort newest first
+    def _ts_key(a: CompanyActivity) -> datetime.datetime:
+        ts = a.timestamp
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=datetime.timezone.utc)
+        return ts
+
+    activities.sort(key=_ts_key, reverse=True)
+    return activities
+

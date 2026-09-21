@@ -38,6 +38,7 @@ class FollowUpTask(QueueMessage):
     format: Literal["call", "email"]
     template_id: Optional[str] = None
     initiative: str = "rta"
+    recipient_email: Optional[str] = None
 
     @property
     def collection(self) -> QueueName:

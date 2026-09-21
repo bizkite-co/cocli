@@ -37,6 +37,17 @@ class CallNoteProtocol(NoteProtocol, Protocol):
 
 
 @runtime_checkable
+class CompanyActivityProtocol(Protocol):
+    timestamp: datetime
+    activity_type: str
+    icon: str
+    title: str
+    preview: str
+    content: str
+    metadata: dict[str, Any]
+
+
+@runtime_checkable
 class IcpEvaluatorProtocol(Protocol):
     def evaluate(self, prospect_data: dict[str, Any], icp_settings: Any) -> tuple[float, bool]:
         ...
@@ -111,7 +122,11 @@ class MeetingServiceProvider(Protocol):
         ...
     def get_recent_meetings(self, days_limit: int = 180) -> list[CompanyMeeting]:
         ...
-    def get_recent_calls(self, days_limit: int = 30) -> list[CompanyCall]:
+    def get_recent_calls(self, days_limit: int = 30, use_cache: bool = True) -> list[CompanyCall]:
+        ...
+    def rebuild_recent_calls_cache(self, days_limit: int = 30) -> list[CompanyCall]:
+        ...
+    def record_call_in_cache(self, call: CompanyCall) -> None:
         ...
 
 

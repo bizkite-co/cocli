@@ -227,7 +227,9 @@ class PersonalizedOutreachService:
 
         return None
 
-    def find_contact_for_company(self, company_slug: str) -> Optional[ProspectContactMatch]:
+    def find_contact_for_company(
+        self, company_slug: str, recipient_email: Optional[str] = None
+    ) -> Optional[ProspectContactMatch]:
         """Single-company version of find_eligible_prospects() with no
         template rendering - just resolves who/what to send to. Used by
         FollowUpService to render a due email follow-up for one specific
@@ -235,10 +237,43 @@ class PersonalizedOutreachService:
         company = Company.get(company_slug)
         if not company:
             return None
-        selected = self._select_company_contact(company)
-        if not selected:
-            return None
-        email, first_name, full_name, role = selected
+
+        email = ""
+        first_name = ""
+        full_name = ""
+        role = ""
+
+        if recipient_email:
+            from .company_service import list_known_contacts
+
+            contacts = list_known_contacts(company_slug)
+            matched_c = next(
+                (
+                    c
+                    for c in contacts
+                    if str(c.get("email") or "").strip().lower()
+                    == recipient_email.strip().lower()
+                ),
+                None,
+            )
+            if matched_c:
+                email = recipient_email
+                full_name = str(matched_c.get("name") or "")
+                first_name = str(
+                    matched_c.get("first_name")
+                    or (full_name.split()[0] if full_name else "there")
+                )
+                role = str(matched_c.get("role") or matched_c.get("title") or "")
+            else:
+                email = recipient_email
+                first_name = "there"
+        else:
+            selected = self._select_company_contact(company)
+            if not selected:
+                return None
+            email, first_name, full_name, sel_role = selected
+            role = sel_role or ""
+
         company_display_name = str(company.name) if company.name else company_slug.replace("-", " ").title()
         return ProspectContactMatch(
             company_slug=company_slug,

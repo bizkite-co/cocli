@@ -1,6 +1,7 @@
 import datetime
 import logging
 import re
+from pathlib import Path
 from typing import Any
 import yaml
 from pytz import timezone
@@ -137,8 +138,42 @@ class MeetingService:
             reverse=True,
         )
 
-    def get_recent_calls(self, days_limit: int = 30) -> list[CompanyCall]:
-        """Return recent phone-call meetings with their recorded notes."""
+    def _cache_path(self) -> Path:
+        campaign = self.campaign_name or "default"
+        return paths.campaign(campaign).path / "indexes" / "recent_calls" / "cache.json"
+
+    def _write_cache(self, calls: list[CompanyCall]) -> None:
+        import json
+
+        try:
+            cache_path = self._cache_path()
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "calls": [c.model_dump(mode="json") for c in calls],
+            }
+            cache_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to write recent calls cache: {e}")
+
+    def record_call_in_cache(self, call: CompanyCall) -> None:
+        """Write-through: prepends a newly logged call into cache.json without scanning."""
+        try:
+            calls = self.get_recent_calls(use_cache=True)
+            calls = [c for c in calls if str(c.file_path) != str(call.file_path)]
+            calls.insert(0, call)
+            calls.sort(key=lambda c: c.datetime_utc, reverse=True)
+            self._write_cache(calls)
+        except Exception as e:
+            logger.warning(f"Failed to record call in cache: {e}")
+
+    def rebuild_recent_calls_cache(self, days_limit: int = 30) -> list[CompanyCall]:
+        """Scans disk, rebuilds recent calls cache, saves to disk, and returns calls."""
+        calls = self._scan_recent_calls(days_limit=days_limit)
+        self._write_cache(calls)
+        return calls
+
+    def _scan_recent_calls(self, days_limit: int = 30) -> list[CompanyCall]:
         calls: list[CompanyCall] = []
         for meeting_summary in self.get_recent_meetings(days_limit=days_limit):
             meeting = Meeting.from_file(meeting_summary.file_path)
@@ -156,3 +191,21 @@ class MeetingService:
                 )
             )
         return calls
+
+    def get_recent_calls(self, days_limit: int = 30, use_cache: bool = True) -> list[CompanyCall]:
+        """Return recent phone-call meetings with their recorded notes.
+        Uses cache.json for instant responses when use_cache=True.
+        """
+        import json
+
+        cache_path = self._cache_path()
+        if use_cache and cache_path.exists():
+            try:
+                content = json.loads(cache_path.read_text(encoding="utf-8"))
+                raw_calls = content.get("calls", [])
+                return [CompanyCall.model_validate(c) for c in raw_calls]
+            except Exception as e:
+                logger.warning(f"Failed to read recent calls cache, falling back to disk scan: {e}")
+
+        return self.rebuild_recent_calls_cache(days_limit=days_limit)
+

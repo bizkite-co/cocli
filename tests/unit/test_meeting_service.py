@@ -77,3 +77,62 @@ def test_meeting_service_upcoming_and_recent_meetings(tmp_path):
     assert len(recent) == 1
     assert recent[0].title == "Past Meeting"
 
+
+def test_meeting_service_recent_calls_caching_and_write_through(tmp_path):
+    import tzlocal
+    from cocli.models.companies.meeting import CompanyCall
+
+    paths.root = tmp_path
+    companies_dir = paths.companies.ensure()
+
+    company_dir = companies_dir / "test-co"
+    meetings_dir = company_dir / "meetings"
+    meetings_dir.mkdir(parents=True)
+
+    now = datetime.datetime.now(tzlocal.get_localzone())
+    past_date = now - datetime.timedelta(days=2)
+    past_date_utc = past_date.astimezone(timezone("UTC"))
+    past_date_str = past_date_utc.strftime("%Y-%m-%dT%H%MZ")
+
+    call_file = meetings_dir / f"{past_date_str}-call-1.md"
+    call_file.write_text(
+        f"---\ntimestamp: '{past_date_utc.isoformat()}'\ntitle: 'Logged Call: Follow Up Needed'\ntype: 'phone-call'\n---\nNotes on call 1\n"
+    )
+
+    service = MeetingService(campaign_name="test-campaign")
+
+    # Rebuild cache / first call
+    calls = service.get_recent_calls(use_cache=False)
+    assert len(calls) == 1
+    assert calls[0].company_slug == "test-co"
+    assert calls[0].title == "Logged Call: Follow Up Needed"
+
+    # Verify cache file was written
+    cache_path = service._cache_path()
+    assert cache_path.exists()
+
+    # Cached call returns identical result
+    cached_calls = service.get_recent_calls(use_cache=True)
+    assert len(cached_calls) == 1
+    assert cached_calls[0].title == "Logged Call: Follow Up Needed"
+
+    # Write-through a new call record
+    new_time = datetime.datetime.now(timezone("UTC"))
+    new_call = CompanyCall(
+        datetime_utc=new_time,
+        datetime_local=new_time.astimezone(tzlocal.get_localzone()),
+        company_name="New Co",
+        company_slug="new-co",
+        title="Logged Call: Interested",
+        content="New call notes",
+        file_path=tmp_path / "new_call.md",
+    )
+    service.record_call_in_cache(new_call)
+
+    # Cached call should now have both calls, with newest first
+    updated_calls = service.get_recent_calls(use_cache=True)
+    assert len(updated_calls) == 2
+    assert updated_calls[0].company_slug == "new-co"
+    assert updated_calls[0].title == "Logged Call: Interested"
+    assert updated_calls[1].company_slug == "test-co"
+

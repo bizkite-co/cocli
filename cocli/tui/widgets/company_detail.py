@@ -64,6 +64,24 @@ def wrap_content(
     return Text("\n".join(lines))
 
 
+def format_note_preview(n: dict[str, Any]) -> Text:
+    content = n.get("content", "")[:100].replace("\n", " ").strip()
+    note_type = str(n.get("type") or "").lower()
+    title = str(n.get("title") or "")
+    if note_type == "call" or "disposition" in n or title.lower().startswith("call log:"):
+        icon = "📞"
+        disp = n.get("disposition")
+        prefix = f"[{disp}] " if disp else ""
+        return wrap_content(f"{icon} {prefix}{content}")
+    elif note_type == "email" or "direction" in n or title.lower().startswith(("email sent:", "email received:")):
+        icon = "✉"
+        direction = str(n.get("direction") or "email").upper()
+        return wrap_content(f"{icon} [{direction}] {title}: {content}")
+    else:
+        icon = "📝"
+        return wrap_content(f"{icon} {content}" if content else f"{icon} {title}")
+
+
 def format_phone_display(value: Any) -> Union[Text, str]:
     """Helper to consistently format phone numbers for display."""
     if not value:
@@ -322,6 +340,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         Binding("V", "view_enrichment", "Enrichment"),
         Binding("m", "open_mark_menu", "Mark"),
         Binding("p", "call_company", "Call"),
+        Binding("f", "enqueue_follow_up", "Follow-up"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
         Binding("E", "re_enrich", "Re-enrich"),
@@ -703,6 +722,24 @@ class CompanyDetail(MarkPrefixMixin, Container):
             self.app.notify(f"Marked '{name}' high-value")
         else:
             self.app.notify(f"Cleared high-value on '{name}'")
+
+    def action_enqueue_follow_up(self) -> None:
+        """Open modal to enqueue an email follow-up."""
+        slug = self.company_data.get("company", {}).get("slug")
+        if not slug:
+            self.app.notify("Company slug missing", severity="warning")
+            return
+        company_name = self.company_data.get("company", {}).get("name") or slug
+        from .enqueue_follow_up_modal import EnqueueFollowUpModal
+
+        def on_dismiss(result: bool | None) -> None:
+            if result:
+                self.refresh_notes_data()
+
+        self.app.push_screen(
+            EnqueueFollowUpModal(company_slug=slug, company_name=company_name),
+            on_dismiss,
+        )
 
     def action_call_company(self) -> None:
         """Sync dispatcher + run_worker - see action_delete_company's
@@ -1360,8 +1397,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 ts_str = ts.strftime("%Y-%m-%d")
             else:
                 ts_str = str(ts)[:10]
-            content = n.get("content", "")[:100].replace("\n", " ")
-            preview_text = wrap_content(content)
+            preview_text = format_note_preview(n)
             self.notes_table.add_row(ts_str, preview_text)
 
         # Only re-focus if we had focus before
@@ -1765,7 +1801,6 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 ts_str = ts.strftime("%Y-%m-%d")
             else:
                 ts_str = str(ts)[:10]
-            content = n.get("content", "")[:100].replace("\n", " ")
-            preview_text = wrap_content(content)
+            preview_text = format_note_preview(n)
             table.add_row(ts_str, preview_text, height=PREVIEW_MAX_LINES)
         return table

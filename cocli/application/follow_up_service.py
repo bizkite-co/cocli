@@ -34,6 +34,7 @@ class FollowUpService:
         format: Literal["call", "email"],
         template_id: Optional[str] = None,
         initiative: str = "rta",
+        recipient_email: Optional[str] = None,
     ) -> FollowUpTask:
         task = FollowUpTask(
             company_slug=company_slug,
@@ -43,6 +44,7 @@ class FollowUpService:
             format=format,
             template_id=template_id,
             initiative=initiative,
+            recipient_email=recipient_email,
         )
         task.save()
         return task
@@ -117,7 +119,9 @@ class FollowUpService:
             raise ValueError("email follow-up has no template_id")
 
         service = PersonalizedOutreachService(self.campaign_name)
-        match = service.find_contact_for_company(task.company_slug)
+        match = service.find_contact_for_company(
+            task.company_slug, recipient_email=getattr(task, "recipient_email", None)
+        )
         if not match:
             raise ValueError(f"no eligible contact found for {task.company_slug}")
 
