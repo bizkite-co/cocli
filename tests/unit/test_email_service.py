@@ -4,7 +4,7 @@ import email as email_pkg
 from email import policy as email_policy
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from unittest.mock import patch
 
 from cocli.application.email_service import Boto3SesSender, EmailService
@@ -15,7 +15,7 @@ from cocli.models.mail import EmailSettings, SendMailRequest
 
 class FakeSes:
     def __init__(self) -> None:
-        self.sent: list[dict[str, Optional[str]]] = []
+        self.sent: list[dict[str, Any]] = []
 
     def send_email(
         self,
@@ -26,6 +26,7 @@ class FakeSes:
         body: str,
         html_body: Optional[str] = None,
         cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
     ) -> str:
         self.sent.append(
             {
@@ -35,6 +36,7 @@ class FakeSes:
                 "body": body,
                 "html_body": html_body,
                 "cc_addresses": cc_addresses,
+                "bcc_addresses": bcc_addresses,
             }
         )
         return "ses-msg-1"
@@ -332,3 +334,58 @@ def test_poll_notes_unseen_matching_from(tmp_path: Path, monkeypatch) -> None:  
     assert result2.skipped_seen == 2
     assert result2.noted == 0
     alert2.assert_not_called()
+
+
+def test_send_applies_bcc_from_settings(tmp_path: Path) -> None:
+    paths.root = tmp_path
+    ses = FakeSes()
+    settings = EmailSettings(
+        from_address="outreach@example.com",
+        bcc_address="team@example.com",
+        bcc_addresses=["audit@example.com"],
+    )
+    service = EmailService(
+        "test-campaign",
+        settings,
+        ses_sender=ses,
+        company_lookup=lambda addr: None,
+    )
+    service.send(
+        SendMailRequest(
+            to_address="bob@acme.test",
+            subject="Hello",
+            body="Body",
+            bcc_addresses=["extra@example.com"],
+        )
+    )
+    assert len(ses.sent) == 1
+    sent_bcc = ses.sent[0]["bcc_addresses"]
+    assert sent_bcc == ["extra@example.com", "team@example.com", "audit@example.com"]
+
+
+def test_boto3_ses_sender_includes_bcc_in_destinations_not_headers(mocker) -> None:
+    fake_client = mocker.MagicMock()
+    fake_client.send_raw_email.return_value = {"MessageId": "ses-raw-123"}
+    fake_session = mocker.MagicMock()
+    fake_session.client.return_value = fake_client
+    mocker.patch("boto3.Session", return_value=fake_session)
+
+    sender = Boto3SesSender(region="us-west-1")
+    sender.send_email(
+        source="outreach@example.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="Hello world",
+        cc_addresses=["cc@example.com"],
+        bcc_addresses=["bcc@example.com"],
+    )
+    fake_client.send_raw_email.assert_called_once()
+    kwargs = fake_client.send_raw_email.call_args[1]
+    assert kwargs["Destinations"] == ["bob@acme.test", "cc@example.com", "bcc@example.com"]
+
+    raw_bytes = kwargs["RawMessage"]["Data"]
+    parsed = email_pkg.message_from_bytes(raw_bytes, policy=email_policy.default)
+    assert parsed["To"] == "bob@acme.test"
+    assert parsed["Cc"] == "cc@example.com"
+    assert parsed["Bcc"] is None
+

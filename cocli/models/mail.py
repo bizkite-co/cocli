@@ -36,6 +36,9 @@ class SendMailRequest(BaseModel):
     # header (so the recipient sees it) and in SES's Destinations (so it
     # actually gets delivered - SES doesn't parse headers for that).
     cc_addresses: list[str] = Field(default_factory=list)
+    # Blind Carbon Copy - added to SES Destinations but omitted from message
+    # headers so recipients do not see the address.
+    bcc_addresses: list[str] = Field(default_factory=list)
 
 
 class SendMailResult(BaseModel):
@@ -61,6 +64,8 @@ class EmailSettings(BaseModel):
 
     from_address: Optional[str] = None
     reply_to: Optional[str] = None
+    bcc_address: Optional[str] = None
+    bcc_addresses: list[str] = Field(default_factory=list)
     ses_region: str = "us-east-1"
     ses_configuration_set: Optional[str] = None
     imap_host: str = "outlook.office365.com"

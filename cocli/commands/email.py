@@ -234,6 +234,9 @@ def send_batch(
     initiative: str = typer.Option(
         "rta", "--initiative", "-i", help="Which campaigns/<c>/initiatives/<name>/ this batch belongs to."
     ),
+    bcc: list[str] = typer.Option(
+        [], "--bcc", help="Bcc address(es) - repeatable. Applied to this send only, in addition to campaign config."
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview the batch without sending or writing to the send log."
     ),
@@ -254,13 +257,19 @@ def send_batch(
         for idx, match in enumerate(matches, 1):
             console.print(f"[bold cyan][{idx}] {match.company_name}[/bold cyan] ({match.company_slug})")
             console.print(f"    To: {match.contact_name} <{match.recipient_email}>")
+            if bcc:
+                console.print(f"    Bcc: {', '.join(bcc)}")
             console.print(f"    Subject: {match.subject}\n")
         return
 
     settings, profile = _settings(campaign_name)
     email_service = EmailService(campaign_name, settings, aws_profile=profile)
     result = service.send_batch(
-        matches, template_id=template, email_service=email_service, initiative=initiative
+        matches,
+        template_id=template,
+        email_service=email_service,
+        initiative=initiative,
+        bcc_addresses=bcc or None,
     )
 
     console.print(
@@ -295,24 +304,72 @@ def list_pending() -> None:
 
 @app.command("send-pending")
 def send_pending(
-    company_slug: str = typer.Argument(..., help="Company slug to send the pending entry for."),
+    company_slug: Optional[str] = typer.Argument(
+        None, help="Company slug to send the pending entry for (omit if using --all)."
+    ),
     batch_id: Optional[str] = typer.Option(
         None, "--batch-id", "-b", help="Disambiguate if more than one pending entry matches this company."
     ),
     cc: list[str] = typer.Option(
         [], "--cc", help="Cc address(es) - repeatable. Applied to this send only, not saved anywhere."
     ),
+    bcc: list[str] = typer.Option(
+        [], "--bcc", help="Bcc address(es) - repeatable. Applied to this send only, in addition to campaign config."
+    ),
+    all_pending: bool = typer.Option(
+        False, "--all", "-a", help="Send all pending draft entries across all batches."
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be sent without actually sending."
     ),
 ) -> None:
-    """Send exactly one pending entry as a one-off, without touching the
-    rest of the pending queue or the regular batch-send workflow - e.g.
-    "send this specific follow-up now, and cc myself" (Mark, 2026-09-17)."""
+    """Send exactly one pending entry as a one-off or all pending entries (--all)."""
     campaign_name = _require_campaign()
     from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     service = PersonalizedOutreachService(campaign_name)
+
+    if all_pending:
+        entries = service.list_pending_batches()
+        if not entries:
+            console.print("[dim]Nothing pending - everything queued has been sent or discarded.[/dim]")
+            return
+        if dry_run:
+            console.print(f"[bold blue]Dry run[/bold blue] - would send {len(entries)} pending email(s):")
+            for e in entries:
+                match = service.entry_to_match(e)
+                console.print(f"  {e.company_slug} <{e.recipient}>: {match.subject}")
+                if cc:
+                    console.print(f"    Cc: {', '.join(cc)}")
+                if bcc:
+                    console.print(f"    Bcc: {', '.join(bcc)}")
+            return
+
+        settings, profile = _settings(campaign_name)
+        email_service = EmailService(campaign_name, settings, aws_profile=profile)
+        total_sent = 0
+        total_failed = 0
+        for entry in entries:
+            res = service.send_one_pending_entry(
+                entry.batch_id,
+                entry.company_slug,
+                email_service=email_service,
+                cc_addresses=cc or None,
+                bcc_addresses=bcc or None,
+            )
+            total_sent += res.sent
+            total_failed += res.failed
+            console.print(
+                f"[bold green]Sent to {entry.recipient}[/bold green] ({entry.company_slug}): "
+                f"sent={res.sent} failed={res.failed}"
+            )
+        console.print(f"[bold]Completed:[/bold] sent={total_sent} failed={total_failed}")
+        return
+
+    if not company_slug:
+        console.print("[bold red]Must provide company_slug or use --all.[/bold red]")
+        raise typer.Exit(code=1)
+
     matches = [e for e in service.list_pending_batches() if e.company_slug == company_slug]
     if batch_id:
         matches = [e for e in matches if e.batch_id == batch_id]
@@ -334,13 +391,19 @@ def send_pending(
         console.print(f"[bold blue]Dry run[/bold blue] - would send to {entry.recipient}")
         if cc:
             console.print(f"    Cc: {', '.join(cc)}")
+        if bcc:
+            console.print(f"    Bcc: {', '.join(bcc)}")
         console.print(f"    Subject: {match.subject}")
         return
 
     settings, profile = _settings(campaign_name)
     email_service = EmailService(campaign_name, settings, aws_profile=profile)
     result = service.send_one_pending_entry(
-        entry.batch_id, entry.company_slug, email_service=email_service, cc_addresses=cc or None
+        entry.batch_id,
+        entry.company_slug,
+        email_service=email_service,
+        cc_addresses=cc or None,
+        bcc_addresses=bcc or None,
     )
 
     console.print(

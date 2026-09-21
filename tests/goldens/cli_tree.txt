@@ -454,11 +454,14 @@ cocli
             --limit/-l (integer)
             --template/-t (text)
             --initiative/-i (text)
+            --bcc (text)
             --dry-run (boolean)
-        send-pending - Send exactly one pending entry as a one-off, without touching the
-            company_slug (text) [required]
+        send-pending - Send exactly one pending entry as a one-off or all pending entries (--all).
+            company_slug (text)
             --batch-id/-b (text)
             --cc (text)
+            --bcc (text)
+            --all/-a (boolean)
             --dry-run (boolean)
         suppression-list - List suppressed email addresses from AWS SES account-level suppression list.
             --limit (integer)

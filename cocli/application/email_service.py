@@ -43,6 +43,7 @@ class SesSender(Protocol):
         body: str,
         html_body: Optional[str] = None,
         cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
     ) -> str: ...
 
 
@@ -69,6 +70,7 @@ class Boto3SesSender:
         body: str,
         html_body: Optional[str] = None,
         cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
     ) -> str:
         # send_raw_email (not the simpler send_email API) so we can set
         # List-Unsubscribe - Gmail/Yahoo bulk-sender rules expect it and
@@ -95,7 +97,9 @@ class Boto3SesSender:
         # SES doesn't parse the raw message's headers for delivery - a Cc
         # header alone would show the address to the recipient without
         # actually sending them anything, so it must also be listed here.
-        destinations = [to_address] + list(cc_addresses or [])
+        # Bcc addresses are added to Destinations only, NOT to msg headers,
+        # so recipients do not see the address.
+        destinations = [to_address] + list(cc_addresses or []) + list(bcc_addresses or [])
         kwargs: dict[str, object] = {
             "Source": source,
             "Destinations": destinations,
@@ -152,6 +156,13 @@ class EmailService:
 
         sender = self._ses()
 
+        bcc_list = list(request.bcc_addresses)
+        if self.settings.bcc_address and self.settings.bcc_address not in bcc_list:
+            bcc_list.append(self.settings.bcc_address)
+        for bcc in self.settings.bcc_addresses:
+            if bcc not in bcc_list:
+                bcc_list.append(bcc)
+
         ses_id = sender.send_email(
             source=source,
             to_address=request.to_address,
@@ -159,6 +170,7 @@ class EmailService:
             body=request.body,
             html_body=request.html_body,
             cc_addresses=request.cc_addresses or None,
+            bcc_addresses=bcc_list or None,
         )
         slug = request.company_slug or self._lookup(request.to_address)
         note_written = False

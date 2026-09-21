@@ -89,6 +89,7 @@ class TargetBatchesView(MasterDetailView):
         Binding("e", "edit_entry", "Edit", show=True),
         Binding("o", "open_preview", "Open HTML Preview", show=True),
         Binding("s", "send_batch", "Send Batch", show=True),
+        Binding("S", "send_all_batches", "Send All Batches", show=True),
         Binding("d", "discard_batch", "Discard Batch", show=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True),
     ]
@@ -324,6 +325,57 @@ class TargetBatchesView(MasterDetailView):
             return
 
         self.app.notify(f"Batch {result.batch_id}: sent={result.sent} failed={result.failed}")
+        self.refresh_batches()
+
+    def action_send_all_batches(self) -> None:
+        self.run_worker(self._send_all_batches_flow(), exclusive=True)
+
+    async def _send_all_batches_flow(self) -> None:
+        from .confirm_screen import ConfirmScreen
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        service = PersonalizedOutreachService(campaign)
+        entries = service.list_pending_batches()
+        if not entries:
+            self.app.notify("No pending batches to send.", severity="warning")
+            return
+
+        confirmed = await self.app.push_screen_wait(
+            ConfirmScreen(f"Send all {len(entries)} pending email(s)?")
+        )
+        if not confirmed:
+            return
+
+        def _send() -> tuple[int, int]:
+            from cocli.application.email_service import EmailService
+            from cocli.core.config import load_campaign_config
+            from cocli.models.mail import EmailSettings
+
+            raw = load_campaign_config(campaign) or {}
+            email_raw = raw.get("email") or {}
+            settings = EmailSettings.model_validate(email_raw)
+            aws = raw.get("aws") or {}
+            profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
+            email_service = EmailService(campaign, settings, aws_profile=profile)
+
+            total_sent = 0
+            total_failed = 0
+            batch_ids = list(dict.fromkeys(e.batch_id for e in entries))
+            for b_id in batch_ids:
+                res = service.send_pending_batch(b_id, email_service=email_service)
+                total_sent += res.sent
+                total_failed += res.failed
+            return total_sent, total_failed
+
+        try:
+            sent, failed = await asyncio.to_thread(_send)
+        except Exception as e:
+            self.app.notify(f"Send failed: {e}", severity="error")
+            return
+
+        self.app.notify(f"Sent {sent} email(s) (failed={failed})")
         self.refresh_batches()
 
     def action_discard_batch(self) -> None:

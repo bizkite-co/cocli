@@ -587,6 +587,7 @@ class PersonalizedOutreachService:
         email_service: "EmailService",
         initiative: str = "rta",
         cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
     ) -> SendBatchResult:
         """Actually sends a batch (as opposed to prepare-batch/render_and_save_draft,
         which only render drafts to disk).
@@ -641,6 +642,7 @@ class PersonalizedOutreachService:
                         html_body=html_body,
                         company_slug=match.company_slug,
                         cc_addresses=cc_addresses or [],
+                        bcc_addresses=bcc_addresses or [],
                     )
                 elif is_legacy_html_template:
                     from cocli.utils.html_to_text import html_to_text
@@ -652,6 +654,7 @@ class PersonalizedOutreachService:
                         html_body=match.body,
                         company_slug=match.company_slug,
                         cc_addresses=cc_addresses or [],
+                        bcc_addresses=bcc_addresses or [],
                     )
                 else:
                     mail_request = SendMailRequest(
@@ -660,6 +663,7 @@ class PersonalizedOutreachService:
                         body=match.body,
                         company_slug=match.company_slug,
                         cc_addresses=cc_addresses or [],
+                        bcc_addresses=bcc_addresses or [],
                     )
                 send_result = email_service.send(mail_request)
                 entries.append(
@@ -946,6 +950,7 @@ class PersonalizedOutreachService:
         *,
         email_service: "EmailService",
         cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
     ) -> SendBatchResult:
         """Sends exactly the frozen rows for batch_id (not a fresh
         find_eligible_prospects() re-render - what was reviewed is what
@@ -965,6 +970,7 @@ class PersonalizedOutreachService:
             email_service=email_service,
             initiative=batch_entries[0].initiative,
             cc_addresses=cc_addresses,
+            bcc_addresses=bcc_addresses,
         )
 
         self._rewrite_pending(remaining)
@@ -977,6 +983,7 @@ class PersonalizedOutreachService:
         *,
         email_service: "EmailService",
         cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
     ) -> SendBatchResult:
         """Sends exactly one (batch_id, company_slug) row, unlike
         send_pending_batch() which sends every row sharing that batch_id -
@@ -1003,6 +1010,7 @@ class PersonalizedOutreachService:
             email_service=email_service,
             initiative=target[0].initiative,
             cc_addresses=cc_addresses,
+            bcc_addresses=bcc_addresses,
         )
 
         self._rewrite_pending(remaining)

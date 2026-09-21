@@ -332,6 +332,49 @@ async def test_send_batch_flow_sends_and_clears_pending(mock_cocli_env, mocker) 
 
 
 @pytest.mark.asyncio
+async def test_send_all_batches_flow_sends_all_pending(mock_cocli_env, mocker) -> None:
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+    _write_pending_batch("batch-1", slug="acme-1", recipient="bob1@acme.test")
+    _write_pending_batch("batch-2", slug="acme-2", recipient="bob2@acme.test")
+
+    class _FakeSentResult:
+        message_id = "fake-msg-id"
+
+    class _FakeEmailService:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def send(self, request: object) -> _FakeSentResult:
+            return _FakeSentResult()
+
+    mocker.patch("cocli.core.config.load_campaign_config", return_value={})
+    mocker.patch("cocli.application.email_service.EmailService", _FakeEmailService)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = TargetBatchesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        list_view = widget.query_one("#target-batch-list", ListView)
+        list_view.focus()
+        await pilot.press("S")
+        await pilot.pause(0.2)
+        await pilot.press("y")
+        await pilot.pause(0.3)
+
+        service = PersonalizedOutreachService(CAMPAIGN)
+        assert service.list_pending_batches() == []
+
+        log_path = SendLogEntry.get_index_dir(CAMPAIGN) / "log.usv"
+        entries = [SendLogEntry.from_usv(line) for line in log_path.read_text().splitlines() if line]
+        assert len(entries) == 2
+
+
+
+@pytest.mark.asyncio
 async def test_discard_batch_removes_without_sending(mock_cocli_env, mocker) -> None:
     from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
