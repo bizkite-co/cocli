@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PREVIEW_WIDTH = 40
+PREVIEW_WIDTH = 52
 PREVIEW_MAX_LINES = 3
 
 
@@ -70,7 +70,7 @@ def format_activity_datetime(
     is_scheduled: bool = False,
     is_overdue: bool = False,
 ) -> Text:
-    """Format datetime without the year: MM-DD on line 1 and HH:MM on line 2."""
+    """Format datetime: MM-DD on line 1 (dim yellow) and HH:MM on line 2 (dim green)."""
     if not dt:
         return Text("Unknown", style="dim")
     if isinstance(dt, str):
@@ -78,18 +78,20 @@ def format_activity_datetime(
             parsed = datetime.fromisoformat(dt)
             dt = parsed
         except (ValueError, TypeError):
-            return Text(str(dt)[:10], style="dim")
+            return Text(str(dt)[:10], style="dim yellow")
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     date_part = dt.strftime("%m-%d")
     time_part = dt.strftime("%H:%M")
-    text_str = f"{date_part}\n{time_part}"
 
-    if is_scheduled:
-        if is_overdue:
-            return Text(text_str, style="bold red")
-        return Text(text_str, style="bold yellow")
-    return Text(text_str, style="dim")
+    if is_overdue:
+        return Text(f"{date_part}\n{time_part}", style="bold red")
+
+    res = Text()
+    res.append(date_part, style="dim yellow")
+    res.append("\n")
+    res.append(time_part, style="dim green")
+    return res
 
 
 def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) -> Text:
@@ -111,7 +113,7 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
         is_scheduled = activity.is_scheduled
         preview = activity.preview
 
-    clean_content = content[:100].replace("\n", " ").strip()
+    clean_content = content[:200].replace("\n", " ").strip()
 
     if is_scheduled:
         if "overdue" in title.lower():
@@ -126,7 +128,9 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
             return Text(f"[Follow-up: {fmt}] {detail}", style="bold cyan")
         elif act_type == "meeting":
             m_type = meta.get("meeting_type", "meeting")
-            return wrap_content(f"📅 [{m_type}] {clean_content or title}", max_lines=2)
+            return wrap_content(
+                f"📅 [{m_type}] {clean_content or title}", max_lines=PREVIEW_MAX_LINES
+            )
         elif preview:
             return Text(str(preview), style="bold yellow")
 
@@ -136,7 +140,7 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
         prefix = f"[{disp}] " if disp else ""
         return wrap_content(
             f"{icon} {prefix}{clean_content}" if clean_content else f"{icon} {prefix}{title}",
-            max_lines=2,
+            max_lines=PREVIEW_MAX_LINES,
         )
     elif act_type == "email" or "direction" in meta or title.lower().startswith(
         ("email sent:", "email received:")
@@ -147,19 +151,20 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
             f"{icon} [{direction}] {title}: {clean_content}"
             if clean_content
             else f"{icon} [{direction}] {title}",
-            max_lines=2,
+            max_lines=PREVIEW_MAX_LINES,
         )
     elif act_type == "meeting":
         icon = "📅"
         m_type = meta.get("meeting_type", "meeting")
         return wrap_content(
             f"{icon} [{m_type}] {clean_content}" if clean_content else f"{icon} [{m_type}] {title}",
-            max_lines=2,
+            max_lines=PREVIEW_MAX_LINES,
         )
     else:
         icon = "📝"
         return wrap_content(
-            f"{icon} {clean_content}" if clean_content else f"{icon} {title}", max_lines=2
+            f"{icon} {clean_content}" if clean_content else f"{icon} {title}",
+            max_lines=PREVIEW_MAX_LINES,
         )
 
 
@@ -1980,8 +1985,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
     def _create_activity_table(self) -> ActivityTable:
         table = ActivityTable(id="activity-table")
-        table.add_column("Date/Time", width=10)
-        table.add_column("Preview", width=48)
+        table.add_column("Date", width=7)
+        table.add_column("Preview", width=52)
         self.activity_table = table
         self.refresh_activity_table()
         return table
@@ -2003,7 +2008,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
             is_overdue = ts_aware <= now_utc
             dt_text = format_activity_datetime(ts, is_scheduled=True, is_overdue=is_overdue)
             preview_text = format_activity_preview(a)
-            self.activity_table.add_row(dt_text, preview_text, height=2)
+            self.activity_table.add_row(dt_text, preview_text, height=PREVIEW_MAX_LINES)
             self._activity_row_items.append(a)
 
         # 2. Thin 50% opacity yellow HR for now-time
@@ -2018,7 +2023,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
             ts = a.timestamp
             dt_text = format_activity_datetime(ts, is_scheduled=False, is_overdue=False)
             preview_text = format_activity_preview(a)
-            self.activity_table.add_row(dt_text, preview_text, height=2)
+            self.activity_table.add_row(dt_text, preview_text, height=PREVIEW_MAX_LINES)
             self._activity_row_items.append(a)
 
         if self.activity_table.has_focus:

@@ -314,8 +314,18 @@ DataTable > .datatable--cursor {
 }
 
 #engagement-column > .panel {
-    height: 1fr;
     border-bottom: solid #222222;
+}
+
+#engagement-column > #panel-contacts {
+    height: 40%;
+}
+
+#engagement-column > #panel-activity,
+#engagement-column > #panel-notes,
+#engagement-column > #panel-meetings {
+    height: 60%;
+    border-bottom: none;
 }
 
 #engagement-column > .panel:last-child {
