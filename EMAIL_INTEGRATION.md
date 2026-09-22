@@ -1,63 +1,52 @@
-# Email Integration Plan: CoCLI + Mutt-Setup
+# Email Integration: CoCLI Campaign Outreach & Follow-ups
 
-This document outlines the strategy for integrating email-sending capabilities into the CoCLI TUI by leveraging the existing `mutt-setup` infrastructure for OAuth2 token management.
+`cocli` supports outbound campaign outreach and personalized follow-ups with dual-backend support:
+1. **Microsoft 365 Exchange Online (`m365` / `m365_smtp` / `m365_graph`)**: Recommended for primary campaign outreach from dedicated domains (e.g. `getretirementtaxanalyzer.com`) to match apex MX records, achieve native Exchange sender reputation, and ensure primary inbox placement.
+2. **Amazon Simple Email Service (`ses`)**: Alternative backend for high-volume transactional or bulk notification scenarios.
 
-## 1. Objective
-Enable users to send emails directly from the Company and Person detail screens in CoCLI.
+## 1. Architecture Overview
 
-## 2. Architecture Overview
-- **Token Management**: CoCLI will use `mutt-setup/scripts/mutt_oauth2.py` as a subprocess to retrieve OAuth2 access tokens for configured profiles (Office 365 or Gmail).
-- **Email Sending**: CoCLI will implement a lightweight `EmailService` using Python's built-in `smtplib` with `AUTH XOAUTH2`.
-- **UI**: A new `EmailCompose` screen in Textual will provide the interface for drafting and sending emails.
-- **Logging**: Sent emails will be automatically saved as "Notes" in the corresponding company/person directory to maintain a communication history.
+- **Token Management**: `cocli` uses public-client Microsoft OAuth (`cocli/application/mail_oauth.py`) caching tokens in `~/.local/share/cocli/email-tokens/<user>.json`. Supports `offline_access`, `IMAP.AccessAsUser.All`, and `SMTP.Send`.
+- **Senders**:
+  - `M365SmtpSender`: Authenticates via standard SMTP (`smtp.office365.com:587`, STARTTLS) with `AUTH XOAUTH2` using cached OAuth tokens, or standard login passwords.
+  - `M365GraphSender`: Sends via Microsoft Graph API (`POST /v1.0/users/{user}/sendMail`).
+  - `Boto3SesSender`: Sends raw multipart/alternative emails via AWS SES.
+- **Inbound Polling**: `EmailService.poll()` polls IMAP (`outlook.office365.com`) for inbound customer replies and logs them as `EmailNote` on matching company profiles.
+- **TUI & CLI Surfaces**:
+  - `TargetBatchesView` (Messages > Batch Email Drafts): review and bulk/individual dispatch.
+  - `EnqueueFollowUpModal` (Messages > Follow-up Drafts or Company Detail): queue 1-to-1 follow-up tasks.
+  - `EmailComposeModal` (bound to `m` in Company Detail): compose and send ad-hoc email.
+  - CLI: `cocli email send --to ... --subject ... --body ... [--backend m365|ses]`.
 
-## 3. Implementation Steps
+## 2. Configuration (`config.toml`)
 
-### Phase 1: Mutt-Setup Fix & Preparation
-- **Fix `mutt-setup` bug**: Resolve the `NameError` in `mutt-setup/scripts/op_integration.py` by adding `import os`.
-- **Standardize Profiles**: Ensure `mutt-setup` profiles are correctly configured in `~/.config/mutt-setup/accounts/`.
+In `data/campaigns/<campaign>/config.toml`:
 
-### Phase 2: CoCLI Core Integration
-- **Update Configuration**:
-    - Add `email` section to `cocli/core/config.py`.
-    - Fields: `mutt_setup_path` (absolute path), `default_profile` (profile name), `from_address`.
-- **Create `EmailService`**:
-    - Location: `cocli/application/email_service.py`.
-    - Method `get_token(profile)`: Runs `mutt_oauth2.py` and captures stdout.
-    - Method `send_email(to, subject, body, profile)`:
-        - Authenticates via SMTP (`smtp.office365.com:587` or `smtp.gmail.com:587`).
-        - Uses `XOAUTH2` authentication string: `user={user}\x01auth=Bearer {token}\x01\x01`.
-- **Update Models**: Ensure `Company` and `Person` models have consistent `email` field handling.
+```toml
+[email]
+backend = "m365"                              # "m365", "m365_smtp", "m365_graph", or "ses"
+from_address = "mark@getretirementtaxanalyzer.com"
+reply_to = "mark@getretirementtaxanalyzer.com"
+bcc_address = "test@bizkite.net"             # Optional audit/monitor BCC
 
-### Phase 3: TUI Implementation
-- **Create `EmailCompose` Screen**:
-    - Location: `cocli/tui/widgets/email_compose.py`.
-    - Fields: `To`, `Subject`, `Body` (multi-line).
-    - Actions: `Send (Enter/Ctrl+S)`, `Cancel (Esc)`.
-- **Integrate with `CompanyDetail`**:
-    - Add `Binding("m", "compose_email", "Email")` to `CompanyDetail`.
-    - Logic:
-        - If `InfoTable` is focused and "Email" row selected -> Use company email.
-        - If `ContactsTable` is focused and a contact selected -> Use contact email.
-- **Integrate with `PersonDetail`**:
-    - Add `Binding("m", "compose_email", "Email")`.
-    - Logic: Pre-fill with person's email.
-- **Communication History**:
-    - Upon successful send, trigger `action_add_note()` logic to save a record of the email.
+# Microsoft 365 / SMTP settings
+smtp_host = "smtp.office365.com"
+smtp_port = 587
+imap_host = "outlook.office365.com"
+imap_user = "mark@getretirementtaxanalyzer.com"
+token_cache = "~/.local/share/cocli/email-tokens/mark@getretirementtaxanalyzer.com.json"
+client_id = "6fecbb2e-623e-41ae-b516-e786961f9651"
 
-## 4. Level of Effort (LOE)
+# AWS SES fallback settings
+ses_region = "us-west-1"
+ses_configuration_set = "cocli-outreach-roadmap"
+```
 
-| Task | Estimated Time | Complexity |
-| :--- | :--- | :--- |
-| **Phase 1: Mutt-Setup Fix** | 0.5 hours | Low |
-| **Phase 2: EmailService (SMTP/OAuth)** | 3-4 hours | Medium |
-| **Phase 3: EmailCompose Screen** | 4-6 hours | Medium/High |
-| **Phase 3: TUI Bindings & Logic** | 2-3 hours | Medium |
-| **Phase 3: History/Notes Integration** | 1-2 hours | Low |
-| **Total** | **10.5 - 15.5 hours** | **Medium** |
+## 3. DNS & Deliverability Best Practices
 
-## 5. Risks & Considerations
-- **1Password CLI**: Requires `op` to be authenticated. CoCLI should detect if `mutt_oauth2.py` fails due to 1Password being locked and notify the user.
-- **SMTP Limitations**: Modern providers have rate limits and security policies. `XOAUTH2` is the preferred method for Office 365/Gmail.
-- **TUI Suspension**: If the email body requires a full editor (NVim), we might need to use the `app.suspend()` pattern similar to how notes are edited.
-- **Dependency**: `mutt-setup` must be present on the system. We should add a check for its existence in `cocli`'s startup or config validation.
+When sending via Microsoft 365 Exchange:
+- **MX Record**: Points to `<domain-key>.mail.protection.outlook.com`.
+- **SPF Record**: Ensure DNS TXT record includes Microsoft's SPF mechanism:
+  `v=spf1 include:spf.protection.outlook.com ~all`
+- **DKIM & DMARC**: Configured in Microsoft 365 Admin Center for the custom domain.
+

@@ -65,11 +65,17 @@ def send_mail(
     from_address: Optional[str] = typer.Option(
         None, "--from", help="Override campaign [email].from_address."
     ),
+    backend: Optional[str] = typer.Option(
+        None, "--backend", help="Override email backend: ses, m365, m365_smtp, m365_graph."
+    ),
 ) -> None:
-    """Send one email via SES and record a note on the matching company."""
+    """Send one email via SES or M365 and record a note on the matching company."""
     campaign_name = _require_campaign()
     settings, profile = _settings(campaign_name)
+    if backend:
+        settings.backend = backend  # type: ignore[assignment]
     service = EmailService(campaign_name, settings, aws_profile=profile)
+
     try:
         result = service.send(
             SendMailRequest(

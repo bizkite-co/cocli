@@ -389,3 +389,239 @@ def test_boto3_ses_sender_includes_bcc_in_destinations_not_headers(mocker) -> No
     assert parsed["Cc"] == "cc@example.com"
     assert parsed["Bcc"] is None
 
+
+def test_m365_smtp_sender_message_formatting_and_headers(mocker) -> None:
+    from cocli.application.email_service import M365SmtpSender
+
+    mock_smtp = mocker.MagicMock()
+    mock_smtp.__enter__.return_value = mock_smtp
+    mock_smtp.docmd.return_value = (235, b"2.7.0 Authentication successful")
+    mocker.patch("smtplib.SMTP", return_value=mock_smtp)
+
+    sender = M365SmtpSender(
+        host="smtp.office365.com",
+        port=587,
+        user="mark@getretirementtaxanalyzer.com",
+        token_provider=FakeTokens(),
+        reply_to="mark@getretirementtaxanalyzer.com",
+    )
+
+    msg_id = sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Roadmap Introduction",
+        body="Plain text content.",
+        html_body="<p>Rich <b>HTML</b> content.</p>",
+        cc_addresses=["cc@example.com"],
+        bcc_addresses=["bcc@example.com"],
+    )
+
+    assert msg_id
+    mock_smtp.starttls.assert_called_once()
+    mock_smtp.send_message.assert_called_once()
+
+    call_args = mock_smtp.send_message.call_args
+    sent_msg = call_args[0][0]
+    from_addr = call_args[1]["from_addr"]
+    to_addrs = call_args[1]["to_addrs"]
+
+    assert from_addr == "mark@getretirementtaxanalyzer.com"
+    assert to_addrs == ["bob@acme.test", "cc@example.com", "bcc@example.com"]
+    assert sent_msg["From"] == "mark@getretirementtaxanalyzer.com"
+    assert sent_msg["To"] == "bob@acme.test"
+    assert sent_msg["Cc"] == "cc@example.com"
+    assert sent_msg["Bcc"] is None  # Bcc must NOT be exposed in headers
+    assert sent_msg["Reply-To"] == "mark@getretirementtaxanalyzer.com"
+    assert "<mailto:mark@getretirementtaxanalyzer.com?subject=unsubscribe>" in sent_msg["List-Unsubscribe"]
+    assert sent_msg.is_multipart()
+
+
+def test_m365_smtp_sender_xoauth2_auth_command(mocker) -> None:
+    import base64
+    from cocli.application.email_service import M365SmtpSender
+
+    mock_smtp = mocker.MagicMock()
+    mock_smtp.__enter__.return_value = mock_smtp
+    mock_smtp.docmd.return_value = (235, b"2.7.0 Authentication successful")
+    mocker.patch("smtplib.SMTP", return_value=mock_smtp)
+
+    sender = M365SmtpSender(
+        user="mark@getretirementtaxanalyzer.com",
+        token_provider=FakeTokens(),
+    )
+
+    sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="Test",
+    )
+
+    # Verify docmd was called with AUTH XOAUTH2
+    auth_calls = [c for c in mock_smtp.docmd.call_args_list if c[0][0] == "AUTH"]
+    assert len(auth_calls) == 1
+    auth_cmd = auth_calls[0][0][1]
+    assert auth_cmd.startswith("XOAUTH2 ")
+    b64_payload = auth_cmd[len("XOAUTH2 "):]
+    decoded = base64.b64decode(b64_payload).decode("utf-8")
+    assert "user=mark@getretirementtaxanalyzer.com\x01auth=Bearer tok\x01\x01" == decoded
+
+
+def test_m365_smtp_sender_xoauth2_failure_raises_error(mocker) -> None:
+    import base64
+    import smtplib
+    import pytest
+    from cocli.application.email_service import M365SmtpSender
+
+    mock_smtp = mocker.MagicMock()
+    mock_smtp.__enter__.return_value = mock_smtp
+    # Return 334 error challenge from Exchange Online
+    err_json = base64.b64encode(b'{"status":"401","error":"invalid_token"}')
+    mock_smtp.docmd.return_value = (334, err_json)
+    mocker.patch("smtplib.SMTP", return_value=mock_smtp)
+
+    sender = M365SmtpSender(
+        user="mark@getretirementtaxanalyzer.com",
+        token_provider=FakeTokens(),
+    )
+
+    with pytest.raises(smtplib.SMTPAuthenticationError) as exc_info:
+        sender.send_email(
+            source="mark@getretirementtaxanalyzer.com",
+            to_address="bob@acme.test",
+            subject="Hello",
+            body="Test",
+        )
+    assert "XOAUTH2 authentication failed" in str(exc_info.value)
+    assert "invalid_token" in str(exc_info.value)
+
+
+def test_m365_smtp_sender_password_login(mocker) -> None:
+    from cocli.application.email_service import M365SmtpSender
+
+    mock_smtp = mocker.MagicMock()
+    mock_smtp.__enter__.return_value = mock_smtp
+    mocker.patch("smtplib.SMTP", return_value=mock_smtp)
+
+    sender = M365SmtpSender(
+        user="mark@getretirementtaxanalyzer.com",
+        password="secret-password",
+        auth_type="login",
+    )
+
+    sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Hello",
+        body="Test",
+    )
+
+    mock_smtp.login.assert_called_once_with("mark@getretirementtaxanalyzer.com", "secret-password")
+
+
+def test_m365_graph_sender_send(mocker) -> None:
+    import json
+    from cocli.application.email_service import M365GraphSender
+
+    mock_resp = mocker.MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.headers.get.side_effect = lambda k, default=None: (
+        "test-req-123" if k == "client-request-id" else default
+    )
+    mock_urlopen = mocker.patch("urllib.request.urlopen", return_value=mock_resp)
+
+    sender = M365GraphSender(
+        token_provider=FakeTokens(),
+        user_id="mark@getretirementtaxanalyzer.com",
+        reply_to="reply@example.com",
+    )
+
+    result_id = sender.send_email(
+        source="mark@getretirementtaxanalyzer.com",
+        to_address="bob@acme.test",
+        subject="Graph Test",
+        body="Plain text",
+        html_body="<p>HTML</p>",
+        cc_addresses=["cc@example.com"],
+        bcc_addresses=["bcc@example.com"],
+    )
+
+    assert result_id == "test-req-123"
+    mock_urlopen.assert_called_once()
+    req = mock_urlopen.call_args[0][0]
+    assert req.full_url == "https://graph.microsoft.com/v1.0/users/mark%40getretirementtaxanalyzer.com/sendMail"
+    assert req.headers["Authorization"] == "Bearer tok"
+
+    payload = json.loads(req.data.decode("utf-8"))
+    assert payload["message"]["subject"] == "Graph Test"
+    assert payload["message"]["body"]["contentType"] == "HTML"
+    assert payload["message"]["toRecipients"] == [{"emailAddress": {"address": "bob@acme.test"}}]
+    assert payload["message"]["ccRecipients"] == [{"emailAddress": {"address": "cc@example.com"}}]
+    assert payload["message"]["bccRecipients"] == [{"emailAddress": {"address": "bcc@example.com"}}]
+    assert payload["message"]["replyTo"] == [{"emailAddress": {"address": "reply@example.com"}}]
+
+
+def test_email_service_backend_selection(mocker) -> None:
+    from cocli.application.email_service import Boto3SesSender, EmailService, M365GraphSender, M365SmtpSender
+
+    # SES backend
+    ses_settings = EmailSettings(backend="ses", from_address="outreach@example.com")
+    service_ses = EmailService("campaign", ses_settings)
+    assert isinstance(service_ses._get_sender(), Boto3SesSender)
+
+    # M365 default backend -> M365SmtpSender
+    m365_settings = EmailSettings(
+        backend="m365",
+        imap_user="mark@getretirementtaxanalyzer.com",
+        client_id="cid",
+        from_address="mark@getretirementtaxanalyzer.com",
+    )
+    service_m365 = EmailService("campaign", m365_settings, token_provider=FakeTokens())
+    assert isinstance(service_m365._get_sender(), M365SmtpSender)
+
+    # M365 Graph backend
+    graph_settings = EmailSettings(
+        backend="m365_graph",
+        imap_user="mark@getretirementtaxanalyzer.com",
+        client_id="cid",
+        from_address="mark@getretirementtaxanalyzer.com",
+    )
+    service_graph = EmailService("campaign", graph_settings, token_provider=FakeTokens())
+    assert isinstance(service_graph._get_sender(), M365GraphSender)
+
+
+def test_send_with_m365_writes_note_without_touching_ses_suppression(tmp_path: Path, mocker) -> None:
+    paths.root = tmp_path
+    company_dir = paths.companies.entry("acme", ensure=True).path
+    (company_dir / "notes").mkdir(parents=True, exist_ok=True)
+
+    fake_sender = mocker.MagicMock()
+    fake_sender.send_email.return_value = "m365-msg-id"
+
+    mocker.patch("cocli.application.email_service.EmailService._get_sender", return_value=fake_sender)
+    suppress_mock = mocker.patch("cocli.application.ses_suppression_service.SesSuppressionService")
+
+    settings = EmailSettings(backend="m365", from_address="mark@getretirementtaxanalyzer.com")
+    service = EmailService(
+        "test-campaign",
+        settings,
+        company_lookup=lambda addr: "acme" if addr == "bob@acme.test" else None,
+    )
+
+    result = service.send(
+        SendMailRequest(
+            to_address="bob@acme.test",
+            subject="Hello from M365",
+            body="Checking in.",
+        )
+    )
+
+    assert result.message_id == "m365-msg-id"
+    assert result.note_written is True
+    assert result.company_slug == "acme"
+    suppress_mock.assert_not_called()  # AWS SES suppression check bypassed for M365
+    notes = list((company_dir / "notes").glob("*.md"))
+    assert len(notes) == 1
+    assert "Checking in." in notes[0].read_text()
+
+

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -62,12 +62,27 @@ class EmailSettings(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+    backend: Literal["ses", "m365", "m365_smtp", "m365_graph", "smtp"] = "ses"
     from_address: Optional[str] = None
     reply_to: Optional[str] = None
     bcc_address: Optional[str] = None
     bcc_addresses: list[str] = Field(default_factory=list)
     ses_region: str = "us-east-1"
     ses_configuration_set: Optional[str] = None
+    # SMTP / M365 settings
+    smtp_host: str = "smtp.office365.com"
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_password_env: Optional[str] = None
+    smtp_auth_type: Literal["auto", "xoauth2", "login"] = "auto"
+    # Graph API settings
+    graph_tenant_id: Optional[str] = None
+    graph_client_id: Optional[str] = None
+    graph_client_secret: Optional[str] = None
+    graph_client_secret_env: Optional[str] = None
+    graph_user_id: Optional[str] = None
+    # IMAP / OAuth settings
     imap_host: str = "outlook.office365.com"
     imap_user: Optional[str] = None
     token_cache: Optional[str] = None
@@ -77,3 +92,4 @@ class EmailSettings(BaseModel):
     )
     monitored_addresses: list[str] = Field(default_factory=list)
     folders: list[str] = Field(default_factory=lambda: ["INBOX"])
+

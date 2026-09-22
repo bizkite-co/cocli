@@ -444,12 +444,13 @@ cocli
             template (text) [required]
             --initiative/-i (text)
             --open (boolean)
-        send - Send one email via SES and record a note on the matching company.
+        send - Send one email via SES or M365 and record a note on the matching company.
             --to (text) [required]
             --subject (text) [required]
             --body (text) [required]
             --company (text)
             --from (text)
+            --backend (text)
         send-batch - Actually send a batch via SES (prepare-batch only renders drafts).
             --limit/-l (integer)
             --template/-t (text)
