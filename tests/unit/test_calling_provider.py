@@ -458,6 +458,7 @@ def test_twilio_bridge_calling_provider_get_balance_and_cache() -> None:
 
 
 def test_twilio_bridge_calling_provider_is_low_balance() -> None:
+    TwilioBridgeCallingProvider.clear_balance_cache()
     provider = TwilioBridgeCallingProvider(
         account_sid="ACtest123",
         auth_token="secret456",
@@ -481,3 +482,93 @@ def test_twilio_bridge_calling_provider_is_low_balance() -> None:
         # With lower threshold, it's not low
         is_low_custom, _, _ = provider.is_low_balance(threshold=5.0)
         assert is_low_custom is False
+
+
+def test_twilio_bridge_calling_provider_class_level_cache_shared() -> None:
+    TwilioBridgeCallingProvider._cached_balance = None
+
+    provider1 = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="secret456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    provider2 = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="secret456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"balance": "8.50", "currency": "USD"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_resp) as fake_get,
+    ):
+        bal1, _ = provider1.get_balance()
+        assert bal1 == 8.50
+        assert fake_get.call_count == 1
+
+        # provider2 accesses the shared class-level cache without network call
+        bal2, _ = provider2.get_balance()
+        assert bal2 == 8.50
+        assert fake_get.call_count == 1
+
+
+def test_twilio_bridge_calling_provider_tracks_last_error() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="secret456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 400
+    mock_resp.json.return_value = {
+        "code": 21608,
+        "message": "Trial accounts cannot make calls to unverified numbers.",
+    }
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.post", return_value=mock_resp),
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
+    ):
+        ok = provider.dial("5551234567")
+        assert ok is False
+        assert provider.last_error is not None
+        assert (
+            "Trial accounts cannot make calls to unverified numbers"
+            in provider.last_error
+        )
+
+
+def test_get_cached_twilio_balance_warning() -> None:
+    from cocli.utils.calling_provider import get_cached_twilio_balance_warning
+
+    TwilioBridgeCallingProvider._cached_balance = (9.79, "USD", 9999999999.0)
+
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={"calling": {"provider": "twilio"}},
+        ),
+    ):
+        warning = get_cached_twilio_balance_warning()
+        assert warning is not None
+        assert "$9.79" in warning
+
+    # When provider is google_voice, no warning is returned
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={"calling": {"provider": "google_voice"}},
+        ),
+    ):
+        assert get_cached_twilio_balance_warning() is None

@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 class CallingProvider(Protocol):
+    last_error: Optional[str]
+
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         """Launch a call to `phone`. Returns True if a launch action fired."""
         ...
@@ -46,6 +48,8 @@ class CallingProvider(Protocol):
 class BrowserTabCallingProvider:
     """Fallback used when no provider-specific launch path is configured
     or available: open the Google Voice calls URL as a browser tab."""
+
+    last_error: Optional[str] = None
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         return open_url(google_voice_url(phone, campaign_name))
@@ -234,6 +238,7 @@ class GoogleVoiceEdgeAppProvider:
     ):
         self.edge_app_id = edge_app_id
         self.profile_directory = profile_directory
+        self.last_error: Optional[str] = None
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         url = google_voice_url(phone, campaign_name)
@@ -307,6 +312,7 @@ class QuoCallingProvider:
 
     def __init__(self, use_web: bool = False):
         self.use_web = use_web
+        self.last_error: Optional[str] = None
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         cleaned = clean_phone_e164(phone)
@@ -338,6 +344,9 @@ class TwilioBridgeCallingProvider:
     presenting `caller_id` (your Twilio business number) and records the call.
     """
 
+    _cached_balance: Optional[tuple[float, str, float]] = None
+    _balance_cache_ttl: float = 300.0
+
     def __init__(
         self,
         account_sid: Optional[str] = None,
@@ -368,8 +377,12 @@ class TwilioBridgeCallingProvider:
         self.low_balance_threshold = (
             float(thresh_env) if thresh_env else float(low_balance_threshold)
         )
-        self._cached_balance: Optional[tuple[float, str, float]] = None
-        self._balance_cache_ttl: float = 300.0
+        self.last_error: Optional[str] = None
+
+    @classmethod
+    def clear_balance_cache(cls) -> None:
+        """Clear cached balance for testing or explicit reset."""
+        cls._cached_balance = None
 
     def is_configured(self) -> bool:
         return bool(
@@ -386,9 +399,11 @@ class TwilioBridgeCallingProvider:
         import requests
 
         now = time.time()
-        if not bypass_cache and self._cached_balance is not None:
-            cached_bal, cached_curr, cached_time = self._cached_balance
-            if now - cached_time < self._balance_cache_ttl:
+        if not bypass_cache and TwilioBridgeCallingProvider._cached_balance is not None:
+            cached_bal, cached_curr, cached_time = (
+                TwilioBridgeCallingProvider._cached_balance
+            )
+            if now - cached_time < TwilioBridgeCallingProvider._balance_cache_ttl:
                 return cached_bal, cached_curr
 
         if not self.account_sid or not self.auth_token:
@@ -426,7 +441,7 @@ class TwilioBridgeCallingProvider:
                 data = resp.json()
                 balance = float(data.get("balance", 0.0))
                 currency = str(data.get("currency", "USD"))
-                self._cached_balance = (balance, currency, now)
+                TwilioBridgeCallingProvider._cached_balance = (balance, currency, now)
                 return balance, currency
             else:
                 logger.warning(
@@ -460,14 +475,12 @@ class TwilioBridgeCallingProvider:
         copy_to_windows_clipboard(cleaned_prospect)
 
         if not self.is_configured():
-            logger.error(
+            self.last_error = (
                 "Twilio calling provider is missing required configuration: "
-                "account_sid=%s, auth_token=%s, caller_id=%s, my_phone=%s",
-                bool(self.account_sid),
-                bool(self.auth_token),
-                bool(self.caller_id),
-                bool(self.my_phone),
+                f"account_sid={bool(self.account_sid)}, auth_token={bool(self.auth_token)}, "
+                f"caller_id={bool(self.caller_id)}, my_phone={bool(self.my_phone)}"
             )
+            logger.error(self.last_error)
             return False
 
         account_sid = self.account_sid
@@ -487,10 +500,8 @@ class TwilioBridgeCallingProvider:
             if resolved_token:
                 auth_token = resolved_token
             else:
-                logger.error(
-                    "Could not resolve 1Password secret for Twilio auth_token: %s",
-                    auth_token,
-                )
+                self.last_error = f"Could not resolve 1Password secret for Twilio auth_token: {auth_token}"
+                logger.error(self.last_error)
                 return False
 
         assert self.caller_id is not None
@@ -524,6 +535,7 @@ class TwilioBridgeCallingProvider:
 
         if os.environ.get("PYTEST_CURRENT_TEST"):
             logger.debug("TwilioBridgeCallingProvider: simulated call in test mode")
+            self.last_error = None
             return True
 
         try:
@@ -542,8 +554,16 @@ class TwilioBridgeCallingProvider:
                     cleaned_my_phone,
                     cleaned_prospect,
                 )
+                self.last_error = None
                 return True
             else:
+                err_msg = resp.text
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("message", resp.text)
+                except Exception:
+                    pass
+                self.last_error = f"Twilio error {resp.status_code}: {err_msg}"
                 logger.error(
                     "Twilio API call failed with status %d: %s",
                     resp.status_code,
@@ -551,6 +571,7 @@ class TwilioBridgeCallingProvider:
                 )
                 return False
         except Exception as exc:
+            self.last_error = f"Twilio bridge error: {exc}"
             logger.error("Failed to initiate Twilio bridge call: %s", exc)
             return False
 
@@ -637,3 +658,21 @@ def get_calling_provider(campaign_name: Optional[str] = None) -> CallingProvider
         return BrowserTabCallingProvider()
 
     return BrowserTabCallingProvider()
+
+
+def get_cached_twilio_balance_warning(
+    campaign_name: Optional[str] = None,
+) -> Optional[str]:
+    """Return a Rich markup warning string if Twilio provider is active and balance is low."""
+    from cocli.core.config import get_campaign
+
+    try:
+        provider = get_calling_provider(campaign_name or get_campaign())
+        if isinstance(provider, TwilioBridgeCallingProvider):
+            if TwilioBridgeCallingProvider._cached_balance is not None:
+                is_low, bal, curr = provider.is_low_balance()
+                if is_low and bal is not None:
+                    return f"[bold yellow]⚠️ Twilio: ${bal:.2f}[/bold yellow]"
+    except Exception:
+        pass
+    return None

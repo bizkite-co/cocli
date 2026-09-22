@@ -73,7 +73,9 @@ def resolve_place_from_company(
             str(c_dict.get("state") or ""),
             str(c_dict.get("zip_code") or ""),
         ]
-        website_data = company.get("website_data") if isinstance(company, dict) else None
+        website_data = (
+            company.get("website_data") if isinstance(company, dict) else None
+        )
         if website_data and isinstance(website_data, dict):
             address_bits.append(str(website_data.get("address") or ""))
             address_bits.append(str(website_data.get("description") or "")[:2000])
@@ -141,12 +143,15 @@ class CompanyLocalTime(Static):
         self.tick()
 
     def get_time_markup(self) -> str:
-        """Format the company local time with bold green text and location label."""
+        """Format the company local time with bold green text, location label, and Twilio balance warning."""
         stamp = format_company_local_now(place=self._place)
         label = self._place.place_label()
-        if label:
-            return f"[bold green]{stamp}[/bold green]  ({label})"
-        return f"[bold green]{stamp}[/bold green]"
+        loc_str = f"  ({label})" if label else ""
+        from cocli.utils.calling_provider import get_cached_twilio_balance_warning
+
+        bal_warning = get_cached_twilio_balance_warning()
+        bal_str = f"  {bal_warning}" if bal_warning else ""
+        return f"[bold green]{stamp}[/bold green]{loc_str}{bal_str}"
 
     def on_mount(self) -> None:
         self.set_interval(1.0, self.tick)

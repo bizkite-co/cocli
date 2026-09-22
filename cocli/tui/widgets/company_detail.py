@@ -901,21 +901,45 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 if voice_opened:
                     self.app.notify(f"Calling {phone}{paste_hint} & Opening Website...")
                 elif site_opened:
+                    provider_name = (
+                        "Twilio"
+                        if isinstance(provider, TwilioBridgeCallingProvider)
+                        else "Google Voice"
+                    )
+                    last_err = getattr(provider, "last_error", None)
+                    err_hint = f" ({last_err})" if last_err else ""
                     self.app.notify(
-                        f"Opened website; could not open Google Voice for {phone}",
+                        f"Opened website; could not place call via {provider_name} for {phone}{err_hint}",
                         severity="warning",
+                        timeout=10,
                     )
                 else:
+                    provider_name = (
+                        "Twilio"
+                        if isinstance(provider, TwilioBridgeCallingProvider)
+                        else "browser"
+                    )
+                    last_err = getattr(provider, "last_error", None)
+                    err_hint = f": {last_err}" if last_err else ""
                     self.app.notify(
-                        f"Could not open browser to call {phone}",
+                        f"Could not open {provider_name} to call {phone}{err_hint}",
                         severity="error",
+                        timeout=10,
                     )
             elif voice_opened:
                 self.app.notify(f"Calling {phone}{paste_hint}...")
             else:
+                provider_name = (
+                    "Twilio"
+                    if isinstance(provider, TwilioBridgeCallingProvider)
+                    else "browser"
+                )
+                last_err = getattr(provider, "last_error", None)
+                err_hint = f": {last_err}" if last_err else ""
                 self.app.notify(
-                    f"Could not open browser to call {phone}",
+                    f"Could not open {provider_name} to call {phone}{err_hint}",
                     severity="error",
+                    timeout=10,
                 )
 
             # Push the embedded call logger - wait for it to actually be
