@@ -9,10 +9,28 @@ import typer
 from rich.console import Console
 
 from ..core.config import get_campaign, load_global_config, save_config
-from ..utils.calling_provider import find_msedge_proxy, google_voice_config, get_calling_provider
+from ..utils.calling_provider import (
+    discover_installed_voice_pwa,
+    find_browser_app_binary,
+    find_msedge_proxy,
+    get_calling_provider,
+    google_voice_config,
+    is_pwa_installed,
+)
 
 app = typer.Typer(no_args_is_help=True, help="Configure the phone-dialer provider.")
 console = Console()
+
+
+@app.command("set-provider")
+def set_provider(provider: str) -> None:
+    """Set the calling provider ('google_voice', 'quo', 'openphone', or 'browser_tab')."""
+    config = load_global_config()
+    gv_cfg = dict(config.get("google_voice", {}) or {})
+    gv_cfg["provider"] = provider
+    config["google_voice"] = gv_cfg
+    save_config(config)
+    console.print(f"[bold green]Saved provider={provider} to global config.[/bold green]")
 
 
 @app.command("set-app-id")
@@ -36,15 +54,32 @@ def set_app_id(app_id: str) -> None:
 @app.command("status")
 def status() -> None:
     """Show the resolved calling provider config and whether the Edge PWA
-    launcher (msedge_proxy.exe) can actually be found on this machine."""
+    launcher (msedge_proxy.exe) or Chromium app launcher can actually be found."""
     campaign = get_campaign()
     gv_cfg = google_voice_config(campaign)
     provider = get_calling_provider(campaign)
+    configured_id = gv_cfg.get("edge_app_id")
 
     console.print(f"Campaign: {campaign or '(none)'}")
     console.print(f"Configured provider: {gv_cfg.get('provider', 'google_voice')}")
-    console.print(f"edge_app_id: {gv_cfg.get('edge_app_id') or '(not set)'}")
+    if configured_id:
+        installed = is_pwa_installed(configured_id)
+        status_suffix = " [bold green](installed)[/bold green]" if installed else " [yellow](not installed on this machine)[/yellow]"
+        console.print(f"edge_app_id: {configured_id}{status_suffix}")
+    else:
+        console.print("edge_app_id: (not set)")
+
+    discovered = discover_installed_voice_pwa()
+    if discovered:
+        console.print(
+            f"Auto-discovered PWA: app-id={discovered.get('app_id')} "
+            f"({discovered.get('browser')}, path={discovered.get('path')})"
+        )
+    else:
+        console.print("Auto-discovered PWA: (none found, will use native Chromium --app mode)")
+
     console.print(f"msedge_proxy.exe found: {find_msedge_proxy() or '(not found)'}")
+    console.print(f"Chromium app binary found: {find_browser_app_binary() or '(not found)'}")
     console.print(f"Resolved provider class: {type(provider).__name__}")
 
 

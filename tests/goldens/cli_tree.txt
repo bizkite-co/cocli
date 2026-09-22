@@ -101,6 +101,8 @@ cocli
     calling - Configure the phone-dialer provider.
         set-app-id - Save the Edge PWA app-id for the Google Voice provider.
             app_id (text) [required]
+        set-provider - Set the calling provider ('google_voice', 'quo', 'openphone', or 'browser_tab').
+            provider (text) [required]
         status - Show the resolved calling provider config and whether the Edge PWA
         test - Actually dial `phone` with the currently configured provider - use
             phone (text) [required]
