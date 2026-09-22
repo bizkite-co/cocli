@@ -27,6 +27,7 @@ import logging
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
@@ -82,10 +83,14 @@ def find_browser_app_binary() -> Optional[str]:
         for candidate in _BROWSER_APP_CANDIDATES:
             if Path(candidate).exists():
                 return candidate
-        for user_edge in glob.glob("/mnt/c/Users/*/AppData/Local/Microsoft/Edge/Application/msedge.exe"):
+        for user_edge in glob.glob(
+            "/mnt/c/Users/*/AppData/Local/Microsoft/Edge/Application/msedge.exe"
+        ):
             if Path(user_edge).exists():
                 return user_edge
-        for user_chrome in glob.glob("/mnt/c/Users/*/AppData/Local/Google/Chrome/Application/chrome.exe"):
+        for user_chrome in glob.glob(
+            "/mnt/c/Users/*/AppData/Local/Google/Chrome/Application/chrome.exe"
+        ):
             if Path(user_chrome).exists():
                 return user_chrome
 
@@ -124,21 +129,25 @@ def _find_pwa_dir_by_id(app_id: str) -> Optional[Path]:
         return None
     patterns: list[str] = []
     if is_wsl():
-        patterns.extend([
-            f"/mnt/c/Users/*/AppData/Local/Microsoft/Edge/User Data/*/Web Applications/_crx__{app_id}",
-            f"/mnt/c/Users/*/AppData/Local/Google/Chrome/User Data/*/Web Applications/_crx_{app_id}",
-            f"/mnt/c/Users/*/AppData/Local/Microsoft/Edge/User Data/*/Web Applications/Manifest Resources/{app_id}",
-            f"/mnt/c/Users/*/AppData/Local/Google/Chrome/User Data/*/Web Applications/Manifest Resources/{app_id}",
-        ])
+        patterns.extend(
+            [
+                f"/mnt/c/Users/*/AppData/Local/Microsoft/Edge/User Data/*/Web Applications/_crx__{app_id}",
+                f"/mnt/c/Users/*/AppData/Local/Google/Chrome/User Data/*/Web Applications/_crx_{app_id}",
+                f"/mnt/c/Users/*/AppData/Local/Microsoft/Edge/User Data/*/Web Applications/Manifest Resources/{app_id}",
+                f"/mnt/c/Users/*/AppData/Local/Google/Chrome/User Data/*/Web Applications/Manifest Resources/{app_id}",
+            ]
+        )
     elif sys.platform == "win32":
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
-            patterns.extend([
-                f"{local_app_data}/Microsoft/Edge/User Data/*/Web Applications/_crx__{app_id}",
-                f"{local_app_data}/Google/Chrome/User Data/*/Web Applications/_crx_{app_id}",
-                f"{local_app_data}/Microsoft/Edge/User Data/*/Web Applications/Manifest Resources/{app_id}",
-                f"{local_app_data}/Google/Chrome/User Data/*/Web Applications/Manifest Resources/{app_id}",
-            ])
+            patterns.extend(
+                [
+                    f"{local_app_data}/Microsoft/Edge/User Data/*/Web Applications/_crx__{app_id}",
+                    f"{local_app_data}/Google/Chrome/User Data/*/Web Applications/_crx_{app_id}",
+                    f"{local_app_data}/Microsoft/Edge/User Data/*/Web Applications/Manifest Resources/{app_id}",
+                    f"{local_app_data}/Google/Chrome/User Data/*/Web Applications/Manifest Resources/{app_id}",
+                ]
+            )
     for pat in patterns:
         matches = glob.glob(pat)
         if matches:
@@ -160,17 +169,21 @@ def discover_installed_voice_pwa() -> Optional[dict[str, str]]:
     """Scan Edge and Chrome Web Applications directories for an installed Google Voice PWA."""
     patterns: list[str] = []
     if is_wsl():
-        patterns.extend([
-            "/mnt/c/Users/*/AppData/Local/Microsoft/Edge/User Data/*/Web Applications/_crx__*",
-            "/mnt/c/Users/*/AppData/Local/Google/Chrome/User Data/*/Web Applications/_crx_*",
-        ])
+        patterns.extend(
+            [
+                "/mnt/c/Users/*/AppData/Local/Microsoft/Edge/User Data/*/Web Applications/_crx__*",
+                "/mnt/c/Users/*/AppData/Local/Google/Chrome/User Data/*/Web Applications/_crx_*",
+            ]
+        )
     elif sys.platform == "win32":
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
-            patterns.extend([
-                f"{local_app_data}/Microsoft/Edge/User Data/*/Web Applications/_crx__*",
-                f"{local_app_data}/Google/Chrome/User Data/*/Web Applications/_crx_*",
-            ])
+            patterns.extend(
+                [
+                    f"{local_app_data}/Microsoft/Edge/User Data/*/Web Applications/_crx__*",
+                    f"{local_app_data}/Google/Chrome/User Data/*/Web Applications/_crx_*",
+                ]
+            )
 
     for pat in patterns:
         for match in glob.glob(pat):
@@ -254,7 +267,11 @@ class GoogleVoiceEdgeAppProvider:
                 ]
                 if spawn_detached(command):
                     copy_to_windows_clipboard(cleaned)
-                    logger.info("Launched Google Voice PWA via %s (app-id=%s)", proxy, target_app_id)
+                    logger.info(
+                        "Launched Google Voice PWA via %s (app-id=%s)",
+                        proxy,
+                        target_app_id,
+                    )
                     return True
                 logger.warning("Proxy launch failed; falling back to native --app mode")
 
@@ -329,16 +346,112 @@ class TwilioBridgeCallingProvider:
         my_phone: Optional[str] = None,
         recording_callback_url: Optional[str] = None,
         record: bool = True,
+        low_balance_threshold: float = 20.0,
     ):
         self.account_sid = account_sid or os.environ.get("TWILIO_ACCOUNT_SID")
         self.auth_token = auth_token or os.environ.get("TWILIO_AUTH_TOKEN")
-        self.caller_id = caller_id or os.environ.get("TWILIO_CALLER_ID") or os.environ.get("TWILIO_PHONE_NUMBER")
-        self.my_phone = my_phone or os.environ.get("TWILIO_MY_PHONE") or os.environ.get("TWILIO_BRIDGE_TO")
-        self.recording_callback_url = recording_callback_url or os.environ.get("TWILIO_RECORDING_CALLBACK_URL")
+        self.caller_id = (
+            caller_id
+            or os.environ.get("TWILIO_CALLER_ID")
+            or os.environ.get("TWILIO_PHONE_NUMBER")
+        )
+        self.my_phone = (
+            my_phone
+            or os.environ.get("TWILIO_MY_PHONE")
+            or os.environ.get("TWILIO_BRIDGE_TO")
+        )
+        self.recording_callback_url = recording_callback_url or os.environ.get(
+            "TWILIO_RECORDING_CALLBACK_URL"
+        )
         self.record = record
+        thresh_env = os.environ.get("TWILIO_LOW_BALANCE_THRESHOLD")
+        self.low_balance_threshold = (
+            float(thresh_env) if thresh_env else float(low_balance_threshold)
+        )
+        self._cached_balance: Optional[tuple[float, str, float]] = None
+        self._balance_cache_ttl: float = 300.0
 
     def is_configured(self) -> bool:
-        return bool(self.account_sid and self.auth_token and self.caller_id and self.my_phone)
+        return bool(
+            self.account_sid and self.auth_token and self.caller_id and self.my_phone
+        )
+
+    def get_balance(
+        self, bypass_cache: bool = False
+    ) -> tuple[Optional[float], Optional[str]]:
+        """Query Twilio Balance API. Returns (balance, currency) or (None, None).
+
+        Caches balance in memory for `_balance_cache_ttl` seconds unless bypass_cache=True.
+        """
+        import requests
+
+        now = time.time()
+        if not bypass_cache and self._cached_balance is not None:
+            cached_bal, cached_curr, cached_time = self._cached_balance
+            if now - cached_time < self._balance_cache_ttl:
+                return cached_bal, cached_curr
+
+        if not self.account_sid or not self.auth_token:
+            return None, None
+
+        account_sid = self.account_sid
+        auth_token = self.auth_token
+
+        if account_sid.startswith("op://"):
+            from .op_utils import get_op_secret
+
+            resolved_sid = get_op_secret(account_sid)
+            if resolved_sid:
+                account_sid = resolved_sid
+
+        if auth_token.startswith("op://"):
+            from .op_utils import get_op_secret
+
+            resolved_token = get_op_secret(auth_token)
+            if resolved_token:
+                auth_token = resolved_token
+            else:
+                return None, None
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated get_balance in test mode"
+            )
+            return 25.0, "USD"
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Balance.json"
+        try:
+            resp = requests.get(url, auth=(account_sid, auth_token), timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                balance = float(data.get("balance", 0.0))
+                currency = str(data.get("currency", "USD"))
+                self._cached_balance = (balance, currency, now)
+                return balance, currency
+            else:
+                logger.warning(
+                    "Twilio Balance API returned status %d: %s",
+                    resp.status_code,
+                    resp.text,
+                )
+                return None, None
+        except Exception as exc:
+            logger.warning("Failed to query Twilio Balance API: %s", exc)
+            return None, None
+
+    def is_low_balance(
+        self, threshold: Optional[float] = None, bypass_cache: bool = False
+    ) -> tuple[bool, Optional[float], Optional[str]]:
+        """Check if account balance is below warning threshold.
+
+        Returns (is_low, balance, currency). If balance cannot be determined,
+        returns (False, None, None).
+        """
+        thresh = self.low_balance_threshold if threshold is None else threshold
+        balance, currency = self.get_balance(bypass_cache=bypass_cache)
+        if balance is None:
+            return False, None, currency
+        return balance < thresh, balance, currency
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         import requests
@@ -374,7 +487,10 @@ class TwilioBridgeCallingProvider:
             if resolved_token:
                 auth_token = resolved_token
             else:
-                logger.error("Could not resolve 1Password secret for Twilio auth_token: %s", auth_token)
+                logger.error(
+                    "Could not resolve 1Password secret for Twilio auth_token: %s",
+                    auth_token,
+                )
                 return False
 
         assert self.caller_id is not None
@@ -501,6 +617,7 @@ def get_calling_provider(campaign_name: Optional[str] = None) -> CallingProvider
             my_phone=tw_cfg.get("my_phone") or tw_cfg.get("bridge_to"),
             recording_callback_url=tw_cfg.get("recording_callback_url"),
             record=bool(tw_cfg.get("record", True)),
+            low_balance_threshold=float(tw_cfg.get("low_balance_threshold", 20.0)),
         )
 
     if provider_name in ("quo", "openphone"):
@@ -514,7 +631,9 @@ def get_calling_provider(campaign_name: Optional[str] = None) -> CallingProvider
         gv_cfg = google_voice_config(campaign_name)
         edge_app_id = gv_cfg.get("edge_app_id")
         if is_wsl() or sys.platform == "win32" or find_browser_app_binary():
-            return GoogleVoiceEdgeAppProvider(edge_app_id=str(edge_app_id) if edge_app_id else None)
+            return GoogleVoiceEdgeAppProvider(
+                edge_app_id=str(edge_app_id) if edge_app_id else None
+            )
         return BrowserTabCallingProvider()
 
     return BrowserTabCallingProvider()

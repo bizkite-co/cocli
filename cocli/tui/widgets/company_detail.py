@@ -135,16 +135,24 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
         elif preview:
             return Text(str(preview), style="bold yellow")
 
-    if act_type == "call" or "disposition" in meta or title.lower().startswith("call log:"):
+    if (
+        act_type == "call"
+        or "disposition" in meta
+        or title.lower().startswith("call log:")
+    ):
         icon = "📞"
         disp = meta.get("disposition")
         prefix = f"[{disp}] " if disp else ""
         return wrap_content(
-            f"{icon} {prefix}{clean_content}" if clean_content else f"{icon} {prefix}{title}",
+            f"{icon} {prefix}{clean_content}"
+            if clean_content
+            else f"{icon} {prefix}{title}",
             max_lines=PREVIEW_MAX_LINES,
         )
-    elif act_type == "email" or "direction" in meta or title.lower().startswith(
-        ("email sent:", "email received:")
+    elif (
+        act_type == "email"
+        or "direction" in meta
+        or title.lower().startswith(("email sent:", "email received:"))
     ):
         icon = "✉"
         direction = str(meta.get("direction") or "EMAIL").upper()
@@ -158,7 +166,9 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
         icon = "📅"
         m_type = meta.get("meeting_type", "meeting")
         return wrap_content(
-            f"{icon} [{m_type}] {clean_content}" if clean_content else f"{icon} [{m_type}] {title}",
+            f"{icon} [{m_type}] {clean_content}"
+            if clean_content
+            else f"{icon} [{m_type}] {title}",
             max_lines=PREVIEW_MAX_LINES,
         )
     else:
@@ -876,6 +886,14 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 if isinstance(provider, GoogleVoiceEdgeAppProvider)
                 else ""
             )
+            if isinstance(provider, TwilioBridgeCallingProvider):
+                is_low, bal, curr = provider.is_low_balance()
+                if is_low and bal is not None:
+                    self.app.notify(
+                        f"⚠️ Low Twilio Balance: ${bal:.2f} {curr or 'USD'} (Threshold: ${provider.low_balance_threshold:.2f})",
+                        severity="warning",
+                        timeout=8,
+                    )
 
             # 2. Open Company Website if it exists
             if domain:
@@ -1081,7 +1099,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
                         app = cast("CocliApp", self.app)
                         await app.action_show_companies()
                     else:
-                        self.app.notify(f"Directory not found: {path}", severity="error")
+                        self.app.notify(
+                            f"Directory not found: {path}", severity="error"
+                        )
                 except Exception as e:
                     logger.error(f"Failed to delete company: {e}")
                     self.app.notify(f"Delete failed: {e}", severity="error")
@@ -1215,7 +1235,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 continue
             quoted_lines.append(f"> {line}" if line else ">")
         if not to_address:
-            self.app.notify("Selected note has no From: (not an email note)", severity="warning")
+            self.app.notify(
+                "Selected note has no From: (not an email note)", severity="warning"
+            )
             return
         subject = title
         prefix = "email received:"
@@ -1225,7 +1247,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
             subject = f"Re: {subject}"
         quoted = "\n".join(quoted_lines).strip()
         body = f"\n\n{quoted}" if quoted else ""
-        self._push_email_compose(slug, to_address=to_address, subject=subject, body=body)
+        self._push_email_compose(
+            slug, to_address=to_address, subject=subject, body=body
+        )
 
     def _push_email_compose(
         self,
@@ -1308,7 +1332,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
         if file_path:
             self._edit_with_nvim(Path(file_path))
         else:
-            self.app.notify("No note selected or item is not editable", severity="warning")
+            self.app.notify(
+                "No note selected or item is not editable", severity="warning"
+            )
 
     def action_edit_meeting(self) -> None:
         """Edit selected meeting using NVim."""
@@ -1770,9 +1796,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         self.contacts_table.clear()
         contacts = self.company_data.get("contacts", [])
         for c in contacts:
-            name = c.get("name") or (
-                "Unknown" if c.get("source") != "website" else ""
-            )
+            name = c.get("name") or ("Unknown" if c.get("source") != "website" else "")
             table_name = escape(str(name)) if name else ""
             self.contacts_table.add_row(
                 table_name,
@@ -1820,7 +1844,13 @@ class CompanyDetail(MarkPrefixMixin, Container):
                     dt_str = task.scheduled_at.strftime("%Y-%m-%d %H:%M")
                     detail = task.template_id or task.format
                     rows.append(
-                        (dt_str, Text(f"[Follow-up: {task.format}] {detail}", style="bold cyan"))
+                        (
+                            dt_str,
+                            Text(
+                                f"[Follow-up: {task.format}] {detail}",
+                                style="bold cyan",
+                            ),
+                        )
                     )
             except Exception:
                 pass
@@ -1876,13 +1906,17 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 if k not in ("title", "content", "timestamp", "file_path")
             }
             clean_act_type: Literal["call", "email", "note", "meeting"] = (
-                "call" if n_type == "call" else ("email" if n_type == "email" else "note")
+                "call"
+                if n_type == "call"
+                else ("email" if n_type == "email" else "note")
             )
             activities.append(
                 CompanyActivity(
                     timestamp=ts,
                     activity_type=clean_act_type,
-                    icon="📞" if clean_act_type == "call" else ("✉" if clean_act_type == "email" else "📝"),
+                    icon="📞"
+                    if clean_act_type == "call"
+                    else ("✉" if clean_act_type == "email" else "📝"),
                     title=title,
                     preview=format_activity_preview(n).plain,
                     content=content,
@@ -1912,7 +1946,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
             meta = {
                 k: v
                 for k, v in m.items()
-                if k not in ("title", "content", "timestamp", "datetime_utc", "file_path")
+                if k
+                not in ("title", "content", "timestamp", "datetime_utc", "file_path")
             }
             activities.append(
                 CompanyActivity(
@@ -2033,7 +2068,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
             ts = a.timestamp
             ts_aware = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts
             is_overdue = ts_aware <= now_utc
-            dt_text = format_activity_datetime(ts, is_scheduled=True, is_overdue=is_overdue)
+            dt_text = format_activity_datetime(
+                ts, is_scheduled=True, is_overdue=is_overdue
+            )
             preview_text = format_activity_preview(a)
             self.activity_table.add_row(dt_text, preview_text, height=PREVIEW_MAX_LINES)
             self._activity_row_items.append(a)
@@ -2041,8 +2078,12 @@ class CompanyDetail(MarkPrefixMixin, Container):
         # 2. Thin 50% opacity yellow HR for now-time
         if scheduled_items:
             divider_dt = Text("──────", style="dim yellow")
-            divider_line = Text("── now ───────────────────────────────────", style="dim yellow")
-            self.activity_table.add_row(divider_dt, divider_line, height=1, key="now-divider")
+            divider_line = Text(
+                "── now ───────────────────────────────────", style="dim yellow"
+            )
+            self.activity_table.add_row(
+                divider_dt, divider_line, height=1, key="now-divider"
+            )
             self._activity_row_items.append(None)
 
         # 3. Past history items (below now)

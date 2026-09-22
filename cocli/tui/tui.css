@@ -39,6 +39,11 @@ Screen {
     text-style: bold;
 }
 
+#menu-balance {
+    color: #ffaa00;
+    text-style: bold;
+}
+
 .active-menu-item {
     background: #222222; 
     color: #00ff00; 

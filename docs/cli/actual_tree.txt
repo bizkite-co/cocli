@@ -99,6 +99,8 @@ cocli
         tui-actions - Dumps every action (keybinding or command-palette-only) exposed by the
             --output/-o (path)
     calling - Configure the phone-dialer provider.
+        balance - Check the Twilio account balance and report whether it is low.
+            --refresh/-r (boolean)
         set-app-id - Save the Edge PWA app-id for the Google Voice provider.
             app_id (text) [required]
         set-provider - Set the calling provider ('google_voice', 'twilio', 'quo', 'openphone', or 'browser_tab').
@@ -109,6 +111,7 @@ cocli
             --caller-id (text) [required]
             --my-phone (text) [required]
             --recording-callback (text)
+            --low-balance-threshold (float)
         status - Show the resolved calling provider config and whether the Edge PWA
         test - Actually dial `phone` with the currently configured provider - use
             phone (text) [required]

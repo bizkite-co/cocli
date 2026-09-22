@@ -13,12 +13,17 @@ from cocli.utils.calling_provider import (
 
 
 def test_google_voice_config_merges_global_then_campaign_override() -> None:
-    with patch(
-        "cocli.core.config.load_global_config",
-        return_value={"google_voice": {"edge_app_id": "abc123", "account_index": 0}},
-    ), patch(
-        "cocli.core.config.load_campaign_config",
-        return_value={"google_voice": {"account_index": 1}},
+    with (
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={
+                "google_voice": {"edge_app_id": "abc123", "account_index": 0}
+            },
+        ),
+        patch(
+            "cocli.core.config.load_campaign_config",
+            return_value={"google_voice": {"account_index": 1}},
+        ),
     ):
         merged = google_voice_config("roadmap")
 
@@ -26,20 +31,27 @@ def test_google_voice_config_merges_global_then_campaign_override() -> None:
 
 
 def test_get_calling_provider_defaults_to_browser_tab_off_wsl() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
-    ), patch("cocli.utils.calling_provider.is_wsl", return_value=False), patch(
-        "cocli.utils.calling_provider.find_browser_app_binary", return_value=None
-    ), patch("sys.platform", "linux"):
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
+        patch("cocli.utils.calling_provider.is_wsl", return_value=False),
+        patch(
+            "cocli.utils.calling_provider.find_browser_app_binary", return_value=None
+        ),
+        patch("sys.platform", "linux"),
+    ):
         provider = get_calling_provider(None)
 
     assert isinstance(provider, BrowserTabCallingProvider)
 
 
 def test_get_calling_provider_returns_browser_tab_when_configured() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config",
-        return_value={"google_voice": {"provider": "browser_tab"}},
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={"google_voice": {"provider": "browser_tab"}},
+        ),
     ):
         provider = get_calling_provider(None)
 
@@ -47,9 +59,11 @@ def test_get_calling_provider_returns_browser_tab_when_configured() -> None:
 
 
 def test_get_calling_provider_uses_edge_app_on_wsl_even_without_app_id() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
-    ), patch("cocli.utils.calling_provider.is_wsl", return_value=True):
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
+        patch("cocli.utils.calling_provider.is_wsl", return_value=True),
+    ):
         provider = get_calling_provider(None)
 
     assert isinstance(provider, GoogleVoiceEdgeAppProvider)
@@ -57,10 +71,16 @@ def test_get_calling_provider_uses_edge_app_on_wsl_even_without_app_id() -> None
 
 
 def test_get_calling_provider_uses_edge_app_when_configured_and_on_wsl() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config",
-        return_value={"google_voice": {"edge_app_id": "bbcbahpbnakjldhdcgiblnjnfgaejidg"}},
-    ), patch("cocli.utils.calling_provider.is_wsl", return_value=True):
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={
+                "google_voice": {"edge_app_id": "bbcbahpbnakjldhdcgiblnjnfgaejidg"}
+            },
+        ),
+        patch("cocli.utils.calling_provider.is_wsl", return_value=True),
+    ):
         provider = get_calling_provider(None)
 
     assert isinstance(provider, GoogleVoiceEdgeAppProvider)
@@ -68,21 +88,30 @@ def test_get_calling_provider_uses_edge_app_when_configured_and_on_wsl() -> None
 
 
 def test_get_calling_provider_ignores_app_id_off_wsl_when_no_browser() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config",
-        return_value={"google_voice": {"edge_app_id": "abc123"}},
-    ), patch("cocli.utils.calling_provider.is_wsl", return_value=False), patch(
-        "cocli.utils.calling_provider.find_browser_app_binary", return_value=None
-    ), patch("sys.platform", "linux"):
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={"google_voice": {"edge_app_id": "abc123"}},
+        ),
+        patch("cocli.utils.calling_provider.is_wsl", return_value=False),
+        patch(
+            "cocli.utils.calling_provider.find_browser_app_binary", return_value=None
+        ),
+        patch("sys.platform", "linux"),
+    ):
         provider = get_calling_provider(None)
 
     assert isinstance(provider, BrowserTabCallingProvider)
 
 
 def test_get_calling_provider_returns_quo_provider() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config",
-        return_value={"google_voice": {"provider": "quo"}},
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={"google_voice": {"provider": "quo"}},
+        ),
     ):
         provider = get_calling_provider(None)
 
@@ -97,18 +126,25 @@ def test_google_voice_edge_app_provider_builds_expected_command() -> None:
         captured["command"] = command
         return True
 
-    with patch(
-        "cocli.utils.calling_provider.find_msedge_proxy",
-        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
-    ), patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn), patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
-    ), patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
+    with (
+        patch(
+            "cocli.utils.calling_provider.find_msedge_proxy",
+            return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+        ),
+        patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn),
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
     ):
         assert provider.dial("5551234567") is True
 
     command = captured["command"]
-    assert command[0] == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe"
+    assert (
+        command[0]
+        == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe"
+    )
     assert command[1] == "--profile-directory=Default"
     assert command[2] == "--app-id=bbcbahpbnakjldhdcgiblnjnfgaejidg"
     assert command[3] == "--app-launch-source=4"
@@ -123,30 +159,39 @@ def test_google_voice_edge_app_provider_copies_cleaned_number_to_clipboard() -> 
     shortcuts-menu URL; still copy whenever the PWA launch succeeds."""
     provider = GoogleVoiceEdgeAppProvider("bbcbahpbnakjldhdcgiblnjnfgaejidg")
 
-    with patch(
-        "cocli.utils.calling_provider.find_msedge_proxy",
-        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
-    ), patch("cocli.utils.calling_provider.spawn_detached", return_value=True), patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
-    ) as fake_copy, patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
+    with (
+        patch(
+            "cocli.utils.calling_provider.find_msedge_proxy",
+            return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+        ),
+        patch("cocli.utils.calling_provider.spawn_detached", return_value=True),
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ) as fake_copy,
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
     ):
         assert provider.dial("5551234567") is True
 
     fake_copy.assert_called_once_with("+15551234567")
 
 
-def test_google_voice_edge_app_provider_skips_clipboard_when_proxy_launch_fails() -> None:
+def test_google_voice_edge_app_provider_skips_clipboard_when_proxy_launch_fails() -> (
+    None
+):
     provider = GoogleVoiceEdgeAppProvider("bbcbahpbnakjldhdcgiblnjnfgaejidg")
 
-    with patch(
-        "cocli.utils.calling_provider.find_msedge_proxy",
-        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
-    ), patch("cocli.utils.calling_provider.spawn_detached", return_value=False), patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard"
-    ) as fake_copy, patch("cocli.utils.calling_provider.open_url", return_value=True), patch(
-        "cocli.core.config.get_campaign", return_value=None
-    ), patch("cocli.core.config.load_global_config", return_value={}):
+    with (
+        patch(
+            "cocli.utils.calling_provider.find_msedge_proxy",
+            return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+        ),
+        patch("cocli.utils.calling_provider.spawn_detached", return_value=False),
+        patch("cocli.utils.calling_provider.copy_to_windows_clipboard") as fake_copy,
+        patch("cocli.utils.calling_provider.open_url", return_value=True),
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
+    ):
         assert provider.dial("5551234567") is True
 
     fake_copy.assert_not_called()
@@ -155,10 +200,13 @@ def test_google_voice_edge_app_provider_skips_clipboard_when_proxy_launch_fails(
 def test_google_voice_edge_app_provider_falls_back_when_proxy_missing() -> None:
     provider = GoogleVoiceEdgeAppProvider("bbcbahpbnakjldhdcgiblnjnfgaejidg")
 
-    with patch("cocli.utils.calling_provider.find_msedge_proxy", return_value=None), patch(
-        "cocli.utils.calling_provider.open_url", return_value=True
-    ) as fake_open_url, patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
+    with (
+        patch("cocli.utils.calling_provider.find_msedge_proxy", return_value=None),
+        patch(
+            "cocli.utils.calling_provider.open_url", return_value=True
+        ) as fake_open_url,
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
     ):
         assert provider.dial("5551234567") is True
         fake_open_url.assert_called_once()
@@ -172,20 +220,29 @@ def test_google_voice_falls_back_to_native_app_when_pwa_not_installed() -> None:
         captured["command"] = command
         return True
 
-    with patch("cocli.utils.calling_provider.is_pwa_installed", return_value=False), patch(
-        "cocli.utils.calling_provider.discover_installed_voice_pwa", return_value=None
-    ), patch(
-        "cocli.utils.calling_provider.find_browser_app_binary",
-        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-    ), patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn), patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
-    ) as fake_copy, patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
+    with (
+        patch("cocli.utils.calling_provider.is_pwa_installed", return_value=False),
+        patch(
+            "cocli.utils.calling_provider.discover_installed_voice_pwa",
+            return_value=None,
+        ),
+        patch(
+            "cocli.utils.calling_provider.find_browser_app_binary",
+            return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+        ),
+        patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn),
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ) as fake_copy,
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
     ):
         assert provider.dial("5551234567") is True
 
     command = captured["command"]
-    assert command[0] == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+    assert (
+        command[0] == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+    )
     assert command[1] == "--profile-directory=Default"
     assert command[2].startswith("--app=https://voice.google.com")
     assert "a=nc,%2B15551234567" in command[2]
@@ -200,30 +257,45 @@ def test_google_voice_auto_discovers_pwa_when_no_app_id_configured() -> None:
         captured["command"] = command
         return True
 
-    with patch(
-        "cocli.utils.calling_provider.discover_installed_voice_pwa",
-        return_value={"app_id": "discovered_voice_id", "browser": "edge", "path": "/some/path"},
-    ), patch(
-        "cocli.utils.calling_provider.find_msedge_proxy",
-        return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
-    ), patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn), patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
-    ), patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config", return_value={}
+    with (
+        patch(
+            "cocli.utils.calling_provider.discover_installed_voice_pwa",
+            return_value={
+                "app_id": "discovered_voice_id",
+                "browser": "edge",
+                "path": "/some/path",
+            },
+        ),
+        patch(
+            "cocli.utils.calling_provider.find_msedge_proxy",
+            return_value="/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe",
+        ),
+        patch("cocli.utils.calling_provider.spawn_detached", side_effect=fake_spawn),
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch("cocli.core.config.load_global_config", return_value={}),
     ):
         assert provider.dial("5551234567") is True
 
     command = captured["command"]
-    assert command[0] == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe"
+    assert (
+        command[0]
+        == "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge_proxy.exe"
+    )
     assert command[2] == "--app-id=discovered_voice_id"
 
 
 def test_quo_calling_provider_dials_via_protocol() -> None:
     provider = QuoCallingProvider()
 
-    with patch("cocli.utils.calling_provider.open_url", return_value=True) as fake_open, patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
-    ) as fake_copy:
+    with (
+        patch("cocli.utils.calling_provider.open_url", return_value=True) as fake_open,
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ) as fake_copy,
+    ):
         assert provider.dial("5551234567") is True
 
     fake_open.assert_called_once_with("openphone://call?number=+15551234567")
@@ -233,12 +305,17 @@ def test_quo_calling_provider_dials_via_protocol() -> None:
 def test_quo_calling_provider_web_mode() -> None:
     provider = QuoCallingProvider(use_web=True)
 
-    with patch("cocli.utils.calling_provider.open_url", return_value=True) as fake_open, patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    with (
+        patch("cocli.utils.calling_provider.open_url", return_value=True) as fake_open,
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
     ):
         assert provider.dial("5551234567") is True
 
-    fake_open.assert_called_once_with("https://my.openphone.com/call?number=+15551234567")
+    fake_open.assert_called_once_with(
+        "https://my.openphone.com/call?number=+15551234567"
+    )
 
 
 def test_twilio_bridge_calling_provider_is_configured() -> None:
@@ -256,7 +333,9 @@ def test_twilio_bridge_calling_provider_is_configured() -> None:
 
 def test_twilio_bridge_calling_provider_unconfigured_fails_gracefully() -> None:
     provider = TwilioBridgeCallingProvider()
-    with patch("cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True):
+    with patch(
+        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    ):
         assert provider.dial("5551234567") is False
 
 
@@ -272,11 +351,13 @@ def test_twilio_bridge_calling_provider_initiates_api_call() -> None:
     mock_resp.status_code = 201
     mock_resp.json.return_value = {"sid": "CA999888777", "status": "queued"}
 
-    with patch.dict("os.environ", {}, clear=True), patch(
-        "requests.post", return_value=mock_resp
-    ) as fake_post, patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
-    ) as fake_copy:
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.post", return_value=mock_resp) as fake_post,
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ) as fake_copy,
+    ):
         assert provider.dial("5551234567") is True
 
     fake_copy.assert_called_once_with("+15551234567")
@@ -294,17 +375,20 @@ def test_twilio_bridge_calling_provider_initiates_api_call() -> None:
 
 
 def test_get_calling_provider_returns_twilio() -> None:
-    with patch("cocli.core.config.get_campaign", return_value=None), patch(
-        "cocli.core.config.load_global_config",
-        return_value={
-            "calling": {"provider": "twilio"},
-            "twilio": {
-                "account_sid": "AC123",
-                "auth_token": "token456",
-                "caller_id": "+19093232647",
-                "my_phone": "+19095551234",
+    with (
+        patch("cocli.core.config.get_campaign", return_value=None),
+        patch(
+            "cocli.core.config.load_global_config",
+            return_value={
+                "calling": {"provider": "twilio"},
+                "twilio": {
+                    "account_sid": "AC123",
+                    "auth_token": "token456",
+                    "caller_id": "+19093232647",
+                    "my_phone": "+19095551234",
+                },
             },
-        },
+        ),
     ):
         provider = get_calling_provider(None)
 
@@ -324,15 +408,76 @@ def test_twilio_bridge_calling_provider_resolves_op_token() -> None:
     mock_resp.status_code = 201
     mock_resp.json.return_value = {"sid": "CA111"}
 
-    with patch.dict("os.environ", {}, clear=True), patch(
-        "cocli.utils.op_utils.get_op_secret", return_value="resolved_token_xyz"
-    ) as fake_op, patch(
-        "requests.post", return_value=mock_resp
-    ) as fake_post, patch(
-        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch(
+            "cocli.utils.op_utils.get_op_secret", return_value="resolved_token_xyz"
+        ) as fake_op,
+        patch("requests.post", return_value=mock_resp) as fake_post,
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
     ):
         assert provider.dial("5551234567") is True
 
     fake_op.assert_called_once_with("op://Vault/Item/auth-token")
     args, kwargs = fake_post.call_args
     assert kwargs["auth"] == ("ACtest123", "resolved_token_xyz")
+
+
+def test_twilio_bridge_calling_provider_get_balance_and_cache() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="secret456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"balance": "14.50", "currency": "USD"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_resp) as fake_get,
+    ):
+        bal, curr = provider.get_balance()
+        assert bal == 14.50
+        assert curr == "USD"
+        assert fake_get.call_count == 1
+
+        # Second call uses cache
+        bal2, curr2 = provider.get_balance()
+        assert bal2 == 14.50
+        assert curr2 == "USD"
+        assert fake_get.call_count == 1
+
+        # Bypass cache calls API again
+        bal3, curr3 = provider.get_balance(bypass_cache=True)
+        assert bal3 == 14.50
+        assert fake_get.call_count == 2
+
+
+def test_twilio_bridge_calling_provider_is_low_balance() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="secret456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+        low_balance_threshold=20.0,
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"balance": "9.79", "currency": "USD"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_resp),
+    ):
+        is_low, bal, curr = provider.is_low_balance()
+        assert is_low is True
+        assert bal == 9.79
+        assert curr == "USD"
+
+        # With lower threshold, it's not low
+        is_low_custom, _, _ = provider.is_low_balance(threshold=5.0)
+        assert is_low_custom is False

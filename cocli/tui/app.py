@@ -106,6 +106,9 @@ class MenuBar(Horizontal):
         # Spacer to push following items to the right
         yield Static("", id="menu-spacer")
 
+        # Twilio Balance Warning (visible only when low)
+        yield Label("", id="menu-balance", classes="menu-item")
+
         # Activity Indicator
         yield Label("", id="menu-activity", classes="menu-item")
 
@@ -115,6 +118,13 @@ class MenuBar(Horizontal):
     def on_mount(self) -> None:
         """Update the campaign name label on mount to avoid blocking compose."""
         self.refresh_campaign()
+
+    def set_balance_warning(self, msg: str) -> None:
+        try:
+            label = self.query_one("#menu-balance", Label)
+            label.update(msg)
+        except Exception:
+            pass
 
     def set_activity(self, msg: str) -> None:
         try:
@@ -480,7 +490,9 @@ class CocliApp(App[None]):
         import textual_image.widget  # noqa: F401
         from textual_image.renderable import Image as _detected_image_backend
 
-        tui_debug_log(f"textual_image backend detected: {_detected_image_backend.__module__}")
+        tui_debug_log(
+            f"textual_image backend detected: {_detected_image_backend.__module__}"
+        )
 
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
@@ -597,6 +609,43 @@ class CocliApp(App[None]):
         thread.start()
         tui_debug_log(f"APP: Started background PI sync for campaign: {campaign}")
 
+    def _start_balance_check_background(self) -> None:
+        """Check Twilio balance in a background thread if Twilio provider is configured."""
+        import threading
+        from ..core.config import get_campaign
+        from ..utils.calling_provider import (
+            TwilioBridgeCallingProvider,
+            get_calling_provider,
+        )
+
+        def _check_balance() -> None:
+            try:
+                provider = get_calling_provider(get_campaign())
+                if (
+                    isinstance(provider, TwilioBridgeCallingProvider)
+                    and provider.is_configured()
+                ):
+                    is_low, bal, curr = provider.is_low_balance()
+                    if is_low and bal is not None:
+                        c = curr or "USD"
+                        msg = f"[bold yellow]⚠️ Twilio: ${bal:.2f}[/bold yellow]"
+                        self.call_from_thread(self._set_menu_balance_warning, msg)
+                        self.call_from_thread(
+                            self.notify,
+                            f"⚠️ Low Twilio Balance: ${bal:.2f} {c} (Threshold: ${provider.low_balance_threshold:.2f})",
+                            severity="warning",
+                            timeout=8,
+                        )
+            except Exception as e:
+                tui_debug_log(f"APP: Twilio balance check failed: {e}")
+
+        thread = threading.Thread(target=_check_balance, daemon=True)
+        thread.start()
+
+    def _set_menu_balance_warning(self, text: str) -> None:
+        if hasattr(self, "menu_bar") and self.menu_bar:
+            self.menu_bar.set_balance_warning(text)
+
     async def on_mount(self) -> None:
         with time_perf("APP: on_mount"):
             tui_debug_log("--- APP START ---")
@@ -623,6 +672,9 @@ class CocliApp(App[None]):
 
             # Start PI sync check in background (non-blocking)
             self._start_pi_sync_background()
+
+            # Check Twilio balance in background if configured (non-blocking)
+            self._start_balance_check_background()
 
             if self.auto_show:
                 await self.action_show_companies()
@@ -1067,9 +1119,14 @@ class CocliApp(App[None]):
                 content = self.query_one("#app_content")
                 # Hide Branch Roots, Remove Details
                 for child in content.children:
-                    if isinstance(child, MessagesView) and return_to_messages_recent_calls:
+                    if (
+                        isinstance(child, MessagesView)
+                        and return_to_messages_recent_calls
+                    ):
                         child.display = False
-                    elif isinstance(child, (CompanySearchView, PersonList, ApplicationView)):
+                    elif isinstance(
+                        child, (CompanySearchView, PersonList, ApplicationView)
+                    ):
                         child.display = False
                     else:
                         child.remove()

@@ -8,7 +8,12 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
-from ..core.config import get_campaign, load_campaign_config, load_global_config, save_config
+from ..core.config import (
+    get_campaign,
+    load_campaign_config,
+    load_global_config,
+    save_config,
+)
 from ..utils.calling_provider import (
     TwilioBridgeCallingProvider,
     discover_installed_voice_pwa,
@@ -37,7 +42,9 @@ def set_provider(provider: str) -> None:
     config["google_voice"] = gv_cfg
 
     save_config(config)
-    console.print(f"[bold green]Saved provider={provider} to global config.[/bold green]")
+    console.print(
+        f"[bold green]Saved provider={provider} to global config.[/bold green]"
+    )
 
 
 @app.command("set-app-id")
@@ -55,16 +62,29 @@ def set_app_id(app_id: str) -> None:
     gv_cfg.setdefault("provider", "google_voice")
     config["google_voice"] = gv_cfg
     save_config(config)
-    console.print(f"[bold green]Saved edge_app_id={app_id} to global config.[/bold green]")
+    console.print(
+        f"[bold green]Saved edge_app_id={app_id} to global config.[/bold green]"
+    )
 
 
 @app.command("set-twilio")
 def set_twilio(
-    account_sid: str = typer.Option(..., "--account-sid", help="Twilio Account SID (e.g. AC...)"),
+    account_sid: str = typer.Option(
+        ..., "--account-sid", help="Twilio Account SID (e.g. AC...)"
+    ),
     auth_token: str = typer.Option(..., "--auth-token", help="Twilio Auth Token"),
-    caller_id: str = typer.Option(..., "--caller-id", help="Twilio outbound business caller ID"),
-    my_phone: str = typer.Option(..., "--my-phone", help="Your mobile phone number to ring first"),
-    recording_callback: str = typer.Option("", "--recording-callback", help="Optional webhook URL for recordings"),
+    caller_id: str = typer.Option(
+        ..., "--caller-id", help="Twilio outbound business caller ID"
+    ),
+    my_phone: str = typer.Option(
+        ..., "--my-phone", help="Your mobile phone number to ring first"
+    ),
+    recording_callback: str = typer.Option(
+        "", "--recording-callback", help="Optional webhook URL for recordings"
+    ),
+    low_balance_threshold: float = typer.Option(
+        20.0, "--low-balance-threshold", help="Warning threshold in USD for low balance"
+    ),
 ) -> None:
     """Save Twilio credentials and phone numbers for call bridging."""
     config = load_global_config()
@@ -79,9 +99,53 @@ def set_twilio(
         tw_cfg["my_phone"] = my_phone
     if recording_callback:
         tw_cfg["recording_callback_url"] = recording_callback
+    if low_balance_threshold is not None:
+        tw_cfg["low_balance_threshold"] = low_balance_threshold
     config["twilio"] = tw_cfg
     save_config(config)
-    console.print("[bold green]Saved Twilio configuration to global config.[/bold green]")
+    console.print(
+        "[bold green]Saved Twilio configuration to global config.[/bold green]"
+    )
+
+
+@app.command("balance")
+def balance(
+    refresh: bool = typer.Option(
+        False, "--refresh", "-r", help="Bypass cached balance and fetch live"
+    ),
+) -> None:
+    """Check the Twilio account balance and report whether it is low."""
+    campaign = get_campaign()
+    provider = get_calling_provider(campaign)
+    if not isinstance(provider, TwilioBridgeCallingProvider):
+        console.print(
+            "[yellow]Balance checking is only active when calling provider is set to 'twilio'.[/yellow]"
+        )
+        return
+
+    if not provider.is_configured():
+        console.print(
+            "[bold red]Twilio is not fully configured. Run 'cocli calling set-twilio' first.[/bold red]"
+        )
+        return
+
+    is_low, bal, curr = provider.is_low_balance(bypass_cache=refresh)
+    if bal is not None:
+        c = curr or "USD"
+        if is_low:
+            console.print(
+                f"[bold yellow]⚠️ Twilio Balance is LOW: ${bal:.2f} {c} "
+                f"(Threshold: ${provider.low_balance_threshold:.2f})[/bold yellow]"
+            )
+        else:
+            console.print(
+                f"[bold green]Twilio Balance: ${bal:.2f} {c} "
+                f"(Threshold: ${provider.low_balance_threshold:.2f})[/bold green]"
+            )
+    else:
+        console.print(
+            "[bold red]Could not fetch Twilio balance. Check network or credentials.[/bold red]"
+        )
 
 
 @app.command("status")
@@ -113,23 +177,60 @@ def status() -> None:
             my_phone=tw_cfg.get("my_phone") or tw_cfg.get("bridge_to"),
             recording_callback_url=tw_cfg.get("recording_callback_url"),
             record=bool(tw_cfg.get("record", True)),
+            low_balance_threshold=float(tw_cfg.get("low_balance_threshold", 20.0)),
         )
         sid_raw = tw_provider.account_sid or ""
-        sid_masked = f"{sid_raw[:6]}...{sid_raw[-4:]}" if len(sid_raw) > 10 else (sid_raw or "(not set)")
+        sid_masked = (
+            f"{sid_raw[:6]}...{sid_raw[-4:]}"
+            if len(sid_raw) > 10
+            else (sid_raw or "(not set)")
+        )
         token_status = "(set)" if tw_provider.auth_token else "(not set)"
-        ready_status = "[bold green]Ready[/bold green]" if tw_provider.is_configured() else "[bold red]Incomplete[/bold red]"
+        ready_status = (
+            "[bold green]Ready[/bold green]"
+            if tw_provider.is_configured()
+            else "[bold red]Incomplete[/bold red]"
+        )
         console.print(f"Twilio Account SID: {sid_masked}")
         console.print(f"Twilio Auth Token: {token_status}")
-        console.print(f"Twilio Caller ID (Business): {tw_provider.caller_id or '(not set)'}")
-        console.print(f"Twilio My Phone (Bridge To): {tw_provider.my_phone or '(not set)'}")
-        console.print(f"Twilio Recording Callback: {tw_provider.recording_callback_url or '(not set)'}")
+        console.print(
+            f"Twilio Caller ID (Business): {tw_provider.caller_id or '(not set)'}"
+        )
+        console.print(
+            f"Twilio My Phone (Bridge To): {tw_provider.my_phone or '(not set)'}"
+        )
+        console.print(
+            f"Twilio Recording Callback: {tw_provider.recording_callback_url or '(not set)'}"
+        )
+        console.print(
+            f"Twilio Low Balance Threshold: ${tw_provider.low_balance_threshold:.2f}"
+        )
         console.print(f"Twilio Status: {ready_status}")
+        if tw_provider.is_configured():
+            is_low, bal, curr = tw_provider.is_low_balance()
+            if bal is not None:
+                c = curr or "USD"
+                if is_low:
+                    console.print(
+                        f"Twilio Balance: [bold yellow]${bal:.2f} {c} "
+                        f"(⚠️ Low balance: below ${tw_provider.low_balance_threshold:.2f})[/bold yellow]"
+                    )
+                else:
+                    console.print(
+                        f"Twilio Balance: [bold green]${bal:.2f} {c} (OK)[/bold green]"
+                    )
+            else:
+                console.print("Twilio Balance: (could not retrieve balance)")
     else:
         gv_cfg = google_voice_config(campaign)
         configured_id = gv_cfg.get("edge_app_id")
         if configured_id:
             installed = is_pwa_installed(configured_id)
-            status_suffix = " [bold green](installed)[/bold green]" if installed else " [yellow](not installed on this machine)[/yellow]"
+            status_suffix = (
+                " [bold green](installed)[/bold green]"
+                if installed
+                else " [yellow](not installed on this machine)[/yellow]"
+            )
             console.print(f"edge_app_id: {configured_id}{status_suffix}")
         else:
             console.print("edge_app_id: (not set)")
@@ -141,10 +242,14 @@ def status() -> None:
                 f"({discovered.get('browser')}, path={discovered.get('path')})"
             )
         else:
-            console.print("Auto-discovered PWA: (none found, will use native Chromium --app mode)")
+            console.print(
+                "Auto-discovered PWA: (none found, will use native Chromium --app mode)"
+            )
 
         console.print(f"msedge_proxy.exe found: {find_msedge_proxy() or '(not found)'}")
-        console.print(f"Chromium app binary found: {find_browser_app_binary() or '(not found)'}")
+        console.print(
+            f"Chromium app binary found: {find_browser_app_binary() or '(not found)'}"
+        )
 
     console.print(f"Resolved provider class: {type(provider).__name__}")
 
@@ -155,9 +260,18 @@ def test(phone: str) -> None:
     this after set-app-id to confirm the PWA window opens correctly."""
     campaign = get_campaign()
     provider = get_calling_provider(campaign)
+    if isinstance(provider, TwilioBridgeCallingProvider):
+        is_low, bal, curr = provider.is_low_balance()
+        if is_low and bal is not None:
+            console.print(
+                f"[bold yellow]⚠️ Warning: Twilio balance is low: ${bal:.2f} {curr or 'USD'} "
+                f"(Threshold: ${provider.low_balance_threshold:.2f})[/bold yellow]"
+            )
     ok = provider.dial(phone, campaign)
     if ok:
-        console.print(f"[bold green]Launched call to {phone} via {type(provider).__name__}.[/bold green]")
+        console.print(
+            f"[bold green]Launched call to {phone} via {type(provider).__name__}.[/bold green]"
+        )
     else:
         console.print(f"[bold red]Could not launch a call to {phone}.[/bold red]")
         raise typer.Exit(code=1)
