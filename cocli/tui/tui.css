@@ -441,6 +441,11 @@ ModalScreen {
     margin: 0 0 1 0;
 }
 
+#panel-info #company_local_time {
+    margin: 0;
+    padding: 0 1;
+}
+
 #call-contacts {
     height: auto;
     max-height: 8;

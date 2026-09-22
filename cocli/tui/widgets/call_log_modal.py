@@ -24,12 +24,9 @@ from cocli.application.to_call_disposition_service import mark_to_call_invalid
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
 from cocli.application.company_service import format_contact_line, list_known_contacts
-from cocli.utils.company_local_time import (
-    CompanyPlace,
-    format_company_local_now,
-    resolve_company_place,
-)
+from cocli.utils.company_local_time import CompanyPlace
 from cocli.utils.when import parse_follow_up_when
+from .company_local_time import CompanyLocalTime, resolve_place_from_company
 from .inputs import CocliInput
 from .search_select import SearchSelect
 
@@ -78,43 +75,16 @@ class CallLogModal(ModalScreen[bool]):
         self.company_slug = company_slug
         self.phone = phone
         company = Company.get(company_slug)
-        self._place: CompanyPlace = self._resolve_place(company)
+        self.local_time_widget = CompanyLocalTime(company=company, slug=company_slug, id="company_local_time")
+        self._place: CompanyPlace = self.local_time_widget._place
         self._contacts = list_known_contacts(company_slug)
 
     @staticmethod
     def _resolve_place(company: Optional[Company]) -> CompanyPlace:
-        if company is None:
-            return resolve_company_place()
-        address_bits = [
-            str(company.street_address or ""),
-            str(company.full_address or ""),
-            str(company.city or ""),
-            str(company.state or ""),
-            str(company.zip_code or ""),
-        ]
-        website_path = company.get_local_path() / "enrichments" / "website.md"
-        if website_path.exists():
-            from cocli.models.companies.website import Website
-
-            data = Website.read_existing_frontmatter(website_path)
-            if data:
-                address_bits.append(str(data.get("address") or ""))
-                # Body copy often has "Dallas, TX 75240" even when structured
-                # city/state were never copied onto the company record.
-                address_bits.append(str(data.get("description") or "")[:2000])
-        return resolve_company_place(
-            timezone_name=company.timezone,
-            state=company.state,
-            city=company.city,
-            zip_code=company.zip_code,
-            latitude=company.latitude,
-            longitude=company.longitude,
-            address_text="\n".join(bit for bit in address_bits if bit.strip()),
-        )
+        return resolve_place_from_company(company)
 
     def _local_time_markup(self) -> str:
-        stamp = format_company_local_now(place=self._place)
-        return f"[bold green]{stamp}[/bold green]  ({self._place.place_label()})"
+        return self.local_time_widget.get_time_markup()
 
     def compose(self) -> ComposeResult:
         # Default callback to 7 days from now
@@ -131,7 +101,7 @@ class CallLogModal(ModalScreen[bool]):
 
         with Container(id="call_log_form"):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
-            yield Label(self._local_time_markup(), id="company_local_time")
+            yield self.local_time_widget
             yield Label(f"Phone: {phone_display}", classes="modal-subtitle", id="call_phone")
 
             with Horizontal(id="call-log-columns"):
@@ -188,7 +158,7 @@ class CallLogModal(ModalScreen[bool]):
         self.query_one("#call_notes", TextArea).focus()
 
     def _tick_local_time(self) -> None:
-        self.query_one("#company_local_time", Label).update(self._local_time_markup())
+        self.local_time_widget.tick()
 
     def action_scroll_reference_down(self) -> None:
         self.query_one("#call-log-right", VerticalScroll).scroll_down()

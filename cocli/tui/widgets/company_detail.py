@@ -29,6 +29,7 @@ from .mark_prefix import MarkPrefixMixin
 from ..base import CocliPanel
 from ...utils.open_url import open_url
 from .confirm_screen import ConfirmScreen
+from .company_local_time import CompanyLocalTime
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -373,13 +374,22 @@ class EditInput(Input):
 class DetailPanel(CocliPanel):
     """A focusable panel containing a title and a widget."""
 
-    def __init__(self, title: str, child: Widget, id: str):
+    def __init__(
+        self,
+        title: str,
+        child: Widget,
+        id: str,
+        subtitle_widget: Optional[Widget] = None,
+    ):
         super().__init__(panel_title=title, id=id, classes="panel")
         self.can_focus = True
         self.child = child
+        self.subtitle_widget = subtitle_widget
 
     def compose(self) -> ComposeResult:
         yield Label(self.panel_title, classes="panel-header")
+        if self.subtitle_widget:
+            yield self.subtitle_widget
         yield self.child
 
 
@@ -449,7 +459,16 @@ class CompanyDetail(MarkPrefixMixin, Container):
         self.screenshot_widget = self._create_screenshot_widget()
 
         # Initialize panels
-        self.panel_info = DetailPanel("COMPANY INFO", self.info_table, id="panel-info")
+        self.local_time_widget = CompanyLocalTime(
+            company=self.company_data,
+            id="company_local_time",
+        )
+        self.panel_info = DetailPanel(
+            "COMPANY INFO",
+            self.info_table,
+            id="panel-info",
+            subtitle_widget=self.local_time_widget,
+        )
         self.panel_contacts = DetailPanel(
             "CONTACTS", self.contacts_table, id="panel-contacts"
         )
@@ -1617,6 +1636,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
     def _refresh_info_table(self) -> None:
         """Repopulate info table content."""
+        if hasattr(self, "local_time_widget"):
+            self.local_time_widget.set_company(self.company_data)
         self.info_table.clear()
         c = self.company_data["company"]
         tags = self.company_data.get("tags", [])
