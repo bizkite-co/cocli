@@ -311,3 +311,28 @@ def test_get_calling_provider_returns_twilio() -> None:
     assert isinstance(provider, TwilioBridgeCallingProvider)
     assert provider.account_sid == "AC123"
     assert provider.caller_id == "+19093232647"
+
+
+def test_twilio_bridge_calling_provider_resolves_op_token() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="op://Vault/Item/auth-token",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"sid": "CA111"}
+
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "cocli.utils.op_utils.get_op_secret", return_value="resolved_token_xyz"
+    ) as fake_op, patch(
+        "requests.post", return_value=mock_resp
+    ) as fake_post, patch(
+        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    ):
+        assert provider.dial("5551234567") is True
+
+    fake_op.assert_called_once_with("op://Vault/Item/auth-token")
+    args, kwargs = fake_post.call_args
+    assert kwargs["auth"] == ("ACtest123", "resolved_token_xyz")

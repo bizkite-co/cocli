@@ -357,10 +357,30 @@ class TwilioBridgeCallingProvider:
             )
             return False
 
+        account_sid = self.account_sid
+        auth_token = self.auth_token
+
+        if account_sid and account_sid.startswith("op://"):
+            from .op_utils import get_op_secret
+
+            resolved_sid = get_op_secret(account_sid)
+            if resolved_sid:
+                account_sid = resolved_sid
+
+        if auth_token and auth_token.startswith("op://"):
+            from .op_utils import get_op_secret
+
+            resolved_token = get_op_secret(auth_token)
+            if resolved_token:
+                auth_token = resolved_token
+            else:
+                logger.error("Could not resolve 1Password secret for Twilio auth_token: %s", auth_token)
+                return False
+
         assert self.caller_id is not None
         assert self.my_phone is not None
-        assert self.account_sid is not None
-        assert self.auth_token is not None
+        assert account_sid is not None
+        assert auth_token is not None
 
         cleaned_caller_id = clean_phone_e164(self.caller_id)
         cleaned_my_phone = clean_phone_e164(self.my_phone)
@@ -376,7 +396,7 @@ class TwilioBridgeCallingProvider:
             f"</Response>"
         )
 
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Calls.json"
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls.json"
         data: dict[str, str] = {
             "To": cleaned_my_phone,
             "From": cleaned_caller_id,
@@ -394,7 +414,7 @@ class TwilioBridgeCallingProvider:
             resp = requests.post(
                 url,
                 data=data,
-                auth=(self.account_sid, self.auth_token),
+                auth=(account_sid, auth_token),
                 timeout=10,
             )
             if resp.status_code in (200, 201):
