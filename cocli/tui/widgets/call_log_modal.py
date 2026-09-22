@@ -337,6 +337,8 @@ class CallLogModal(ModalScreen[bool]):
                     self.app.notify(f"Scheduled callback for {cb_date.strftime('%Y-%m-%d %H:%M')} UTC")
                 except ValueError:
                     self.app.notify(f"Invalid date: {callback_str}", severity="warning")
+            else:
+                company.callback_at = None
 
             # 6. Schedule Email Follow-up, if a template was picked - a
             # separate concept from the call re-queue above (queues/follow-up/,

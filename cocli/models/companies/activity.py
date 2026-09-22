@@ -18,3 +18,4 @@ class CompanyActivity:
     content: str
     file_path: Optional[Path] = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    is_scheduled: bool = False

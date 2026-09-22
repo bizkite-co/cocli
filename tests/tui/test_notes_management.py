@@ -36,11 +36,11 @@ async def test_notes_navigation_and_edit_key(mock_get_details, mock_get_editor, 
         await app.query_one("#app_content").mount(detail)
         await driver.pause(0.1)
 
-        # 1. Focus the Notes panel (not ] — that binding was removed)
-        notes_panel = app.query_one("#panel-notes")
-        notes_panel.focus()
+        # 1. Focus the Activity panel (not ] — that binding was removed)
+        activity_panel = app.query_one("#panel-activity")
+        activity_panel.focus()
         await driver.pause(0.1)
-        assert notes_panel.has_focus
+        assert activity_panel.has_focus
 
         # 2. Press 'i' to enter quadrant (focus the table)
         await driver.press("i")
@@ -70,8 +70,8 @@ async def test_note_deletion_flow(mock_get_details, mock_company_data, tmp_path,
         await app.query_one("#app_content").mount(detail)
         await driver.pause(0.1)
 
-        notes_panel = app.query_one("#panel-notes")
-        notes_panel.focus()
+        activity_panel = app.query_one("#panel-activity")
+        activity_panel.focus()
         await driver.pause(0.1)
         await driver.press("i")
         

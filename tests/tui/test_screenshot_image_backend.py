@@ -291,7 +291,7 @@ async def test_company_detail_renders_single_header_rows(tmp_path, monkeypatch):
         await pilot.pause(0.2)
 
         svg = app.export_screenshot()
-        for header in ("COMPANY INFO", "CONTACTS", "MEETINGS", "NOTES"):
+        for header in ("COMPANY INFO", "CONTACTS", "ACTIVITY"):
             occurrences = count_header_row_occurrences(svg, header)
             assert occurrences == 1, (
                 f"header {header!r} rendered on {occurrences} rows (expected 1)"

@@ -4,7 +4,7 @@ import subprocess
 import time
 import re
 import textwrap
-from typing import Optional, Any, Union, cast, TYPE_CHECKING
+from typing import Optional, Any, Union, cast, Literal, TYPE_CHECKING
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,6 +21,7 @@ from rich.markup import escape
 from ...models.companies.company import Company
 from ...models.companies.note import Note
 from ...models.companies.meeting import Meeting
+from ...models.companies.activity import CompanyActivity
 from ...models.phone import PhoneNumber
 from ...core.paths import paths
 from ...core.config import get_editor_command
@@ -64,22 +65,106 @@ def wrap_content(
     return Text("\n".join(lines))
 
 
-def format_note_preview(n: dict[str, Any]) -> Text:
-    content = n.get("content", "")[:100].replace("\n", " ").strip()
-    note_type = str(n.get("type") or "").lower()
-    title = str(n.get("title") or "")
-    if note_type == "call" or "disposition" in n or title.lower().startswith("call log:"):
+def format_activity_datetime(
+    dt: Optional[Union[datetime, str]],
+    is_scheduled: bool = False,
+    is_overdue: bool = False,
+) -> Text:
+    """Format datetime without the year: MM-DD on line 1 and HH:MM on line 2."""
+    if not dt:
+        return Text("Unknown", style="dim")
+    if isinstance(dt, str):
+        try:
+            parsed = datetime.fromisoformat(dt)
+            dt = parsed
+        except (ValueError, TypeError):
+            return Text(str(dt)[:10], style="dim")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    date_part = dt.strftime("%m-%d")
+    time_part = dt.strftime("%H:%M")
+    text_str = f"{date_part}\n{time_part}"
+
+    if is_scheduled:
+        if is_overdue:
+            return Text(text_str, style="bold red")
+        return Text(text_str, style="bold yellow")
+    return Text(text_str, style="dim")
+
+
+def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) -> Text:
+    """Format Rich Text preview for an activity item (call, email, meeting, note, callback, follow-up)."""
+    if isinstance(activity, dict):
+        title = str(activity.get("title") or "")
+        content = str(activity.get("content") or "")
+        act_type = str(
+            activity.get("activity_type") or activity.get("type") or ""
+        ).lower()
+        meta = activity.get("metadata") or {}
+        is_scheduled = bool(activity.get("is_scheduled", False))
+        preview = activity.get("preview")
+    else:
+        title = activity.title or ""
+        content = activity.content or ""
+        act_type = (activity.activity_type or "").lower()
+        meta = activity.metadata or {}
+        is_scheduled = activity.is_scheduled
+        preview = activity.preview
+
+    clean_content = content[:100].replace("\n", " ").strip()
+
+    if is_scheduled:
+        if "overdue" in title.lower():
+            return Text("[Callback overdue]", style="bold red")
+        elif "callback scheduled" in title.lower():
+            return Text("[Callback scheduled]", style="bold yellow")
+        elif "follow-up" in title.lower() or act_type in ("email", "follow-up"):
+            if preview:
+                return Text(str(preview), style="bold cyan")
+            fmt = meta.get("format", act_type)
+            detail = meta.get("template_id") or fmt
+            return Text(f"[Follow-up: {fmt}] {detail}", style="bold cyan")
+        elif act_type == "meeting":
+            m_type = meta.get("meeting_type", "meeting")
+            return wrap_content(f"📅 [{m_type}] {clean_content or title}", max_lines=2)
+        elif preview:
+            return Text(str(preview), style="bold yellow")
+
+    if act_type == "call" or "disposition" in meta or title.lower().startswith("call log:"):
         icon = "📞"
-        disp = n.get("disposition")
+        disp = meta.get("disposition")
         prefix = f"[{disp}] " if disp else ""
-        return wrap_content(f"{icon} {prefix}{content}")
-    elif note_type == "email" or "direction" in n or title.lower().startswith(("email sent:", "email received:")):
+        return wrap_content(
+            f"{icon} {prefix}{clean_content}" if clean_content else f"{icon} {prefix}{title}",
+            max_lines=2,
+        )
+    elif act_type == "email" or "direction" in meta or title.lower().startswith(
+        ("email sent:", "email received:")
+    ):
         icon = "✉"
-        direction = str(n.get("direction") or "email").upper()
-        return wrap_content(f"{icon} [{direction}] {title}: {content}")
+        direction = str(meta.get("direction") or "EMAIL").upper()
+        return wrap_content(
+            f"{icon} [{direction}] {title}: {clean_content}"
+            if clean_content
+            else f"{icon} [{direction}] {title}",
+            max_lines=2,
+        )
+    elif act_type == "meeting":
+        icon = "📅"
+        m_type = meta.get("meeting_type", "meeting")
+        return wrap_content(
+            f"{icon} [{m_type}] {clean_content}" if clean_content else f"{icon} [{m_type}] {title}",
+            max_lines=2,
+        )
     else:
         icon = "📝"
-        return wrap_content(f"{icon} {content}" if content else f"{icon} {title}")
+        return wrap_content(
+            f"{icon} {clean_content}" if clean_content else f"{icon} {title}", max_lines=2
+        )
+
+
+def format_note_preview(n: dict[str, Any]) -> Text:
+    return format_activity_preview(n)
 
 
 def format_phone_display(value: Any) -> Union[Text, str]:
@@ -198,48 +283,15 @@ class ContactsTable(QuadrantTable):
             detail_view.app.notify("Edit Contact coming soon")
 
 
-class MeetingsTable(QuadrantTable):
-    """Specific bindings for the Meetings quadrant."""
+class ActivityTable(QuadrantTable):
+    """Specific bindings for the unified Activity timeline."""
 
     BINDINGS = QuadrantTable.BINDINGS + [
-        Binding("a", "add_meeting", "Add Meeting"),
-        Binding("i", "edit_item", "Edit Meeting"),
-        Binding("enter", "edit_item", "Edit Meeting"),
-        Binding("v", "view_item", "View Meeting"),
-        Binding("P", "promote_item", "Promote"),
-    ]
-
-    def action_edit_item(self) -> None:
-        detail_view = next(
-            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
-        )
-        if detail_view:
-            detail_view.action_edit_meeting()
-
-    def action_view_item(self) -> None:
-        detail_view = next(
-            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
-        )
-        if detail_view:
-            detail_view.action_view_meeting()
-
-    def action_promote_item(self) -> None:
-        detail_view = next(
-            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
-        )
-        if detail_view:
-            detail_view.action_promote_meeting()
-
-
-class NotesTable(QuadrantTable):
-    """Specific bindings for the Notes quadrant."""
-
-    BINDINGS = QuadrantTable.BINDINGS + [
-        Binding("a", "add_note", "Add Note"),
-        Binding("i", "edit_item", "Edit Note"),
-        Binding("enter", "edit_item", "Edit Note"),
-        Binding("d", "delete_item", "Delete Note"),
-        Binding("v", "view_item", "View Note"),
+        Binding("a", "add_item", "Add Note"),
+        Binding("i", "edit_item", "Edit Item"),
+        Binding("enter", "edit_item", "Edit Item"),
+        Binding("d", "delete_item", "Delete"),
+        Binding("v", "view_item", "View"),
         Binding("P", "promote_item", "Promote"),
         Binding("r", "reply_email", "Reply"),
     ]
@@ -256,9 +308,9 @@ class NotesTable(QuadrantTable):
             (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
         )
         if detail_view:
-            detail_view.action_edit_note()
+            detail_view.action_edit_item()
 
-    def action_add_note(self) -> None:
+    def action_add_item(self) -> None:
         detail_view = next(
             (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
         )
@@ -270,21 +322,26 @@ class NotesTable(QuadrantTable):
             (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
         )
         if detail_view:
-            detail_view.app.run_worker(detail_view.action_delete_note())
+            detail_view.app.run_worker(detail_view.action_delete_activity())
 
     def action_view_item(self) -> None:
         detail_view = next(
             (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
         )
         if detail_view:
-            detail_view.action_view_note()
+            detail_view.action_view_item()
 
     def action_promote_item(self) -> None:
         detail_view = next(
             (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
         )
         if detail_view:
-            detail_view.action_promote_note()
+            detail_view.action_promote_item()
+
+
+# Backward compatibility aliases
+NotesTable = ActivityTable
+MeetingsTable = ActivityTable
 
 
 class EditInput(Input):
@@ -371,10 +428,14 @@ class CompanyDetail(MarkPrefixMixin, Container):
         )
 
         # Initialize tables
+        self._activity_row_items: list[Optional[CompanyActivity]] = []
         self.info_table = self._create_info_table()
         self.contacts_table = self._create_contacts_table()
-        self.meetings_table = self._create_meetings_table()
-        self.notes_table = self._create_notes_table()
+        self.activity_table = self._create_activity_table()
+
+        # Backward compatibility aliases
+        self.notes_table = self.activity_table
+        self.meetings_table = self.activity_table
 
         # Screenshot (see Website.screenshot_bytes) - always-visible, under
         # the metadata panel. Mark, 2026-08-30: "It should just show it
@@ -387,17 +448,19 @@ class CompanyDetail(MarkPrefixMixin, Container):
         self.panel_contacts = DetailPanel(
             "CONTACTS", self.contacts_table, id="panel-contacts"
         )
-        self.panel_meetings = DetailPanel(
-            "MEETINGS", self.meetings_table, id="panel-meetings"
+        self.panel_activity = DetailPanel(
+            "ACTIVITY", self.activity_table, id="panel-activity"
         )
-        self.panel_notes = DetailPanel("NOTES", self.notes_table, id="panel-notes")
+
+        # Backward compatibility aliases
+        self.panel_notes = self.panel_activity
+        self.panel_meetings = self.panel_activity
 
         # Define panel order for navigation
         self.panels = [
             self.panel_info,
             self.panel_contacts,
-            self.panel_meetings,
-            self.panel_notes,
+            self.panel_activity,
         ]
 
     def compose(self) -> ComposeResult:
@@ -408,8 +471,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
                     yield self.screenshot_widget
                 with Vertical(id="engagement-column"):
                     yield self.panel_contacts
-                    yield self.panel_meetings
-                    yield self.panel_notes
+                    yield self.panel_activity
             yield Static("", id="mark-prefix-bar", classes="mark-prefix-bar hidden")
 
     def on_mount(self) -> None:
@@ -502,22 +564,24 @@ class CompanyDetail(MarkPrefixMixin, Container):
     def action_add_item(self) -> None:
         """Route 'a' key based on the focused quadrant."""
         focused = self.app.focused
-        if focused == self.panel_notes or self.notes_table.has_focus:
+        if (
+            focused in (self.panel_activity, self.panel_notes, self.panel_meetings)
+            or self.activity_table.has_focus
+        ):
             self.action_add_note()
         elif focused == self.panel_contacts or self.contacts_table.has_focus:
             self.app.notify("Add Contact coming soon")
-        elif focused == self.panel_meetings or self.meetings_table.has_focus:
-            self.action_add_meeting()
 
     def action_delete_item(self) -> None:
         """Route 'd' key based on the focused quadrant."""
         focused = self.app.focused
-        if focused == self.panel_notes or self.notes_table.has_focus:
-            self.app.run_worker(self.action_delete_note())
+        if (
+            focused in (self.panel_activity, self.panel_notes, self.panel_meetings)
+            or self.activity_table.has_focus
+        ):
+            self.app.run_worker(self.action_delete_activity())
         elif focused == self.panel_contacts or self.contacts_table.has_focus:
             self.app.notify("Delete Contact coming soon")
-        elif focused == self.panel_meetings or self.meetings_table.has_focus:
-            self.app.notify("Delete Meeting coming soon")
 
     def on_key(self, event: events.Key) -> None:
         # IF we are in leader mode, do NOT handle any keys here, let them bubble to App
@@ -556,6 +620,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
             if event.key == "h":
                 if focused in (
                     self.panel_contacts,
+                    self.panel_activity,
                     self.panel_meetings,
                     self.panel_notes,
                 ):
@@ -577,10 +642,12 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 return
             elif event.key == "j":
                 if focused == self.panel_contacts:
-                    self.panel_meetings.focus()
-                elif focused == self.panel_meetings:
-                    self.panel_notes.focus()
-                elif focused == self.panel_notes:
+                    self.panel_activity.focus()
+                elif focused in (
+                    self.panel_activity,
+                    self.panel_meetings,
+                    self.panel_notes,
+                ):
                     self.panel_contacts.focus()
 
                 event.stop()
@@ -588,11 +655,13 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 return
             elif event.key == "k":
                 if focused == self.panel_contacts:
-                    self.panel_notes.focus()
-                elif focused == self.panel_meetings:
+                    self.panel_activity.focus()
+                elif focused in (
+                    self.panel_activity,
+                    self.panel_meetings,
+                    self.panel_notes,
+                ):
                     self.panel_contacts.focus()
-                elif focused == self.panel_notes:
-                    self.panel_meetings.focus()
 
                 event.stop()
                 event.prevent_default()
@@ -1086,14 +1155,23 @@ class CompanyDetail(MarkPrefixMixin, Container):
         slug = self.company_data["company"].get("slug")
         if not slug:
             return
-        notes = self.company_data.get("notes") or []
-        row = self.notes_table.cursor_row
-        if not isinstance(row, int) or row < 0 or row >= len(notes):
+        item = self._get_current_activity()
+        content = ""
+        title = ""
+        if item:
+            content = str(item.content or "")
+            title = str(item.title or "")
+        else:
+            notes = self.company_data.get("notes") or []
+            row = self.activity_table.cursor_row
+            if isinstance(row, int) and 0 <= row < len(notes):
+                content = str(notes[row].get("content") or "")
+                title = str(notes[row].get("title") or "")
+
+        if not content and not title:
             self.app.notify("No note selected", severity="warning")
             return
-        note = notes[row]
-        content = str(note.get("content") or "")
-        title = str(note.get("title") or "")
+
         to_address = ""
         quoted_lines: list[str] = []
         past_headers = False
@@ -1131,7 +1209,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
         def _after(sent: Optional[bool]) -> None:
             if sent:
-                self.refresh_notes_data()
+                self.refresh_activity_data()
 
         self.app.push_screen(
             EmailComposeModal(
@@ -1170,67 +1248,81 @@ class CompanyDetail(MarkPrefixMixin, Container):
         meeting_path = new_meeting.to_file(meetings_dir)
         self._edit_with_nvim(meeting_path)
 
-    def action_edit_note(self) -> None:
-        """Edit an existing note using NVim."""
-        row_idx = self.notes_table.cursor_row
-        num_notes = len(self.company_data.get("notes", []))
-        logger.debug(f"action_edit_note: row_idx={row_idx}, num_notes={num_notes}")
+    def _get_current_activity(self) -> Optional[CompanyActivity]:
+        row_idx = self.activity_table.cursor_row
+        if row_idx is None or not (0 <= row_idx < len(self._activity_row_items)):
+            return None
+        return self._activity_row_items[row_idx]
 
-        if row_idx is None or row_idx >= num_notes:
-            self.app.notify("No note selected", severity="warning")
+    def action_edit_item(self) -> None:
+        """Edit current selected activity item."""
+        item = self._get_current_activity()
+        if not item:
+            self.action_edit_note()
             return
+        if item.activity_type == "meeting":
+            self.action_edit_meeting()
+        else:
+            self.action_edit_note()
 
-        note_data = self.company_data["notes"][row_idx]
-        file_path = note_data.get("file_path")
-        logger.debug(f"action_edit_note: selected note file_path={file_path}")
+    def action_edit_note(self) -> None:
+        """Edit selected note using NVim."""
+        item = self._get_current_activity()
+        file_path = item.file_path if item else None
+        if not file_path:
+            row_idx = self.activity_table.cursor_row
+            notes = self.company_data.get("notes", [])
+            if row_idx is not None and row_idx < len(notes):
+                file_path = notes[row_idx].get("file_path")
 
         if file_path:
             self._edit_with_nvim(Path(file_path))
+        else:
+            self.app.notify("No note selected or item is not editable", severity="warning")
 
     def action_edit_meeting(self) -> None:
-        """Edit an existing meeting using NVim."""
-        row_idx = self.meetings_table.cursor_row
-        num_meetings = len(self.company_data.get("meetings", []))
-
-        if row_idx is None or row_idx >= num_meetings:
-            self.app.notify("No meeting selected", severity="warning")
-            return
-
-        meeting_data = self.company_data["meetings"][row_idx]
-        file_path = meeting_data.get("file_path")
+        """Edit selected meeting using NVim."""
+        item = self._get_current_activity()
+        file_path = item.file_path if item else None
+        if not file_path:
+            row_idx = self.activity_table.cursor_row
+            meetings = self.company_data.get("meetings", [])
+            if row_idx is not None and row_idx < len(meetings):
+                file_path = meetings[row_idx].get("file_path")
 
         if file_path:
             self._edit_with_nvim(Path(file_path))
+        else:
+            self.app.notify("No meeting selected", severity="warning")
+
+    def action_view_item(self) -> None:
+        """View activity item in a modal."""
+        item = self._get_current_activity()
+        if not item:
+            return
+        self._show_content_viewer(item.title, item.content)
 
     def action_view_meeting(self) -> None:
-        """View meeting content in a modal."""
-        row_idx = self.meetings_table.cursor_row
-        num_meetings = len(self.company_data.get("meetings", []))
-
-        if row_idx is None or row_idx >= num_meetings:
-            self.app.notify("No meeting selected", severity="warning")
+        item = self._get_current_activity()
+        if item:
+            self._show_content_viewer(item.title, item.content)
             return
-
-        meeting_data = self.company_data["meetings"][row_idx]
-        content = meeting_data.get("content", "")
-        title = meeting_data.get("title", "Meeting")
-
-        self._show_content_viewer(title, content)
+        row_idx = self.activity_table.cursor_row
+        meetings = self.company_data.get("meetings", [])
+        if row_idx is not None and row_idx < len(meetings):
+            m = meetings[row_idx]
+            self._show_content_viewer(m.get("title", "Meeting"), m.get("content", ""))
 
     def action_view_note(self) -> None:
-        """View note content in a modal."""
-        row_idx = self.notes_table.cursor_row
-        num_notes = len(self.company_data.get("notes", []))
-
-        if row_idx is None or row_idx >= num_notes:
-            self.app.notify("No note selected", severity="warning")
+        item = self._get_current_activity()
+        if item:
+            self._show_content_viewer(item.title, item.content)
             return
-
-        note_data = self.company_data["notes"][row_idx]
-        content = note_data.get("content", "")
-        title = note_data.get("title", "Note")
-
-        self._show_content_viewer(title, content)
+        row_idx = self.activity_table.cursor_row
+        notes = self.company_data.get("notes", [])
+        if row_idx is not None and row_idx < len(notes):
+            n = notes[row_idx]
+            self._show_content_viewer(n.get("title", "Note"), n.get("content", ""))
 
     def _show_content_viewer(self, title: str, content: str) -> None:
         """Show content in a modal viewer."""
@@ -1238,76 +1330,63 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
         self.app.push_screen(ContentViewerModal(title=title, content=content))
 
-    async def action_delete_note(self) -> None:
-        """Delete an existing note with confirmation."""
-        row_idx = self.notes_table.cursor_row
-        num_notes = len(self.company_data.get("notes", []))
-        logger.debug(f"action_delete_note: row_idx={row_idx}, num_notes={num_notes}")
-
-        if row_idx is None or row_idx >= num_notes:
-            self.app.notify("No note selected", severity="warning")
-            return
-
-        note_data = self.company_data["notes"][row_idx]
-        file_path = note_data.get("file_path")
-        logger.debug(f"action_delete_note: selected note file_path={file_path}")
+    async def action_delete_activity(self) -> None:
+        """Delete an existing activity item with confirmation."""
+        item = self._get_current_activity()
+        file_path = item.file_path if item else None
+        act_type = item.activity_type if item else "item"
 
         if not file_path:
+            row_idx = self.activity_table.cursor_row
+            notes = self.company_data.get("notes", [])
+            if row_idx is not None and row_idx < len(notes):
+                file_path = notes[row_idx].get("file_path")
+                act_type = "note"
+
+        if not file_path:
+            self.app.notify("No deletable item selected", severity="warning")
             return
 
-        # push_screen_wait, not push_screen: plain push_screen() without
-        # wait_for_dismiss always returns None regardless of what the user
-        # presses (confirmed empirically, 2026-08-30) - `if confirm:` below
-        # would silently never fire. This call site already runs inside a
-        # worker (both callers use self.app.run_worker(...)), which
-        # push_screen_wait requires.
         confirm = await self.app.push_screen_wait(
-            ConfirmScreen("Are you sure you want to delete this note?")
+            ConfirmScreen(f"Are you sure you want to delete this {act_type}?")
         )
-        logger.debug(f"action_delete_note: confirmation result={confirm}")
-
         if confirm:
             try:
                 Path(file_path).unlink()
-                self.app.notify("Note deleted")
-                self.refresh_notes_data()
+                self.app.notify(f"{act_type.capitalize()} deleted")
+                self.refresh_activity_data()
             except Exception as e:
-                logger.error(f"Failed to delete note: {e}")
+                logger.error(f"Failed to delete {act_type}: {e}")
                 self.app.notify(f"Delete failed: {e}", severity="error")
 
-    def action_promote_meeting(self) -> None:
-        """Toggle promote flag on the selected meeting."""
-        row_idx = self.meetings_table.cursor_row
-        num_meetings = len(self.company_data.get("meetings", []))
+    async def action_delete_note(self) -> None:
+        await self.action_delete_activity()
 
-        if row_idx is None or row_idx >= num_meetings:
-            self.app.notify("No meeting selected", severity="warning")
-            return
-
-        meeting_data = self.company_data["meetings"][row_idx]
-        file_path = meeting_data.get("file_path")
+    def action_promote_item(self) -> None:
+        """Toggle promote flag on the selected activity item."""
+        item = self._get_current_activity()
+        file_path = item.file_path if item else None
+        if not file_path:
+            row_idx = self.activity_table.cursor_row
+            notes = self.company_data.get("notes", [])
+            if row_idx is not None and row_idx < len(notes):
+                file_path = notes[row_idx].get("file_path")
+            else:
+                meetings = self.company_data.get("meetings", [])
+                if row_idx is not None and row_idx < len(meetings):
+                    file_path = meetings[row_idx].get("file_path")
 
         if not file_path:
+            self.app.notify("No item selected to promote", severity="warning")
             return
 
         self._toggle_promote_flag(Path(file_path))
+
+    def action_promote_meeting(self) -> None:
+        self.action_promote_item()
 
     def action_promote_note(self) -> None:
-        """Toggle promote flag on the selected note."""
-        row_idx = self.notes_table.cursor_row
-        num_notes = len(self.company_data.get("notes", []))
-
-        if row_idx is None or row_idx >= num_notes:
-            self.app.notify("No note selected", severity="warning")
-            return
-
-        note_data = self.company_data["notes"][row_idx]
-        file_path = note_data.get("file_path")
-
-        if not file_path:
-            return
-
-        self._toggle_promote_flag(Path(file_path))
+        self.action_promote_item()
 
     def _toggle_promote_flag(self, file_path: Path) -> None:
         """Toggle the promote flag in a note/meeting file's frontmatter."""
@@ -1346,8 +1425,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
         status = "flagged for promotion" if frontmatter_data["promote"] else "unflagged"
         self.app.notify(f"Item {status}")
-        self.refresh_notes_data()
-        self.refresh_meetings_data()
+        self.refresh_activity_data()
 
     def _run_external_in_suspend(self, argv: list[str]) -> None:
         """Yield the tty to an interactive process, then restore the TUI."""
@@ -1363,14 +1441,13 @@ class CompanyDetail(MarkPrefixMixin, Container):
         try:
             self._run_external_in_suspend([editor, str(path)])
             self.app.notify("Item saved")
-            self.refresh_notes_data()
-            self.refresh_meetings_data()
+            self.refresh_activity_data()
         except Exception as e:
             logger.error(f"NVim editor session failed: {e}")
             self.app.notify(f"Editor failed: {e}", severity="error")
 
-    def refresh_notes_data(self) -> None:
-        """Reload notes from the filesystem and refresh the table."""
+    def refresh_activity_data(self) -> None:
+        """Reload all company activities from filesystem and refresh table."""
         slug = self.company_data["company"].get("slug")
         if not slug:
             return
@@ -1380,82 +1457,33 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
             reloaded = get_company_details_for_view(slug)
             if reloaded:
+                self.company_data["activity"] = reloaded.get("activity")
                 self.company_data["notes"] = notes_newest_first(
                     list(reloaded.get("notes") or [])
                 )
-                self.refresh_notes_table()
+                self.company_data["meetings"] = reloaded.get("meetings", [])
+                self.refresh_activity_table()
         except Exception as e:
-            logger.error(f"Failed to refresh notes: {e}")
+            logger.error(f"Failed to refresh activity data: {e}")
 
-    def refresh_notes_table(self) -> None:
-        """Repopulate the existing table rather than replacing it for stability."""
-        self.notes_table.clear()
-        notes = notes_newest_first(list(self.company_data.get("notes", [])))
-        for n in notes:
-            ts = n.get("timestamp")
-            if isinstance(ts, datetime):
-                ts_str = ts.strftime("%Y-%m-%d")
-            else:
-                ts_str = str(ts)[:10]
-            preview_text = format_note_preview(n)
-            self.notes_table.add_row(ts_str, preview_text)
-
-        # Only re-focus if we had focus before
-        if self.notes_table.has_focus:
-            self.notes_table.focus()
+    def refresh_notes_data(self) -> None:
+        self.refresh_activity_data()
 
     def refresh_meetings_data(self) -> None:
-        """Reload meetings from the filesystem and refresh the table."""
-        slug = self.company_data["company"].get("slug")
-        if not slug:
-            return
+        self.refresh_activity_data()
 
-        try:
-            from ...application.company_service import get_company_details_for_view
-
-            reloaded = get_company_details_for_view(slug)
-            if reloaded:
-                self.company_data["meetings"] = reloaded["meetings"]
-                self.refresh_meetings_table()
-        except Exception as e:
-            logger.error(f"Failed to refresh meetings: {e}")
+    def refresh_notes_table(self) -> None:
+        self.refresh_activity_table()
 
     def refresh_meetings_table(self) -> None:
-        """Repopulate the existing table rather than replacing it for stability."""
-        self.meetings_table.clear()
-        meetings = self.company_data.get("meetings", [])
-        for m in meetings:
-            raw_dt = m.get("datetime_utc")
-            dt_str = "Unknown"
-            time_str = ""
-            if raw_dt:
-                try:
-                    dt = (
-                        datetime.fromisoformat(raw_dt)
-                        if isinstance(raw_dt, str)
-                        else raw_dt
-                    )
-                    dt_str = dt.strftime("%Y-%m-%d")
-                    time_str = dt.strftime("%H:%M")
-                except (ValueError, TypeError):
-                    dt_str = str(raw_dt)[:10]
-
-            content = m.get("content", "")[:100].replace("\n", " ")
-            m_type = m.get("type", "meeting")
-            preview_text = wrap_content(f"[{m_type}] {content}")
-            self.meetings_table.add_row(dt_str, time_str, preview_text)
-
-        if self.meetings_table.has_focus:
-            self.meetings_table.focus()
+        self.refresh_activity_table()
 
     @on(DataTable.RowSelected)
     def handle_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.data_table.id == "info-table":
             self.trigger_row_edit(cast(InfoTable, event.data_table))
-        elif event.data_table.id == "notes-table":
-            self.action_edit_note()
-        elif event.data_table.id == "meetings-table":
-            self.action_edit_meeting()
+        elif event.data_table.id in ("activity-table", "notes-table", "meetings-table"):
+            self.action_edit_item()
 
     def trigger_row_edit(self, table: InfoTable) -> None:
         row_idx = table.cursor_row
@@ -1767,40 +1795,237 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
         return rows
 
-    def _create_meetings_table(self) -> MeetingsTable:
-        table = MeetingsTable(id="meetings-table")
-        table.add_column("Date/Time", width=20)
-        table.add_column("Preview", width=40)
-        for dt_str, preview_text in self._upcoming_schedule_rows():
-            table.add_row(dt_str, preview_text, height=PREVIEW_MAX_LINES)
-        meetings = self.company_data.get("meetings", [])
-        for m in meetings:
-            raw_dt = m.get("datetime_utc")
-            dt_str = "Unknown"
-            if raw_dt:
+    def _get_activities(self) -> list[CompanyActivity]:
+        """Fetch unified activities from data, disk, or synthesize from notes/meetings/callback."""
+        # 1. Directly in company_data
+        raw = self.company_data.get("activity")
+        if raw:
+            res: list[CompanyActivity] = []
+            for item in raw:
+                if isinstance(item, CompanyActivity):
+                    res.append(item)
+                elif isinstance(item, dict):
+                    res.append(CompanyActivity(**item))
+            return res
+
+        # 2. Try loading from company_service
+        slug = self.company_data.get("company", {}).get("slug")
+        if slug:
+            try:
+                from ...application.company_service import get_company_activity
+
+                disk_activities = get_company_activity(slug, include_scheduled=True)
+                if disk_activities:
+                    return disk_activities
+            except Exception as e:
+                logger.debug("Could not load activity for %s: %s", slug, e)
+
+        # 3. Fallback: synthesize from company_data (for in-memory fixtures / mock tests)
+        activities: list[CompanyActivity] = []
+        now = datetime.now(UTC)
+
+        # Notes in company_data
+        for n in self.company_data.get("notes", []):
+            ts = n.get("timestamp")
+            if isinstance(ts, str):
+                try:
+                    ts = datetime.fromisoformat(ts)
+                except Exception:
+                    ts = now
+            elif not isinstance(ts, datetime):
+                ts = now
+            title = str(n.get("title") or "Note")
+            content = str(n.get("content") or "")
+            n_type = str(n.get("type") or "note").lower()
+            file_path = Path(n["file_path"]) if n.get("file_path") else None
+            meta = {
+                k: v
+                for k, v in n.items()
+                if k not in ("title", "content", "timestamp", "file_path")
+            }
+            clean_act_type: Literal["call", "email", "note", "meeting"] = (
+                "call" if n_type == "call" else ("email" if n_type == "email" else "note")
+            )
+            activities.append(
+                CompanyActivity(
+                    timestamp=ts,
+                    activity_type=clean_act_type,
+                    icon="📞" if clean_act_type == "call" else ("✉" if clean_act_type == "email" else "📝"),
+                    title=title,
+                    preview=format_activity_preview(n).plain,
+                    content=content,
+                    file_path=file_path,
+                    metadata=meta,
+                    is_scheduled=False,
+                )
+            )
+
+        # Meetings in company_data
+        for m in self.company_data.get("meetings", []):
+            raw_dt = m.get("datetime_utc") or m.get("timestamp")
+            if isinstance(raw_dt, str):
                 try:
                     dt = datetime.fromisoformat(raw_dt)
-                    dt_str = dt.strftime("%Y-%m-%d %H:%M")
-                except (ValueError, TypeError):
-                    dt_str = str(raw_dt)[:16]
-
-            content = m.get("content", "")[:100].replace("\n", " ")
-            m_type = m.get("type", "meeting")
-            preview_text = wrap_content(f"[{m_type}] {content}")
-            table.add_row(dt_str, preview_text, height=PREVIEW_MAX_LINES)
-        return table
-
-    def _create_notes_table(self) -> NotesTable:
-        table = NotesTable(id="notes-table")
-        table.add_column("Date", width=12)
-        table.add_column("Preview", width=40)
-        notes = notes_newest_first(list(self.company_data.get("notes", [])))
-        for n in notes:
-            ts = n.get("timestamp")
-            if isinstance(ts, datetime):
-                ts_str = ts.strftime("%Y-%m-%d")
+                except Exception:
+                    dt = now
+            elif isinstance(raw_dt, datetime):
+                dt = raw_dt
             else:
-                ts_str = str(ts)[:10]
-            preview_text = format_note_preview(n)
-            table.add_row(ts_str, preview_text, height=PREVIEW_MAX_LINES)
+                dt = now
+            dt_aware = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+            is_future = dt_aware > now
+            title = str(m.get("title") or "Meeting")
+            content = str(m.get("content") or "")
+            file_path = Path(m["file_path"]) if m.get("file_path") else None
+            meta = {
+                k: v
+                for k, v in m.items()
+                if k not in ("title", "content", "timestamp", "datetime_utc", "file_path")
+            }
+            activities.append(
+                CompanyActivity(
+                    timestamp=dt,
+                    activity_type="meeting",
+                    icon="📅",
+                    title=title,
+                    preview=f"[{m.get('type', 'meeting')}] {content[:80]}",
+                    content=content,
+                    file_path=file_path,
+                    metadata=meta,
+                    is_scheduled=is_future,
+                )
+            )
+
+        # Scheduled callback
+        company_info = self.company_data.get("company", {})
+        cb_raw = company_info.get("callback_at")
+        if cb_raw:
+            try:
+                cb_dt = (
+                    datetime.fromisoformat(str(cb_raw))
+                    if isinstance(cb_raw, str)
+                    else cb_raw
+                )
+                cb_dt_aware = (
+                    cb_dt.replace(tzinfo=UTC) if cb_dt.tzinfo is None else cb_dt
+                )
+                overdue = cb_dt_aware <= now
+                label = "Callback overdue" if overdue else "Callback scheduled"
+                activities.append(
+                    CompanyActivity(
+                        timestamp=cb_dt,
+                        activity_type="call",
+                        icon="📞",
+                        title=label,
+                        preview=f"[{label}]",
+                        content="",
+                        file_path=None,
+                        metadata={"overdue": overdue, "scheduled": True},
+                        is_scheduled=True,
+                    )
+                )
+            except Exception:
+                pass
+
+        # Pending follow-ups
+        if slug:
+            try:
+                from ...core.config import get_campaign
+
+                campaign = get_campaign()
+                if campaign:
+                    from ...application.follow_up_service import FollowUpService
+
+                    for task in FollowUpService(campaign).list_pending(slug):
+                        fmt = task.format or "email"
+                        task_act_type: Literal["call", "email", "note", "meeting"] = (
+                            "email" if fmt == "email" else "call"
+                        )
+                        activities.append(
+                            CompanyActivity(
+                                timestamp=task.scheduled_at,
+                                activity_type=task_act_type,
+                                icon="✉" if task_act_type == "email" else "📞",
+                                title=f"Follow-up: {fmt}",
+                                preview=f"[Follow-up: {fmt}] {task.template_id or fmt}",
+                                content=task.template_id or "",
+                                file_path=None,
+                                metadata={"task_id": task.task_id, "scheduled": True},
+                                is_scheduled=True,
+                            )
+                        )
+            except Exception:
+                pass
+
+        def _ts_aware(a: CompanyActivity) -> datetime:
+            t = a.timestamp
+            return t.replace(tzinfo=UTC) if t.tzinfo is None else t
+
+        b0 = sorted(
+            [a for a in activities if a.is_scheduled and _ts_aware(a) > now],
+            key=_ts_aware,
+            reverse=True,
+        )
+        b1 = sorted(
+            [a for a in activities if a.is_scheduled and _ts_aware(a) <= now],
+            key=_ts_aware,
+            reverse=True,
+        )
+        b2 = sorted(
+            [a for a in activities if not a.is_scheduled],
+            key=_ts_aware,
+            reverse=True,
+        )
+        return b0 + b1 + b2
+
+    def _create_activity_table(self) -> ActivityTable:
+        table = ActivityTable(id="activity-table")
+        table.add_column("Date/Time", width=10)
+        table.add_column("Preview", width=48)
+        self.activity_table = table
+        self.refresh_activity_table()
         return table
+
+    def refresh_activity_table(self) -> None:
+        """Repopulate the unified activity table with stacked date/time and now-divider."""
+        self.activity_table.clear()
+        self._activity_row_items = []
+        activities = self._get_activities()
+
+        scheduled_items = [a for a in activities if a.is_scheduled]
+        past_items = [a for a in activities if not a.is_scheduled]
+        now_utc = datetime.now(UTC)
+
+        # 1. Scheduled items (above now)
+        for a in scheduled_items:
+            ts = a.timestamp
+            ts_aware = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts
+            is_overdue = ts_aware <= now_utc
+            dt_text = format_activity_datetime(ts, is_scheduled=True, is_overdue=is_overdue)
+            preview_text = format_activity_preview(a)
+            self.activity_table.add_row(dt_text, preview_text, height=2)
+            self._activity_row_items.append(a)
+
+        # 2. Thin 50% opacity yellow HR for now-time
+        if scheduled_items:
+            divider_dt = Text("──────", style="dim yellow")
+            divider_line = Text("── now ───────────────────────────────────", style="dim yellow")
+            self.activity_table.add_row(divider_dt, divider_line, height=1, key="now-divider")
+            self._activity_row_items.append(None)
+
+        # 3. Past history items (below now)
+        for a in past_items:
+            ts = a.timestamp
+            dt_text = format_activity_datetime(ts, is_scheduled=False, is_overdue=False)
+            preview_text = format_activity_preview(a)
+            self.activity_table.add_row(dt_text, preview_text, height=2)
+            self._activity_row_items.append(a)
+
+        if self.activity_table.has_focus:
+            self.activity_table.focus()
+
+    def _create_meetings_table(self) -> ActivityTable:
+        return self._create_activity_table()
+
+    def _create_notes_table(self) -> ActivityTable:
+        return self._create_activity_table()

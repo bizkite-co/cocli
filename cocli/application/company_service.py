@@ -560,6 +560,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[dict[str, Any]]:
         "contacts": contacts,
         "meetings": meetings,
         "notes": notes,
+        "activity": get_company_activity(company_slug),
     }
 
 
@@ -731,8 +732,10 @@ def backfill_campaigns_from_tags(*, dry_run: bool = True) -> dict[str, Any]:
     }
 
 
-def get_company_activity(company_slug: str) -> list[CompanyActivity]:
-    """Return a unified, chronological activity feed (calls, emails, notes, meetings)
+def get_company_activity(
+    company_slug: str, include_scheduled: bool = True
+) -> list[CompanyActivity]:
+    """Return a unified, chronological activity feed (calls, emails, notes, meetings, and scheduled follow-ups)
     for a company, with duplicate calls across notes/ and meetings/ reconciled.
     """
     from ..core.paths import paths
@@ -747,6 +750,7 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
         return []
 
     activities: list[CompanyActivity] = []
+    now = datetime.datetime.now(datetime.timezone.utc)
 
     # 1. Parse notes (CallNote, EmailNote, general Note)
     notes_dir = entry.path / "notes"
@@ -761,7 +765,11 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
             if isinstance(item, CallNote):
                 disposition = item.disposition or "Call"
                 clean_body = item.content.replace("\n", " ").strip()
-                preview = f"[{disposition}] {clean_body[:80]}" if clean_body else f"[{disposition}]"
+                preview = (
+                    f"[{disposition}] {clean_body[:80]}"
+                    if clean_body
+                    else f"[{disposition}]"
+                )
                 activities.append(
                     CompanyActivity(
                         timestamp=item.timestamp,
@@ -772,6 +780,7 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
                         content=item.content,
                         file_path=note_file,
                         metadata={"disposition": item.disposition, "phone": item.phone},
+                        is_scheduled=False,
                     )
                 )
             elif isinstance(item, EmailNote):
@@ -793,6 +802,7 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
                             "to_addresses": item.to_addresses,
                             "message_id": item.message_id,
                         },
+                        is_scheduled=False,
                     )
                 )
             elif isinstance(item, Note):
@@ -807,6 +817,7 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
                         preview=preview,
                         content=item.content,
                         file_path=note_file,
+                        is_scheduled=False,
                     )
                 )
 
@@ -820,6 +831,10 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
             if meeting is None:
                 continue
 
+            meeting_ts = meeting.timestamp
+            if meeting_ts.tzinfo is None:
+                meeting_ts = meeting_ts.replace(tzinfo=datetime.timezone.utc)
+
             is_call_meeting = (
                 meeting.type == "phone-call"
                 or meeting.title.lower().startswith(("logged call:", "call log:"))
@@ -830,7 +845,12 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
                 is_dupe = False
                 for existing in activities:
                     if existing.activity_type == "call":
-                        dt_diff = abs((existing.timestamp - meeting.timestamp).total_seconds())
+                        existing_ts = (
+                            existing.timestamp.replace(tzinfo=datetime.timezone.utc)
+                            if existing.timestamp.tzinfo is None
+                            else existing.timestamp
+                        )
+                        dt_diff = abs((existing_ts - meeting_ts).total_seconds())
                         if dt_diff < 120:
                             is_dupe = True
                             break
@@ -846,10 +866,12 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
                             content=meeting.content,
                             file_path=meeting_file,
                             metadata={"meeting_type": meeting.type},
+                            is_scheduled=False,
                         )
                     )
             else:
                 clean_content = meeting.content.replace("\n", " ").strip()
+                is_future = meeting_ts > now
                 activities.append(
                     CompanyActivity(
                         timestamp=meeting.timestamp,
@@ -860,16 +882,93 @@ def get_company_activity(company_slug: str) -> list[CompanyActivity]:
                         content=meeting.content,
                         file_path=meeting_file,
                         metadata={"meeting_type": meeting.type},
+                        is_scheduled=is_future,
                     )
                 )
 
-    # Sort newest first
-    def _ts_key(a: CompanyActivity) -> datetime.datetime:
-        ts = a.timestamp
-        if ts.tzinfo is None:
-            return ts.replace(tzinfo=datetime.timezone.utc)
-        return ts
+    # 3. Parse scheduled callbacks and follow-ups (if requested)
+    if include_scheduled:
+        company = Company.from_directory(entry.path)
+        if company and company.callback_at:
+            cb_dt = company.callback_at
+            if cb_dt.tzinfo is None:
+                cb_dt = cb_dt.replace(tzinfo=datetime.timezone.utc)
+            # Reconcile: check if a call already occurred after or around callback_at
+            fulfilled = any(
+                a.activity_type == "call"
+                and not a.is_scheduled
+                and (
+                    a.timestamp.replace(tzinfo=datetime.timezone.utc)
+                    if a.timestamp.tzinfo is None
+                    else a.timestamp
+                )
+                >= cb_dt - datetime.timedelta(minutes=5)
+                for a in activities
+            )
+            if not fulfilled:
+                overdue = cb_dt <= now
+                label = "Callback overdue" if overdue else "Callback scheduled"
+                activities.append(
+                    CompanyActivity(
+                        timestamp=cb_dt,
+                        activity_type="call",
+                        icon="📞",
+                        title=label,
+                        preview=f"[{label}]",
+                        content="",
+                        file_path=None,
+                        metadata={"overdue": overdue, "scheduled": True},
+                        is_scheduled=True,
+                    )
+                )
 
-    activities.sort(key=_ts_key, reverse=True)
-    return activities
+        from ..core.config import get_campaign
+
+        campaign_name = get_campaign()
+        if campaign_name:
+            try:
+                from .follow_up_service import FollowUpService
+
+                for task in FollowUpService(campaign_name).list_pending(company_slug):
+                    task_dt = task.scheduled_at
+                    if task_dt.tzinfo is None:
+                        task_dt = task_dt.replace(tzinfo=datetime.timezone.utc)
+                    fmt = task.format or "email"
+                    icon = "✉" if fmt == "email" else "📞"
+                    detail = task.template_id or fmt
+                    activities.append(
+                        CompanyActivity(
+                            timestamp=task_dt,
+                            activity_type=fmt,
+                            icon=icon,
+                            title=f"Follow-up: {fmt}",
+                            preview=f"[Follow-up: {fmt}] {detail}",
+                            content=task.template_id or "",
+                            file_path=None,
+                            metadata={
+                                "task_id": task.task_id,
+                                "scheduled": True,
+                                "format": fmt,
+                                "template_id": task.template_id,
+                            },
+                            is_scheduled=True,
+                        )
+                    )
+            except Exception as e:
+                logger.debug("Could not load pending follow-ups for %s: %s", company_slug, e)
+
+    # Sort buckets:
+    # Bucket 0: future scheduled items (farthest in future first, closest to now last)
+    # Bucket 1: overdue scheduled items (closest to now first)
+    # Bucket 2: past history items (newest first)
+    def _ts_aware(a: CompanyActivity) -> datetime.datetime:
+        ts = a.timestamp
+        return ts.replace(tzinfo=datetime.timezone.utc) if ts.tzinfo is None else ts
+
+    b0 = sorted([a for a in activities if a.is_scheduled and _ts_aware(a) > now], key=_ts_aware, reverse=True)
+    b1 = sorted([a for a in activities if a.is_scheduled and _ts_aware(a) <= now], key=_ts_aware, reverse=True)
+    b2 = sorted([a for a in activities if not a.is_scheduled], key=_ts_aware, reverse=True)
+
+    return b0 + b1 + b2
+
 

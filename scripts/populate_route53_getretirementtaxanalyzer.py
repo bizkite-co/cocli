@@ -3,9 +3,9 @@
 Includes the updated SPF record authorizing Microsoft 365 Exchange, GoDaddy, and AWS SES.
 """
 
-import json
 import logging
-import boto3
+
+from cocli.core.reporting import get_boto3_session
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -308,7 +308,7 @@ CHANGES = [
 
 
 def main() -> None:
-    session = boto3.Session(profile_name=PROFILE)
+    session = get_boto3_session({}, profile_name=PROFILE)
     r53 = session.client("route53")
 
     logger.info("Applying %d resource record sets to Route 53 zone %s...", len(CHANGES), HOSTED_ZONE_ID)

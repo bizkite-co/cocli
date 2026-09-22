@@ -84,7 +84,7 @@ async def test_reply_email_prefills_from_note(
         detail = CompanyDetail(mock_company_data)
         await app.query_one("#app_content").mount(detail)
         await driver.pause(0.1)
-        app.query_one("#panel-notes").focus()
+        app.query_one("#panel-activity").focus()
         await driver.pause(0.1)
         await driver.press("i")
         assert app.query_one(NotesTable).has_focus

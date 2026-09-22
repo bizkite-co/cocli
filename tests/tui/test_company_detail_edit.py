@@ -113,13 +113,13 @@ async def test_edit_meeting_flow(mock_get_details, mock_get_editor, mock_company
         await app.query_one("#app_content").mount(detail)
         await pilot.pause()
 
-        # 1. Focus Meetings Panel
-        # Info(h) -> Contacts(l) -> Meetings(j)
+        # 1. Focus Activity Panel
+        # Info(h) -> Contacts(l) -> Activity(j)
         await pilot.press("l") # to engagement col
-        await pilot.press("j") # to meetings
+        await pilot.press("j") # to activity
         
-        meetings_panel = app.query_one("#panel-meetings")
-        assert meetings_panel.has_focus
+        activity_panel = app.query_one("#panel-activity")
+        assert activity_panel.has_focus
         
         # 2. Enter quadrant (focus table)
         await pilot.press("i")
