@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from cocli.utils.calling_provider import (
     BrowserTabCallingProvider,
     GoogleVoiceEdgeAppProvider,
     QuoCallingProvider,
+    TwilioBridgeCallingProvider,
     get_calling_provider,
     google_voice_config,
 )
@@ -238,3 +239,75 @@ def test_quo_calling_provider_web_mode() -> None:
         assert provider.dial("5551234567") is True
 
     fake_open.assert_called_once_with("https://my.openphone.com/call?number=+15551234567")
+
+
+def test_twilio_bridge_calling_provider_is_configured() -> None:
+    unconfigured = TwilioBridgeCallingProvider(account_sid="AC123")
+    assert unconfigured.is_configured() is False
+
+    configured = TwilioBridgeCallingProvider(
+        account_sid="AC123",
+        auth_token="token456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    assert configured.is_configured() is True
+
+
+def test_twilio_bridge_calling_provider_unconfigured_fails_gracefully() -> None:
+    provider = TwilioBridgeCallingProvider()
+    with patch("cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True):
+        assert provider.dial("5551234567") is False
+
+
+def test_twilio_bridge_calling_provider_initiates_api_call() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="secret456",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+        recording_callback_url="https://example.com/webhook/recording",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"sid": "CA999888777", "status": "queued"}
+
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "requests.post", return_value=mock_resp
+    ) as fake_post, patch(
+        "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+    ) as fake_copy:
+        assert provider.dial("5551234567") is True
+
+    fake_copy.assert_called_once_with("+15551234567")
+    fake_post.assert_called_once()
+    args, kwargs = fake_post.call_args
+    assert args[0] == "https://api.twilio.com/2010-04-01/Accounts/ACtest123/Calls.json"
+    assert kwargs["auth"] == ("ACtest123", "secret456")
+    data = kwargs["data"]
+    assert data["To"] == "+19095551234"
+    assert data["From"] == "+19093232647"
+    assert "<Number>+15551234567</Number>" in data["Twiml"]
+    assert 'callerId="+19093232647"' in data["Twiml"]
+    assert 'record="record-from-answer"' in data["Twiml"]
+    assert data["RecordingStatusCallback"] == "https://example.com/webhook/recording"
+
+
+def test_get_calling_provider_returns_twilio() -> None:
+    with patch("cocli.core.config.get_campaign", return_value=None), patch(
+        "cocli.core.config.load_global_config",
+        return_value={
+            "calling": {"provider": "twilio"},
+            "twilio": {
+                "account_sid": "AC123",
+                "auth_token": "token456",
+                "caller_id": "+19093232647",
+                "my_phone": "+19095551234",
+            },
+        },
+    ):
+        provider = get_calling_provider(None)
+
+    assert isinstance(provider, TwilioBridgeCallingProvider)
+    assert provider.account_sid == "AC123"
+    assert provider.caller_id == "+19093232647"

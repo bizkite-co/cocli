@@ -9,10 +9,14 @@ Supports multiple dialer providers:
      pre-filled, without requiring a static app ID.
    - BrowserTabCallingProvider fallback to open in a normal browser tab.
    - Always copies the cleaned E.164 phone number to the clipboard as a fallback.
-2. Quo / OpenPhone:
+2. Twilio Call Bridging (Option 2):
+   - Outbound click-to-call bridging via Twilio Voice REST API.
+   - Rings your mobile phone first, then dials the prospect presenting your business
+     caller ID, recording the call for transcription and CRM note creation.
+3. Quo / OpenPhone:
    - Launches via OpenPhone desktop application protocol (openphone://call?number=...)
      or system tel: URI scheme, falling back to the Quo web application.
-3. BrowserTabCallingProvider:
+4. BrowserTabCallingProvider:
    - Opens the dialer URL in a standard browser tab.
 """
 
@@ -309,6 +313,124 @@ class QuoCallingProvider:
 OpenPhoneCallingProvider = QuoCallingProvider
 
 
+class TwilioBridgeCallingProvider:
+    """Outbound click-to-call bridging via Twilio Voice REST API.
+
+    When dialing, Twilio calls `my_phone` (your personal mobile phone) first.
+    When you answer, Twilio executes inline TwiML to dial `phone` (the prospect)
+    presenting `caller_id` (your Twilio business number) and records the call.
+    """
+
+    def __init__(
+        self,
+        account_sid: Optional[str] = None,
+        auth_token: Optional[str] = None,
+        caller_id: Optional[str] = None,
+        my_phone: Optional[str] = None,
+        recording_callback_url: Optional[str] = None,
+        record: bool = True,
+    ):
+        self.account_sid = account_sid or os.environ.get("TWILIO_ACCOUNT_SID")
+        self.auth_token = auth_token or os.environ.get("TWILIO_AUTH_TOKEN")
+        self.caller_id = caller_id or os.environ.get("TWILIO_CALLER_ID") or os.environ.get("TWILIO_PHONE_NUMBER")
+        self.my_phone = my_phone or os.environ.get("TWILIO_MY_PHONE") or os.environ.get("TWILIO_BRIDGE_TO")
+        self.recording_callback_url = recording_callback_url or os.environ.get("TWILIO_RECORDING_CALLBACK_URL")
+        self.record = record
+
+    def is_configured(self) -> bool:
+        return bool(self.account_sid and self.auth_token and self.caller_id and self.my_phone)
+
+    def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
+        import requests
+
+        cleaned_prospect = clean_phone_e164(phone)
+        copy_to_windows_clipboard(cleaned_prospect)
+
+        if not self.is_configured():
+            logger.error(
+                "Twilio calling provider is missing required configuration: "
+                "account_sid=%s, auth_token=%s, caller_id=%s, my_phone=%s",
+                bool(self.account_sid),
+                bool(self.auth_token),
+                bool(self.caller_id),
+                bool(self.my_phone),
+            )
+            return False
+
+        assert self.caller_id is not None
+        assert self.my_phone is not None
+        assert self.account_sid is not None
+        assert self.auth_token is not None
+
+        cleaned_caller_id = clean_phone_e164(self.caller_id)
+        cleaned_my_phone = clean_phone_e164(self.my_phone)
+
+        # Inline TwiML executed when you pick up your phone:
+        # Twilio dials the prospect with your business caller ID and starts recording.
+        record_attr = ' record="record-from-answer"' if self.record else ""
+        twiml = (
+            f"<Response>"
+            f'<Dial callerId="{cleaned_caller_id}"{record_attr}>'
+            f"<Number>{cleaned_prospect}</Number>"
+            f"</Dial>"
+            f"</Response>"
+        )
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Calls.json"
+        data: dict[str, str] = {
+            "To": cleaned_my_phone,
+            "From": cleaned_caller_id,
+            "Twiml": twiml,
+        }
+        if self.recording_callback_url:
+            data["RecordingStatusCallback"] = self.recording_callback_url
+            data["RecordingStatusCallbackEvent"] = "completed"
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug("TwilioBridgeCallingProvider: simulated call in test mode")
+            return True
+
+        try:
+            resp = requests.post(
+                url,
+                data=data,
+                auth=(self.account_sid, self.auth_token),
+                timeout=10,
+            )
+            if resp.status_code in (200, 201):
+                call_info = resp.json()
+                call_sid = call_info.get("sid", "unknown")
+                logger.info(
+                    "Twilio bridge call initiated (SID: %s). Ringing %s to connect with %s",
+                    call_sid,
+                    cleaned_my_phone,
+                    cleaned_prospect,
+                )
+                return True
+            else:
+                logger.error(
+                    "Twilio API call failed with status %d: %s",
+                    resp.status_code,
+                    resp.text,
+                )
+                return False
+        except Exception as exc:
+            logger.error("Failed to initiate Twilio bridge call: %s", exc)
+            return False
+
+
+def twilio_config(campaign_name: Optional[str] = None) -> dict[str, Any]:
+    from cocli.core.config import get_campaign, load_campaign_config, load_global_config
+    from cocli.core.utils import deep_merge
+
+    camp = campaign_name or get_campaign()
+    merged: dict[str, Any] = dict(load_global_config().get("twilio", {}) or {})
+    if camp:
+        campaign_tw = load_campaign_config(camp).get("twilio", {}) or {}
+        merged = deep_merge(merged, campaign_tw)
+    return merged
+
+
 def google_voice_config(campaign_name: Optional[str]) -> dict[str, Any]:
     from cocli.core.config import get_campaign, load_campaign_config, load_global_config
     from cocli.core.utils import deep_merge
@@ -325,25 +447,52 @@ def get_calling_provider(campaign_name: Optional[str] = None) -> CallingProvider
     """Pick the configured calling provider.
 
     Resolution:
-    1. If `provider` is "quo" or "openphone", return QuoCallingProvider.
-    2. If `provider` is "browser_tab", return BrowserTabCallingProvider.
-    3. If `provider` is "google_voice" (default):
+    1. If `provider` is "twilio", "twilio_bridge", or "bridge", return TwilioBridgeCallingProvider.
+    2. If `provider` is "quo" or "openphone", return QuoCallingProvider.
+    3. If `provider` is "browser_tab", return BrowserTabCallingProvider.
+    4. If `provider` is "google_voice" (default):
        - If on WSL2, Windows, or a desktop with Chromium browser, return
          GoogleVoiceEdgeAppProvider (which attempts PWA/proxy launch, then
          standalone Chromium --app mode, then falls back to browser tab).
        - Otherwise return BrowserTabCallingProvider.
     """
-    gv_cfg = google_voice_config(campaign_name)
-    edge_app_id = gv_cfg.get("edge_app_id")
-    provider_name = str(gv_cfg.get("provider", "google_voice")).lower()
+    from cocli.core.config import get_campaign, load_campaign_config, load_global_config
+
+    camp = campaign_name or get_campaign()
+    global_cfg = load_global_config()
+    camp_cfg = load_campaign_config(camp) if camp else {}
+
+    provider_name = (
+        camp_cfg.get("calling", {}).get("provider")
+        or camp_cfg.get("google_voice", {}).get("provider")
+        or global_cfg.get("calling", {}).get("provider")
+        or global_cfg.get("google_voice", {}).get("provider")
+        or global_cfg.get("twilio", {}).get("provider")
+        or "google_voice"
+    )
+    provider_name = str(provider_name).lower()
+
+    if provider_name in ("twilio", "twilio_bridge", "bridge"):
+        tw_cfg = twilio_config(campaign_name)
+        return TwilioBridgeCallingProvider(
+            account_sid=tw_cfg.get("account_sid"),
+            auth_token=tw_cfg.get("auth_token"),
+            caller_id=tw_cfg.get("caller_id") or tw_cfg.get("business_number"),
+            my_phone=tw_cfg.get("my_phone") or tw_cfg.get("bridge_to"),
+            recording_callback_url=tw_cfg.get("recording_callback_url"),
+            record=bool(tw_cfg.get("record", True)),
+        )
 
     if provider_name in ("quo", "openphone"):
+        gv_cfg = google_voice_config(campaign_name)
         return QuoCallingProvider(use_web=bool(gv_cfg.get("use_web", False)))
 
     if provider_name in ("browser_tab", "tab"):
         return BrowserTabCallingProvider()
 
     if provider_name == "google_voice":
+        gv_cfg = google_voice_config(campaign_name)
+        edge_app_id = gv_cfg.get("edge_app_id")
         if is_wsl() or sys.platform == "win32" or find_browser_app_binary():
             return GoogleVoiceEdgeAppProvider(edge_app_id=str(edge_app_id) if edge_app_id else None)
         return BrowserTabCallingProvider()

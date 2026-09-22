@@ -861,12 +861,18 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
             # 1. Open Google Voice (or whichever calling provider is configured)
             from ...core.config import get_campaign
-            from ...utils.calling_provider import GoogleVoiceEdgeAppProvider, get_calling_provider
+            from ...utils.calling_provider import (
+                GoogleVoiceEdgeAppProvider,
+                TwilioBridgeCallingProvider,
+                get_calling_provider,
+            )
 
             provider = get_calling_provider(get_campaign())
             voice_opened = provider.dial(str(phone), get_campaign())
             paste_hint = (
-                " (Google Voice PWA)"
+                " (Twilio Bridge: ringing your phone)"
+                if isinstance(provider, TwilioBridgeCallingProvider)
+                else " (Google Voice PWA)"
                 if isinstance(provider, GoogleVoiceEdgeAppProvider)
                 else ""
             )
