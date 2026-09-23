@@ -549,3 +549,34 @@ async def test_alt_s_while_typing_exits_insert_mode_not_the_screen(
         assert modal.query_one("#call_notes").text == "Do not lose this."
         # Focus moved off the TextArea - that's the "exit insert mode" part.
         assert not notes.has_focus
+
+
+@pytest.mark.asyncio
+async def test_call_log_modal_displays_calling_from_in_yellow(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Outbound caller ID is rendered in bold yellow in the call logging screen."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="Yellow Co",
+        slug="yellow-co",
+        domain="yellow.com",
+        phone="555-333-1111",
+    )
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(
+            company_slug="yellow-co",
+            phone="555-333-1111",
+            caller_id="+17144514350",
+        )
+        app.push_screen(modal)
+        await driver.pause()
+
+        content = str(modal.query_one("#call_phone").content)
+        assert "(555) 333-1111" in content
+        assert "Calling from: [bold yellow](714) 451-4350[/bold yellow]" in content

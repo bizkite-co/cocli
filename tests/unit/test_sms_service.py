@@ -202,3 +202,41 @@ def test_sync_messages_cli_command(tmp_path: Path, monkeypatch) -> None:
         assert result.exit_code == 0
         assert "Synced 1 SMS messages" in result.output
         assert "SM1234" in result.output
+
+
+def test_phone_status_cli_command() -> None:
+    mock_provider = MagicMock(spec=TwilioBridgeCallingProvider)
+    mock_provider.is_configured.return_value = True
+    mock_provider.caller_id = "+17144514350"
+    mock_provider.get_incoming_phone_number.return_value = {
+        "sid": "PN123456",
+        "phone_number": "+17144514350",
+        "friendly_name": "Business Line",
+        "sms_url": "https://handler.twilio.com/twiml/EHtest",
+        "sms_method": "POST",
+        "voice_url": "",
+        "capabilities": {"sms": True, "voice": True},
+    }
+
+    with patch("cocli.commands.calling.get_calling_provider", return_value=mock_provider):
+        result = runner.invoke(app, ["phone-status"])
+        assert result.exit_code == 0
+        assert "PN123456" in result.output
+        assert "https://handler.twilio.com/twiml/EHtest" in result.output
+
+
+def test_set_sms_forwarding_cli_command() -> None:
+    mock_provider = MagicMock(spec=TwilioBridgeCallingProvider)
+    mock_provider.is_configured.return_value = True
+    mock_provider.caller_id = "+17144514350"
+    mock_provider.update_incoming_phone_number_sms_url.return_value = (True, "PN123456")
+
+    with patch("cocli.commands.calling.get_calling_provider", return_value=mock_provider):
+        result = runner.invoke(
+            app,
+            ["set-sms-forwarding", "--twiml-url", "https://handler.twilio.com/twiml/EHnew"],
+        )
+        assert result.exit_code == 0
+        assert "Successfully updated Twilio phone number" in result.output
+        assert "EHnew" in result.output
+

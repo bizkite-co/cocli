@@ -959,8 +959,11 @@ class CompanyDetail(MarkPrefixMixin, Container):
             # dismissed before refreshing (see docstring).
             from .call_log_modal import CallLogModal
 
+            caller_id = getattr(provider, "caller_id", None)
             await self.app.push_screen_wait(
-                CallLogModal(company_slug=slug, phone=str(phone))
+                CallLogModal(
+                    company_slug=slug, phone=str(phone), caller_id=caller_id
+                )
             )
 
             self.refresh_notes_data()

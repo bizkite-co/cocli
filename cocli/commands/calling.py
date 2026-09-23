@@ -4,6 +4,7 @@ lives here instead of in campaign config.toml)."""
 
 from __future__ import annotations
 
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -216,6 +217,8 @@ def status() -> None:
         tw_provider = TwilioBridgeCallingProvider(
             account_sid=tw_cfg.get("account_sid"),
             auth_token=tw_cfg.get("auth_token"),
+            api_key=tw_cfg.get("api_key"),
+            api_secret=tw_cfg.get("api_secret"),
             caller_id=tw_cfg.get("caller_id") or tw_cfg.get("business_number"),
             my_phone=tw_cfg.get("my_phone") or tw_cfg.get("bridge_to"),
             recording_callback_url=tw_cfg.get("recording_callback_url"),
@@ -228,14 +231,20 @@ def status() -> None:
             if len(sid_raw) > 10
             else (sid_raw or "(not set)")
         )
-        token_status = "(set)" if tw_provider.auth_token else "(not set)"
+        if tw_provider.api_key:
+            auth_status = f"API Key ({tw_provider.api_key[:6]}...)"
+        elif tw_provider.auth_token:
+            auth_status = "Auth Token (set)"
+        else:
+            auth_status = "(not set)"
+
         ready_status = (
             "[bold green]Ready[/bold green]"
             if tw_provider.is_configured()
             else "[bold red]Incomplete[/bold red]"
         )
         console.print(f"Twilio Account SID: {sid_masked}")
-        console.print(f"Twilio Auth Token: {token_status}")
+        console.print(f"Twilio Auth: {auth_status}")
         console.print(
             f"Twilio Caller ID (Business): {tw_provider.caller_id or '(not set)'}"
         )
@@ -250,6 +259,25 @@ def status() -> None:
         )
         console.print(f"Twilio Status: {ready_status}")
         if tw_provider.is_configured():
+            # Query live account details
+            acc_info = tw_provider.get_account_info()
+            if acc_info:
+                acc_type = acc_info.get("type", "Full")
+                type_styled = (
+                    "[bold green]Full (Upgraded)[/bold green]"
+                    if str(acc_type).lower() == "full"
+                    else f"[bold yellow]{acc_type}[/bold yellow]"
+                )
+                console.print(f"Twilio Account Type: {type_styled}")
+                console.print(f"Twilio Account Status: [green]{acc_info.get('status', 'active')}[/green]")
+            num_info = tw_provider.get_incoming_phone_number()
+            if num_info:
+                sms_url = num_info.get("sms_url")
+                if sms_url:
+                    console.print(f"Twilio SMS Forwarding (SmsUrl): [bold green]{sms_url}[/bold green]")
+                else:
+                    console.print("Twilio SMS Forwarding (SmsUrl): [dim](none configured - SMS forwarding inactive)[/dim]")
+
             is_low, bal, curr = tw_provider.is_low_balance()
             if bal is not None:
                 c = curr or "USD"
@@ -317,4 +345,111 @@ def test(phone: str) -> None:
         )
     else:
         console.print(f"[bold red]Could not launch a call to {phone}.[/bold red]")
+        raise typer.Exit(code=1)
+
+
+@app.command("phone-status")
+def phone_status(
+    phone: Optional[str] = typer.Option(
+        None,
+        "--phone",
+        "-p",
+        help="Phone number to query (defaults to configured caller_id)",
+    ),
+) -> None:
+    """Inspect Twilio incoming phone number configuration, capabilities, and active webhooks."""
+    campaign = get_campaign()
+    provider = get_calling_provider(campaign)
+    if not isinstance(provider, TwilioBridgeCallingProvider):
+        console.print(
+            "[yellow]Phone status inspection is only active when calling provider is 'twilio'.[/yellow]"
+        )
+        return
+    if not provider.is_configured():
+        console.print(
+            "[bold red]Twilio is not fully configured. Run 'cocli calling set-twilio' first.[/bold red]"
+        )
+        return
+
+    target = phone or provider.caller_id
+    if not target:
+        console.print(
+            "[bold red]No phone number specified and no caller_id configured.[/bold red]"
+        )
+        return
+
+    console.print(f"[dim]Querying Twilio API for phone number {target}...[/dim]")
+    info = provider.get_incoming_phone_number(target)
+    if not info:
+        err = provider.last_error or "Unknown error"
+        console.print(
+            f"[bold red]Could not find phone number {target}: {err}[/bold red]"
+        )
+        return
+
+    console.print(f"[bold]Phone Number:[/] [cyan]{info.get('phone_number')}[/cyan]")
+    console.print(f"  SID: {info.get('sid')}")
+    console.print(f"  Friendly Name: {info.get('friendly_name') or '(none)'}")
+    caps = info.get("capabilities", {})
+    cap_strs = [k.upper() for k, v in caps.items() if v]
+    console.print(f"  Capabilities: {', '.join(cap_strs) if cap_strs else '(none)'}")
+    sms_url = info.get("sms_url")
+    if sms_url:
+        console.print(
+            f"  SMS Webhook (SmsUrl): [bold green]{sms_url}[/bold green] ({info.get('sms_method', 'POST')})"
+        )
+    else:
+        console.print(
+            "  SMS Webhook (SmsUrl): [bold yellow](none configured - SMS forwarding inactive)[/bold yellow]"
+        )
+    voice_url = info.get("voice_url")
+    if voice_url:
+        console.print(f"  Voice Webhook: {voice_url}")
+
+
+@app.command("set-sms-forwarding")
+def set_sms_forwarding(
+    twiml_url: str = typer.Option(
+        ...,
+        "--twiml-url",
+        "-u",
+        help="The TwiML Bin URL or webhook URL (e.g. https://handler.twilio.com/twiml/EH...)",
+    ),
+    phone: Optional[str] = typer.Option(
+        None,
+        "--phone",
+        "-p",
+        help="Twilio phone number to configure (defaults to configured caller_id)",
+    ),
+) -> None:
+    """Set the inbound SMS webhook (SmsUrl) on your Twilio phone number to forward messages."""
+    campaign = get_campaign()
+    provider = get_calling_provider(campaign)
+    if not isinstance(provider, TwilioBridgeCallingProvider):
+        console.print(
+            "[yellow]SMS forwarding configuration is only active when calling provider is 'twilio'.[/yellow]"
+        )
+        return
+    if not provider.is_configured():
+        console.print(
+            "[bold red]Twilio is not fully configured. Run 'cocli calling set-twilio' first.[/bold red]"
+        )
+        return
+
+    target = phone or provider.caller_id
+    if not target:
+        console.print(
+            "[bold red]No phone number specified and no caller_id configured.[/bold red]"
+        )
+        return
+
+    console.print(f"[dim]Setting SmsUrl on {target} to {twiml_url}...[/dim]")
+    ok, result = provider.update_incoming_phone_number_sms_url(twiml_url, target)
+    if ok:
+        console.print(
+            f"[bold green]Successfully updated Twilio phone number {target} (SID: {result})![/bold green]"
+        )
+        console.print(f"  Inbound SMS will now trigger: [cyan]{twiml_url}[/cyan]")
+    else:
+        console.print(f"[bold red]Failed to update Twilio SmsUrl: {result}[/bold red]")
         raise typer.Exit(code=1)

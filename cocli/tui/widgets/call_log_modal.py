@@ -70,10 +70,30 @@ class CallLogModal(ModalScreen[bool]):
         Binding("K,shift+k", "scroll_reference_up", "Scroll Ref Up", show=False, priority=True),
     ]
 
-    def __init__(self, company_slug: str, phone: str, *args: Any, **kwargs: Any):
+    def __init__(
+        self,
+        company_slug: str,
+        phone: str,
+        caller_id: Optional[str] = None,
+        *args: Any,
+        **kwargs: Any,
+    ):
         super().__init__(*args, **kwargs)
         self.company_slug = company_slug
         self.phone = phone
+        if caller_id is not None:
+            self.caller_id: Optional[str] = caller_id
+        else:
+            try:
+                from cocli.core.config import get_campaign, load_global_config
+                from cocli.utils.calling_provider import get_calling_provider
+
+                provider = get_calling_provider(get_campaign())
+                self.caller_id = getattr(provider, "caller_id", None) or (
+                    load_global_config().get("twilio", {}).get("caller_id")
+                )
+            except Exception:
+                self.caller_id = None
         company = Company.get(company_slug)
         self.local_time_widget = CompanyLocalTime(company=company, slug=company_slug, id="company_local_time")
         self._place: CompanyPlace = self.local_time_widget._place
@@ -98,11 +118,20 @@ class CallLogModal(ModalScreen[bool]):
         template_choices = [(NO_EMAIL_FOLLOW_UP, "")] + [(name, name) for name in template_names]
         reference = service.load_call_reference("rta")
         phone_display = format_us_phone(self.phone) or self.phone
+        caller_display = (
+            format_us_phone(self.caller_id) or self.caller_id
+            if self.caller_id
+            else None
+        )
+        if caller_display:
+            phone_markup = f"Phone: {phone_display}    Calling from: [bold yellow]{caller_display}[/bold yellow]"
+        else:
+            phone_markup = f"Phone: {phone_display}"
 
         with Container(id="call_log_form"):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield self.local_time_widget
-            yield Label(f"Phone: {phone_display}", classes="modal-subtitle", id="call_phone")
+            yield Label(phone_markup, classes="modal-subtitle", id="call_phone")
 
             with Horizontal(id="call-log-columns"):
                 with VerticalScroll(id="call-log-left"):

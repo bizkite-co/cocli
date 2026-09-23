@@ -669,3 +669,118 @@ def test_twilio_bridge_calling_provider_batch_resolves_op_secrets() -> None:
     assert kwargs["auth"] == ("ACtest123", "batch_resolved_token")
 
 
+def test_twilio_bridge_get_account_info() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "friendly_name": "My Biz Account",
+        "type": "Full",
+        "status": "active",
+        "sid": "ACtest123",
+    }
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_resp) as mock_get,
+    ):
+        info = provider.get_account_info()
+
+    assert info is not None
+    assert info["friendly_name"] == "My Biz Account"
+    assert info["type"] == "Full"
+    assert info["status"] == "active"
+    mock_get.assert_called_once()
+    assert (
+        mock_get.call_args[0][0]
+        == "https://api.twilio.com/2010-04-01/Accounts/ACtest123.json"
+    )
+
+
+def test_twilio_bridge_get_incoming_phone_number() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "incoming_phone_numbers": [
+            {
+                "sid": "PN111222333",
+                "phone_number": "+19093232647",
+                "friendly_name": "Main Office",
+                "sms_url": "https://handler.twilio.com/twiml/EHtest",
+                "sms_method": "POST",
+                "voice_url": "",
+                "capabilities": {"sms": True, "voice": True},
+            }
+        ]
+    }
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_resp) as mock_get,
+    ):
+        num_info = provider.get_incoming_phone_number()
+
+    assert num_info is not None
+    assert num_info["sid"] == "PN111222333"
+    assert num_info["sms_url"] == "https://handler.twilio.com/twiml/EHtest"
+    assert num_info["capabilities"] == {"sms": True, "voice": True}
+    mock_get.assert_called_once()
+    assert (
+        "IncomingPhoneNumbers.json"
+        in mock_get.call_args[0][0]
+    )
+
+
+def test_twilio_bridge_update_incoming_phone_number_sms_url() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 200
+    mock_get_resp.json.return_value = {
+        "incoming_phone_numbers": [
+            {
+                "sid": "PN111222333",
+                "phone_number": "+19093232647",
+                "sms_url": "https://old.url",
+            }
+        ]
+    }
+    mock_post_resp = MagicMock()
+    mock_post_resp.status_code = 200
+    mock_post_resp.json.return_value = {"sid": "PN111222333"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_get_resp),
+        patch("requests.post", return_value=mock_post_resp) as mock_post,
+    ):
+        ok, sid = provider.update_incoming_phone_number_sms_url(
+            "https://handler.twilio.com/twiml/EHnew"
+        )
+
+    assert ok is True
+    assert sid == "PN111222333"
+    mock_post.assert_called_once()
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.twilio.com/2010-04-01/Accounts/ACtest123/IncomingPhoneNumbers/PN111222333.json"
+    )
+    assert mock_post.call_args[1]["data"]["SmsUrl"] == "https://handler.twilio.com/twiml/EHnew"
+
+
+

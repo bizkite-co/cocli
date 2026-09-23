@@ -101,10 +101,15 @@ cocli
     calling - Configure the phone-dialer provider.
         balance - Check the Twilio account balance and report whether it is low.
             --refresh/-r (boolean)
+        phone-status - Inspect Twilio incoming phone number configuration, capabilities, and active webhooks.
+            --phone/-p (text)
         set-app-id - Save the Edge PWA app-id for the Google Voice provider.
             app_id (text) [required]
         set-provider - Set the calling provider ('google_voice', 'twilio', 'quo', 'openphone', or 'browser_tab').
             provider (text) [required]
+        set-sms-forwarding - Set the inbound SMS webhook (SmsUrl) on your Twilio phone number to forward messages.
+            --twiml-url/-u (text) [required]
+            --phone/-p (text)
         set-twilio - Save Twilio credentials and phone numbers for call bridging.
             --account-sid (text) [required]
             --auth-token (text)

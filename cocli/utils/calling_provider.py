@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 class CallingProvider(Protocol):
     last_error: Optional[str]
+    caller_id: Optional[str]
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         """Launch a call to `phone`. Returns True if a launch action fired."""
@@ -51,6 +52,7 @@ class BrowserTabCallingProvider:
     or available: open the Google Voice calls URL as a browser tab."""
 
     last_error: Optional[str] = None
+    caller_id: Optional[str] = None
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         return open_url(google_voice_url(phone, campaign_name))
@@ -240,6 +242,7 @@ class GoogleVoiceEdgeAppProvider:
         self.edge_app_id = edge_app_id
         self.profile_directory = profile_directory
         self.last_error: Optional[str] = None
+        self.caller_id: Optional[str] = None
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         url = google_voice_url(phone, campaign_name)
@@ -314,6 +317,7 @@ class QuoCallingProvider:
     def __init__(self, use_web: bool = False):
         self.use_web = use_web
         self.last_error: Optional[str] = None
+        self.caller_id: Optional[str] = None
 
     def dial(self, phone: str, campaign_name: Optional[str] = None) -> bool:
         cleaned = clean_phone_e164(phone)
@@ -557,6 +561,171 @@ class TwilioBridgeCallingProvider:
             self.last_error = f"Failed to fetch Twilio messages: {exc}"
             logger.warning(self.last_error)
             return []
+
+    def get_account_info(self) -> Optional[dict[str, Any]]:
+        """Query Twilio REST API for account details (status, type, friendly name).
+
+        Returns dict with keys: friendly_name, type ('Trial' or 'Full'), status, sid.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return None
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated get_account_info in test mode"
+            )
+            return {
+                "friendly_name": "Test Account",
+                "type": "Full",
+                "status": "active",
+                "sid": account_sid,
+            }
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}.json"
+        try:
+            resp = requests.get(url, auth=(auth_user, auth_pass), timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "friendly_name": data.get("friendly_name", ""),
+                    "type": data.get("type", "Full"),
+                    "status": data.get("status", "active"),
+                    "sid": data.get("sid", account_sid),
+                    "date_created": data.get("date_created", ""),
+                }
+            else:
+                self.last_error = (
+                    f"Twilio Account API error {resp.status_code}: {resp.text}"
+                )
+                logger.warning(self.last_error)
+                return None
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio account info: {exc}"
+            logger.warning(self.last_error)
+            return None
+
+    def get_incoming_phone_number(
+        self, phone_number: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
+        """Query Twilio REST API for details on an incoming phone number.
+
+        If phone_number is omitted, defaults to self.caller_id.
+        Returns dict with: sid, phone_number, friendly_name, sms_url, sms_method, voice_url, capabilities.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return None
+
+        target = phone_number or self.caller_id
+        if not target:
+            self.last_error = "No phone number specified to query"
+            return None
+        cleaned_target = clean_phone_e164(target)
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated get_incoming_phone_number in test mode"
+            )
+            return {
+                "sid": "PN1234567890abcdef1234567890abcdef",
+                "phone_number": cleaned_target,
+                "friendly_name": "Test Twilio Number",
+                "sms_url": "https://handler.twilio.com/twiml/EHsimulated",
+                "sms_method": "POST",
+                "voice_url": "https://demo.twilio.com/welcome/voice/",
+                "capabilities": {"voice": True, "sms": True, "mms": True},
+            }
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json"
+        params = {"PhoneNumber": cleaned_target}
+        try:
+            resp = requests.get(
+                url, params=params, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                numbers = data.get("incoming_phone_numbers", [])
+                if numbers:
+                    num_obj = numbers[0]
+                    return {
+                        "sid": num_obj.get("sid", ""),
+                        "phone_number": num_obj.get("phone_number", cleaned_target),
+                        "friendly_name": num_obj.get("friendly_name", ""),
+                        "sms_url": num_obj.get("sms_url", ""),
+                        "sms_method": num_obj.get("sms_method", "POST"),
+                        "voice_url": num_obj.get("voice_url", ""),
+                        "capabilities": num_obj.get("capabilities", {}),
+                    }
+                else:
+                    self.last_error = f"Twilio phone number {cleaned_target} not found on account {account_sid}"
+                    return None
+            else:
+                self.last_error = f"Twilio Phone Numbers API error {resp.status_code}: {resp.text}"
+                logger.warning(self.last_error)
+                return None
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio phone number: {exc}"
+            logger.warning(self.last_error)
+            return None
+
+    def update_incoming_phone_number_sms_url(
+        self, sms_url: str, phone_number: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """Update the SmsUrl webhook / TwiML URL for an incoming phone number.
+
+        Returns (True, sid) on success or (False, error_message) on failure.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            err = "Twilio credentials not configured or could not be resolved"
+            self.last_error = err
+            return False, err
+
+        info = self.get_incoming_phone_number(phone_number)
+        if not info or not info.get("sid"):
+            err = self.last_error or f"Could not find incoming phone number {phone_number or self.caller_id}"
+            return False, err
+
+        sid = info["sid"]
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated update_incoming_phone_number_sms_url in test mode"
+            )
+            return True, sid
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers/{sid}.json"
+        data = {"SmsUrl": sms_url, "SmsMethod": "POST"}
+        try:
+            resp = requests.post(
+                url, data=data, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code in (200, 201):
+                logger.info(
+                    "Updated Twilio phone number %s (SID: %s) SmsUrl to %s",
+                    info.get("phone_number"),
+                    sid,
+                    sms_url,
+                )
+                return True, sid
+            else:
+                err = f"Twilio API error {resp.status_code}: {resp.text}"
+                self.last_error = err
+                logger.warning(err)
+                return False, err
+        except Exception as exc:
+            err = f"Failed to update Twilio SmsUrl: {exc}"
+            self.last_error = err
+            logger.warning(err)
+            return False, err
 
     def is_low_balance(
         self, threshold: Optional[float] = None, bypass_cache: bool = False
