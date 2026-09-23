@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from datetime import datetime, UTC
 from typing import Optional, Any
@@ -117,3 +119,7 @@ class CompanyCall(BaseModel):
     title: str
     content: str
     file_path: Path
+    item_type: str = "call"
+    icon: str = "📞"
+    direction: Optional[str] = None
+

@@ -19,6 +19,7 @@ from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
 from cocli.application.event_service import EventService
 from cocli.application.meeting_service import MeetingService
+from cocli.application.email_service import EmailService
 from cocli.application.web_service import WebService
 from cocli.application.task_service import TaskService
 from cocli.application.index_service import IndexService
@@ -79,6 +80,7 @@ class ServiceContainer(BaseModel):
             self._event_service = None
             self._secret_service = None
             self._meeting_service = None
+            self._email_service = None
             self._web_service = None
             self._index_service = None
             self._task_service = None
@@ -107,6 +109,7 @@ class ServiceContainer(BaseModel):
     _event_service: Optional[Any] = PrivateAttr(default=None)
     _secret_service: Optional[Any] = PrivateAttr(default=None)
     _meeting_service: Optional[Any] = PrivateAttr(default=None)
+    _email_service: Optional[Any] = PrivateAttr(default=None)
     _web_service: Optional[Any] = PrivateAttr(default=None)
     _index_service: Optional[Any] = PrivateAttr(default=None)
     _task_service: Optional[Any] = PrivateAttr(default=None)
@@ -342,4 +345,14 @@ class ServiceContainer(BaseModel):
     @task_service.setter
     def task_service(self, value: TaskServiceProvider) -> None:
         self._task_service = value
+
+    @property
+    def email_service(self) -> EmailService:
+        if not self._email_service:
+            self._email_service = EmailService(campaign_name=self.campaign_name)
+        return cast(EmailService, self._email_service)
+
+    @email_service.setter
+    def email_service(self, value: EmailService) -> None:
+        self._email_service = value
 

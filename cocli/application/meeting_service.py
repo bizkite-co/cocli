@@ -188,8 +188,80 @@ class MeetingService:
                     title=meeting.title,
                     content=meeting.content,
                     file_path=meeting_summary.file_path,
+                    item_type="call",
+                    icon="📞",
                 )
             )
+
+        # Scan recent SMS notes from companies/ and inbox/sms/
+        local_tz: Any
+        try:
+            local_tz = get_localzone()
+        except Exception:
+            local_tz = timezone("UTC")
+
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        cutoff_utc = now_utc - datetime.timedelta(days=days_limit)
+
+        from cocli.models.companies.sms_note import SmsNote
+
+        companies_dir = paths.companies.path
+        if companies_dir.exists():
+            for comp_dir in companies_dir.iterdir():
+                if not comp_dir.is_dir():
+                    continue
+                notes_dir = comp_dir / "notes"
+                if not notes_dir.exists():
+                    continue
+                company_name = comp_dir.name.replace("-", " ").title()
+                for note_file in notes_dir.glob("*-sms-*.md"):
+                    try:
+                        sms = SmsNote.from_file(note_file)
+                        if sms and sms.timestamp >= cutoff_utc:
+                            dt_local = sms.timestamp.astimezone(local_tz)
+                            calls.append(
+                                CompanyCall(
+                                    datetime_utc=sms.timestamp,
+                                    datetime_local=dt_local,
+                                    company_name=company_name,
+                                    company_slug=comp_dir.name,
+                                    title=sms.title,
+                                    content=sms.content,
+                                    file_path=note_file,
+                                    item_type="sms",
+                                    icon="💬",
+                                    direction=sms.direction,
+                                )
+                            )
+                    except Exception as e:
+                        logger.debug(f"Error reading SMS note {note_file}: {e}")
+
+        # Also scan inbox/sms/ for unmatched SMS
+        sms_inbox = paths.sms_inbox.path
+        if sms_inbox.exists():
+            for note_file in sms_inbox.glob("*-sms-*.md"):
+                try:
+                    sms = SmsNote.from_file(note_file)
+                    if sms and sms.timestamp >= cutoff_utc:
+                        dt_local = sms.timestamp.astimezone(local_tz)
+                        calls.append(
+                            CompanyCall(
+                                datetime_utc=sms.timestamp,
+                                datetime_local=dt_local,
+                                company_name="(Unmatched)",
+                                company_slug="",
+                                title=sms.title,
+                                content=sms.content,
+                                file_path=note_file,
+                                item_type="sms",
+                                icon="💬",
+                                direction=sms.direction,
+                            )
+                        )
+                except Exception as e:
+                    logger.debug(f"Error reading inbox SMS note {note_file}: {e}")
+
+        calls.sort(key=lambda c: c.datetime_utc, reverse=True)
         return calls
 
     def get_recent_calls(self, days_limit: int = 30, use_cache: bool = True) -> list[CompanyCall]:

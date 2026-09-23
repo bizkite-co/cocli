@@ -125,6 +125,41 @@ def ingest_sms_message(
     )
     written_path = sms_note.to_file(dest_dir)
     logger.info(f"Ingested SMS {sid} to {written_path} (matched={was_matched})")
+
+    local_tz: Any
+    try:
+        from tzlocal import get_localzone
+
+        local_tz = get_localzone()
+    except Exception:
+        local_tz = UTC
+
+    try:
+        from cocli.core.config import get_campaign
+        from cocli.application.meeting_service import MeetingService
+        from cocli.models.companies.meeting import CompanyCall
+
+        camp = campaign_name or get_campaign() or "default"
+        call_item = CompanyCall(
+            datetime_utc=timestamp,
+            datetime_local=timestamp.astimezone(local_tz),
+            company_name=(
+                target_slug.replace("-", " ").title()
+                if target_slug
+                else "(Unmatched)"
+            ),
+            company_slug=target_slug or "",
+            title=title,
+            content=body,
+            file_path=written_path,
+            item_type="sms",
+            icon="💬",
+            direction=direction,
+        )
+        MeetingService(camp).record_call_in_cache(call_item)
+    except Exception as exc:
+        logger.debug(f"Could not record SMS in recent calls cache: {exc}")
+
     return written_path, was_matched
 
 

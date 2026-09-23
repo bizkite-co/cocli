@@ -13,16 +13,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
 from email.utils import formatdate, getaddresses, make_msgid, parsedate_to_datetime
 from pathlib import Path
-from typing import Callable, Optional, Protocol, Literal
+from typing import Callable, Optional, Protocol, Literal, Any
 
 from cocli.application.mail_oauth import FileOAuthTokenStore, resolve_token_cache_path
 from cocli.core.paths import paths
-from cocli.models.companies.email_note import EmailNote
+from cocli.models.companies.email_note import EmailNote, CompanyEmail
 from cocli.models.mail import (
     EmailSettings,
     MailMessage,
@@ -356,7 +356,7 @@ class EmailService:
     def __init__(
         self,
         campaign_name: str,
-        settings: EmailSettings,
+        settings: Optional[EmailSettings] = None,
         token_provider: Optional[TokenProvider] = None,
         ses_sender: Optional[MailSender] = None,
         mail_sender: Optional[MailSender] = None,
@@ -364,6 +364,13 @@ class EmailService:
         aws_profile: Optional[str] = None,
     ) -> None:
         self.campaign_name = campaign_name
+        if settings is None:
+            try:
+                from cocli.core.config import load_campaign_config
+                raw = load_campaign_config(campaign_name) if campaign_name else {}
+                settings = EmailSettings.model_validate(raw.get("email") or {})
+            except Exception:
+                settings = EmailSettings()
         self.settings = settings
         self._token_provider = token_provider
         self._mail_sender = mail_sender or ses_sender
@@ -677,7 +684,192 @@ class EmailService:
                 )
             )
 
+        local_tz: Any
+        try:
+            from tzlocal import get_localzone
+
+            local_tz = get_localzone()
+        except Exception:
+            local_tz = UTC
+
+        co_name = company_slug.replace("-", " ").title()
+        self.record_email_in_cache(
+            CompanyEmail(
+                datetime_utc=dt,
+                datetime_local=dt.astimezone(local_tz),
+                company_name=co_name,
+                company_slug=company_slug,
+                title=note.title,
+                direction=direction,
+                from_address=note.from_address,
+                to_addresses=note.to_addresses,
+                content=note.content,
+                file_path=saved_path,
+                message_id=note.message_id,
+                status="sent",
+            )
+        )
+
         return saved_path
+
+    def _emails_cache_path(self) -> Path:
+        campaign = self.campaign_name or "default"
+        return paths.campaign(campaign).path / "indexes" / "recent_emails" / "cache.json"
+
+    def _write_emails_cache(self, emails: list[CompanyEmail]) -> None:
+        try:
+            cache_path = self._emails_cache_path()
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "updated_at": datetime.now(UTC).isoformat(),
+                "emails": [e.model_dump(mode="json") for e in emails],
+            }
+            cache_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to write recent emails cache: {e}")
+
+    def record_email_in_cache(self, email_item: CompanyEmail) -> None:
+        """Write-through: prepends a newly sent/received email into cache.json without scanning."""
+        try:
+            emails = self.get_recent_emails(use_cache=True)
+            emails = [
+                e
+                for e in emails
+                if not (
+                    (email_item.message_id and e.message_id == email_item.message_id)
+                    or (
+                        email_item.file_path
+                        and e.file_path
+                        and str(e.file_path) == str(email_item.file_path)
+                    )
+                )
+            ]
+            emails.insert(0, email_item)
+            emails.sort(key=lambda e: e.datetime_utc, reverse=True)
+            self._write_emails_cache(emails)
+        except Exception as e:
+            logger.warning(f"Failed to record email in cache: {e}")
+
+    def rebuild_recent_emails_cache(self, days_limit: int = 30) -> list[CompanyEmail]:
+        emails = self._scan_recent_emails(days_limit=days_limit)
+        self._write_emails_cache(emails)
+        return emails
+
+    def get_recent_emails(
+        self, days_limit: int = 30, use_cache: bool = True
+    ) -> list[CompanyEmail]:
+        """Return recent emails (sent and received) with their content.
+        Uses cache.json for instant responses when use_cache=True.
+        """
+        cache_path = self._emails_cache_path()
+        if use_cache and cache_path.exists():
+            try:
+                content = json.loads(cache_path.read_text(encoding="utf-8"))
+                raw_emails = content.get("emails", [])
+                return [CompanyEmail.model_validate(e) for e in raw_emails]
+            except Exception as e:
+                logger.warning(
+                    f"Failed to read recent emails cache, falling back to disk scan: {e}"
+                )
+
+        return self.rebuild_recent_emails_cache(days_limit=days_limit)
+
+    def _scan_recent_emails(self, days_limit: int = 30) -> list[CompanyEmail]:
+        emails: list[CompanyEmail] = []
+        seen_message_ids: set[str] = set()
+
+        local_tz: Any
+        try:
+            from tzlocal import get_localzone
+
+            local_tz = get_localzone()
+        except Exception:
+            local_tz = UTC
+
+        now_utc = datetime.now(UTC)
+        cutoff_utc = now_utc - timedelta(days=days_limit)
+
+        # 1. Scan company notes for EmailNotes (both sent and received)
+        companies_dir = paths.companies.path
+        if companies_dir.exists():
+            for comp_dir in companies_dir.iterdir():
+                if not comp_dir.is_dir():
+                    continue
+                notes_dir = comp_dir / "notes"
+                if not notes_dir.exists():
+                    continue
+                company_name = comp_dir.name.replace("-", " ").title()
+                for note_file in notes_dir.glob("*-email-*.md"):
+                    try:
+                        email_note = EmailNote.from_file(note_file)
+                        if email_note and email_note.timestamp >= cutoff_utc:
+                            dt_local = email_note.timestamp.astimezone(local_tz)
+                            item = CompanyEmail(
+                                datetime_utc=email_note.timestamp,
+                                datetime_local=dt_local,
+                                company_name=company_name,
+                                company_slug=comp_dir.name,
+                                title=email_note.title,
+                                direction=email_note.direction,
+                                from_address=email_note.from_address,
+                                to_addresses=email_note.to_addresses,
+                                content=email_note.content,
+                                file_path=note_file,
+                                message_id=email_note.message_id,
+                                status="sent",
+                            )
+                            emails.append(item)
+                            if email_note.message_id:
+                                seen_message_ids.add(email_note.message_id)
+                    except Exception as e:
+                        logger.debug(f"Error reading email note {note_file}: {e}")
+
+        # 2. Also scan batch send log log.usv if it exists
+        try:
+            from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+            campaign = self.campaign_name or "default"
+            log_path = SendLogEntry.get_index_dir(campaign) / "log.usv"
+            if log_path.exists():
+                for line in log_path.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = SendLogEntry.from_usv(line)
+                        if entry.message_id and entry.message_id in seen_message_ids:
+                            continue
+                        if entry.sent_at >= cutoff_utc:
+                            dt_local = entry.sent_at.astimezone(local_tz)
+                            emails.append(
+                                CompanyEmail(
+                                    datetime_utc=entry.sent_at,
+                                    datetime_local=dt_local,
+                                    company_name=entry.company_slug.replace("-", " ").title(),
+                                    company_slug=entry.company_slug,
+                                    title=entry.subject,
+                                    direction="sent",
+                                    from_address="",
+                                    to_addresses=[entry.recipient],
+                                    content=(
+                                        f"(Batch send: {entry.batch_id}, template: {entry.template_id})"
+                                        if not entry.error
+                                        else f"Error: {entry.error}"
+                                    ),
+                                    message_id=entry.message_id,
+                                    status=entry.status,
+                                    batch_id=entry.batch_id,
+                                    template_id=entry.template_id,
+                                    error=entry.error,
+                                    initiative=entry.initiative,
+                                )
+                            )
+                    except Exception as e:
+                        logger.debug(f"Error reading SendLogEntry: {e}")
+        except Exception as e:
+            logger.debug(f"Error scanning SendLogEntry: {e}")
+
+        emails.sort(key=lambda e: e.datetime_utc, reverse=True)
+        return emails
 
 
     def _seen_path(self) -> Path:

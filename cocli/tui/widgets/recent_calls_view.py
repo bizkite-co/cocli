@@ -23,15 +23,24 @@ class RecentCallListItem(ListItem):
         self.call = call
 
     def compose(self) -> Any:
+        icon = self.call.icon or ("💬" if self.call.item_type == "sms" else "📞")
+        dir_badge = (
+            f"[{self.call.direction.upper()}] "
+            if self.call.item_type == "sms" and self.call.direction
+            else ""
+        )
+        dt_str = self.call.datetime_local.strftime("%m-%d %H:%M")
         yield Label(
-            f"{self.call.datetime_local:%Y-%m-%d %H:%M}  "
-            f"{self.call.company_name} - {self.call.title}"
+            f"{icon} {dt_str}  "
+            f"{self.call.company_name} - {dir_badge}{self.call.title}"
         )
 
 
 class RecentCallPreview(VerticalScroll):
     def compose(self) -> Any:
-        yield Label("Select a call to see its notes", id="recent-call-preview-empty")
+        yield Label(
+            "Select a call or SMS to see its details", id="recent-call-preview-empty"
+        )
         yield Static("", id="recent-call-preview-body")
 
     def update_preview(self, call: "CompanyCall | None") -> None:
@@ -45,24 +54,29 @@ class RecentCallPreview(VerticalScroll):
 
         from cocli.application.company_service import get_company_activity
 
-        activities = get_company_activity(call.company_slug)
         activity_lines: list[str] = []
-        if activities:
-            activity_lines.append("[bold cyan]Company Activity:[/bold cyan]")
-            for act in activities[:6]:
-                ts_str = act.timestamp.strftime("%Y-%m-%d %H:%M")
-                activity_lines.append(f"  {act.icon} [dim]{ts_str}[/dim] {act.preview}")
-        else:
+        if call.company_slug:
+            activities = get_company_activity(call.company_slug)
+            if activities:
+                activity_lines.append("[bold cyan]Company Activity:[/bold cyan]")
+                for act in activities[:6]:
+                    ts_str = act.timestamp.strftime("%m-%d %H:%M")
+                    activity_lines.append(f"  {act.icon} [dim]{ts_str}[/dim] {act.preview}")
+        if not activity_lines:
             activity_lines.append("[dim]No previous activity logged[/dim]")
+
+        item_label = "SMS" if call.item_type == "sms" else "Call"
+        content_header = "Content:" if call.item_type == "sms" else "Notes:"
+        dir_str = f" ({call.direction})" if call.direction else ""
 
         preview_text = "\n".join(
             [
                 f"[bold]Company:[/bold] {call.company_name}",
-                f"[bold]When:[/bold] {call.datetime_local:%Y-%m-%d %H:%M %Z}",
-                f"[bold]Call:[/bold] {call.title}",
+                f"[bold]When:[/bold] {call.datetime_local:%m-%d %H:%M %Z}",
+                f"[bold]{item_label}{dir_str}:[/bold] {call.title}",
                 "",
-                "[bold]Notes:[/bold]",
-                call.content or "[dim]No call notes recorded[/dim]",
+                f"[bold]{content_header}[/bold]",
+                call.content or f"[dim]No {item_label.lower()} content recorded[/dim]",
                 "",
                 "─" * 40,
                 *activity_lines,

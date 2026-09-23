@@ -11,6 +11,7 @@ from cocli.application.services import ServiceContainer
 from cocli.tui.widgets.messages_view import MessagesView
 from cocli.tui.widgets.follow_up_queue_view import FollowUpQueueView
 from cocli.tui.widgets.recent_calls_view import RecentCallListItem, RecentCallsView
+from cocli.tui.widgets.recent_emails_view import RecentEmailsView, RecentEmailListItem
 from cocli.tui.widgets.target_batches_view import TargetBatchesView
 from cocli.tui.widgets.send_log_view import SendLogView, SendLogListItem
 from cocli.tui.widgets.unsubscribe_rate_view import UnsubscribeRateView
@@ -484,3 +485,171 @@ async def test_unsubscribe_rate_shows_computed_rate(mock_cocli_env, mocker) -> N
         rate_label = widget.query_one("#unsubscribe-rate-rate", Label)
         assert "4" in str(sent_label.content)
         assert "25.0%" in str(rate_label.content)
+
+
+@pytest.mark.asyncio
+async def test_recent_emails_view_shows_inbound_and_outbound_with_content_and_no_year(
+    mock_cocli_env, mocker
+) -> None:
+    from datetime import UTC, datetime, timedelta
+    from cocli.core.paths import paths
+    from cocli.models.companies.company import Company
+    from cocli.models.companies.email_note import EmailNote
+
+    company = Company(name="Acme Corp", slug="acme-corp", tags=[CAMPAIGN])
+    company.save()
+    notes_dir = paths.companies.entry(company.slug).path / "notes"
+
+    EmailNote(
+        timestamp=datetime.now(UTC) - timedelta(hours=2),
+        title="Proposal for Widget",
+        type="email",
+        direction="sent",
+        from_address="sales@ourco.com",
+        to_addresses=["ceo@acmecorp.com"],
+        content="Here is our detailed proposal for the widget contract.",
+    ).to_file(notes_dir)
+
+    EmailNote(
+        timestamp=datetime.now(UTC) - timedelta(hours=1),
+        title="Re: Proposal for Widget",
+        type="email",
+        direction="received",
+        from_address="ceo@acmecorp.com",
+        to_addresses=["sales@ourco.com"],
+        content="We received your proposal and would love to move forward.",
+    ).to_file(notes_dir)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = RecentEmailsView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        list_view = widget.query_one("#send-log-list", ListView)
+        assert len(list_view.children) == 2
+        assert isinstance(list_view.children[0], RecentEmailListItem)
+
+        # Newest first: received email should be index 0
+        first_item = list_view.children[0]
+        assert first_item.email.direction == "received"
+        assert "Re: Proposal for Widget" in first_item.email.title
+        assert first_item.email.company_slug == "acme-corp"
+
+        # Check rendered label in list view: [RCVD], no year in date, and content snippet
+        rendered_label = first_item.query_one(Label).content
+        label_text = str(rendered_label)
+        assert "RCVD" in label_text
+        assert "2026" not in label_text
+        assert "We received your proposal" in label_text
+
+        # Second item is sent
+        second_item = list_view.children[1]
+        assert second_item.email.direction == "sent"
+        assert "Proposal for Widget" in second_item.email.title
+        second_label_text = str(second_item.query_one(Label).content)
+        assert "SENT" in second_label_text
+        assert "2026" not in second_label_text
+        assert "Here is our detailed proposal" in second_label_text
+
+        # Detail view shows full content body and metadata
+        body_text = str(widget.query_one("#send-log-detail-body", Static).content)
+        assert "We received your proposal and would love to move forward." in body_text
+        assert "acme-corp" in body_text
+        assert "ceo@acmecorp.com" in body_text
+        assert "2026-" not in body_text
+
+
+@pytest.mark.asyncio
+async def test_recent_calls_view_shows_sms_and_calls_with_no_year(
+    mock_cocli_env, mocker
+) -> None:
+    from datetime import UTC, datetime, timedelta
+    from cocli.core.paths import paths
+    from cocli.models.companies.company import Company
+    from cocli.models.companies.meeting import Meeting
+    from cocli.models.companies.sms_note import SmsNote
+
+    company = Company(name="Beta Industries", slug="beta-industries", tags=[CAMPAIGN])
+    company.save()
+
+    meetings_dir = paths.companies.entry(company.slug).path / "meetings"
+    Meeting(
+        timestamp=datetime.now(UTC) - timedelta(hours=3),
+        title="Intro call with founder",
+        type="phone-call",
+        content="Great intro conversation.",
+    ).to_file(meetings_dir)
+
+    notes_dir = paths.companies.entry(company.slug).path / "notes"
+    SmsNote(
+        timestamp=datetime.now(UTC) - timedelta(hours=1),
+        title="SMS from founder",
+        direction="inbound",
+        from_phone="+17145551234",
+        to_phone="+17144514350",
+        content="Hey, can you send over the deck?",
+    ).to_file(notes_dir)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = RecentCallsView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        call_list = widget.query_one("#recent-call-list", ListView)
+        assert len(call_list.children) == 2
+
+        # First item is newest (the inbound SMS)
+        first_item = call_list.children[0]
+        assert first_item.call.item_type == "sms"
+        first_label = str(first_item.query_one(Label).content)
+        assert "💬" in first_label
+        assert "INBOUND" in first_label
+        assert "2026" not in first_label
+
+        # Preview of first item shows SMS content
+        preview_text = str(widget.query_one("#recent-call-preview-body", Static).content)
+        assert "Hey, can you send over the deck?" in preview_text
+        assert "2026-" not in preview_text
+
+        # Second item is phone call
+        second_item = call_list.children[1]
+        assert second_item.call.item_type == "call"
+        second_label = str(second_item.query_one(Label).content)
+        assert "📞" in second_label
+        assert "2026" not in second_label
+
+
+@pytest.mark.asyncio
+async def test_messages_view_recent_emails_right_below_recent_calls(
+    mock_cocli_env, mocker
+) -> None:
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.pause(0.1)
+        await pilot.press("m")
+        await pilot.pause(0.3)
+
+        section_list = app.query_one("#messages-section-list", ListView)
+        items = list(section_list.children)
+        assert len(items) == 5
+        assert items[0].section == "follow-ups"
+        assert items[1].section == "batch-emails"
+        assert items[2].section == "recent-calls"
+        assert items[2].label == "Recent Calls & SMS"
+        assert items[3].section == "recent-emails"
+        assert items[3].label == "Recent Emails"
+        assert items[4].section == "initiatives"
+
+        # Navigate down to Recent Emails (index 3)
+        await pilot.press("j")  # index 1
+        await pilot.press("j")  # index 2 (recent-calls)
+        await pilot.press("j")  # index 3 (recent-emails)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        assert len(app.query(RecentEmailsView)) == 1
+

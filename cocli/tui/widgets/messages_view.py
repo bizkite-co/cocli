@@ -11,7 +11,7 @@ from textual.widgets import Label, ListItem, ListView
 
 from .initiatives_view import InitiativesView
 from .recent_calls_view import RecentCallsView
-from .send_log_view import SendLogView
+from .recent_emails_view import RecentEmailsView
 from .target_batches_view import TargetBatchesView
 
 
@@ -26,16 +26,16 @@ class MessagesSectionItem(ListItem):
 
 
 class MessagesView(Container):
-    """Message operations: drafts, call history, campaign copy, and sent email."""
+    """Message operations: drafts, call history, recent emails, and campaign copy."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.section_list = ListView(
             MessagesSectionItem("follow-ups", "Follow-up Drafts"),
             MessagesSectionItem("batch-emails", "Batch Email Drafts"),
-            MessagesSectionItem("recent-calls", "Recent Calls"),
+            MessagesSectionItem("recent-calls", "Recent Calls & SMS"),
+            MessagesSectionItem("recent-emails", "Recent Emails"),
             MessagesSectionItem("initiatives", "Initiatives"),
-            MessagesSectionItem("sent-email", "Sent Email"),
             id="messages-section-list",
         )
         self.content = Container(id="messages-content")
@@ -62,6 +62,10 @@ class MessagesView(Container):
         recent_calls = self.content.query_one(RecentCallsView)
         recent_calls.action_focus_master()
 
+    def action_focus_recent_emails(self) -> None:
+        recent_emails = self.content.query_one(RecentEmailsView)
+        recent_emails.action_focus_master()
+
     @on(ListView.Selected, "#messages-section-list")
     async def on_section_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, MessagesSectionItem):
@@ -74,10 +78,11 @@ class MessagesView(Container):
             "follow-ups": FollowUpQueueView,
             "batch-emails": TargetBatchesView,
             "recent-calls": RecentCallsView,
+            "recent-emails": RecentEmailsView,
+            "sent-email": RecentEmailsView,
             "initiatives": InitiativesView,
-            "sent-email": SendLogView,
         }
-        target_cls = view_classes.get(section, SendLogView)
+        target_cls = view_classes.get(section, RecentEmailsView)
 
         current_view = self.content.children[0] if self.content.children else None
         if current_view is not None and isinstance(current_view, target_cls):
