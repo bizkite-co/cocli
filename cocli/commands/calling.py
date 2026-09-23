@@ -72,7 +72,13 @@ def set_twilio(
     account_sid: str = typer.Option(
         ..., "--account-sid", help="Twilio Account SID (e.g. AC...)"
     ),
-    auth_token: str = typer.Option(..., "--auth-token", help="Twilio Auth Token"),
+    auth_token: str = typer.Option("", "--auth-token", help="Twilio Auth Token"),
+    api_key: str = typer.Option(
+        "", "--api-key", help="Twilio API Key SID (e.g. SK...)"
+    ),
+    api_secret: str = typer.Option(
+        "", "--api-secret", help="Twilio API Key Secret"
+    ),
     caller_id: str = typer.Option(
         ..., "--caller-id", help="Twilio outbound business caller ID"
     ),
@@ -93,6 +99,10 @@ def set_twilio(
         tw_cfg["account_sid"] = account_sid
     if auth_token:
         tw_cfg["auth_token"] = auth_token
+    if api_key:
+        tw_cfg["api_key"] = api_key
+    if api_secret:
+        tw_cfg["api_secret"] = api_secret
     if caller_id:
         tw_cfg["caller_id"] = caller_id
     if my_phone:

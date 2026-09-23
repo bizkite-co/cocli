@@ -148,7 +148,8 @@ class RecentCallsView(MasterDetailView):
             if isinstance(item, RecentCallListItem):
                 cast("CocliApp", self.app).open_company_detail(
                     item.call.company_slug,
-                    return_to_messages_recent_calls=True,
+                    return_to_messages=True,
+                    return_to_messages_section="recent-calls",
                 )
             event.prevent_default()
             event.stop()

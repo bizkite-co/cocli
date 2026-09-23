@@ -59,12 +59,32 @@ class MessagesView(Container):
         self.section_list.focus()
 
     def action_focus_recent_calls(self) -> None:
-        recent_calls = self.content.query_one(RecentCallsView)
-        recent_calls.action_focus_master()
+        views = list(self.content.query(RecentCallsView))
+        if views:
+            views[0].action_focus_master()
+        else:
+            self.run_worker(self.show_section("recent-calls", focus=True))
 
     def action_focus_recent_emails(self) -> None:
-        recent_emails = self.content.query_one(RecentEmailsView)
-        recent_emails.action_focus_master()
+        views = list(self.content.query(RecentEmailsView))
+        if views:
+            views[0].action_focus_master()
+        else:
+            self.run_worker(self.show_section("recent-emails", focus=True))
+
+    def action_focus_current_section(self) -> None:
+        current_view = self.content.children[0] if self.content.children else None
+        if current_view is not None and hasattr(current_view, "action_focus_master"):
+            current_view.action_focus_master()
+        else:
+            self.action_focus_master()
+
+    async def show_section(self, section: str, focus: bool = True) -> None:
+        for idx, item in enumerate(self.section_list.children):
+            if isinstance(item, MessagesSectionItem) and item.section == section:
+                self.section_list.index = idx
+                break
+        await self._show_section(section, focus=focus)
 
     @on(ListView.Selected, "#messages-section-list")
     async def on_section_selected(self, event: ListView.Selected) -> None:

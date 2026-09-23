@@ -107,7 +107,9 @@ cocli
             provider (text) [required]
         set-twilio - Save Twilio credentials and phone numbers for call bridging.
             --account-sid (text) [required]
-            --auth-token (text) [required]
+            --auth-token (text)
+            --api-key (text)
+            --api-secret (text)
             --caller-id (text) [required]
             --my-phone (text) [required]
             --recording-callback (text)

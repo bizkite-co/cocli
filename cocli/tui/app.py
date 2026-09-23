@@ -502,6 +502,8 @@ class CocliApp(App[None]):
         self.nav_manager = NavigationStateManager(self)
         self.browser_manager = BrowserManager()
         self._return_to_messages_recent_calls = False
+        self._return_to_messages_flag = False
+        self._return_to_messages_section: Optional[str] = None
 
         # Explicitly ensure the OperationService uses our shared services container
         # to prevent it from spawning its own ServiceContainer (which breaks mocks)
@@ -932,9 +934,10 @@ class CocliApp(App[None]):
         """
         tui_debug_log("APP: action_navigate_up triggered")
 
-        if self._return_to_messages_recent_calls:
+        if self._return_to_messages_flag or self._return_to_messages_recent_calls:
             self._return_to_messages_recent_calls = False
-            self.run_worker(self._return_to_recent_calls())
+            self._return_to_messages_flag = False
+            self.run_worker(self._return_to_messages())
             return
 
         target_node = self._get_active_nav_node()
@@ -1067,20 +1070,37 @@ class CocliApp(App[None]):
     ) -> None:
         self.open_company_detail(message.company_slug)
 
-    async def _return_to_recent_calls(self) -> None:
+    async def _return_to_messages(self) -> None:
         await self.action_show_messages()
-        self.query_one(MessagesView).action_focus_recent_calls()
+        mv = self.query_one(MessagesView)
+        mv.display = True
+        if self._return_to_messages_section:
+            section = self._return_to_messages_section
+            self._return_to_messages_section = None
+            await mv.show_section(section, focus=True)
+        else:
+            mv.action_focus_current_section()
+
+    async def _return_to_recent_calls(self) -> None:
+        await self._return_to_messages()
 
     def open_company_detail(
         self,
         company_slug: str,
         *,
+        return_to_messages: bool = False,
+        return_to_messages_section: Optional[str] = None,
         return_to_messages_recent_calls: bool = False,
     ) -> None:
         """Navigate to a company's detail view by slug - the same
         auto-materialize-on-demand path CompanyList.CompanySelected uses,
         callable directly from anywhere else in the TUI that only has a
         company_slug on hand (e.g. the Tracking pane's send-log entries)."""
+        if return_to_messages_recent_calls:
+            return_to_messages = True
+            if return_to_messages_section is None:
+                return_to_messages_section = "recent-calls"
+
         try:
             company_data = self.services.get_company_details(company_slug)
             if not company_data:
@@ -1121,7 +1141,7 @@ class CocliApp(App[None]):
                 for child in content.children:
                     if (
                         isinstance(child, MessagesView)
-                        and return_to_messages_recent_calls
+                        and (return_to_messages or return_to_messages_recent_calls)
                     ):
                         child.display = False
                     elif isinstance(
@@ -1134,6 +1154,8 @@ class CocliApp(App[None]):
                 company_detail = CompanyDetail(company_data)
                 content.mount(company_detail)
                 company_detail.styles.display = "block"
+                self._return_to_messages_flag = return_to_messages
+                self._return_to_messages_section = return_to_messages_section
                 self._return_to_messages_recent_calls = return_to_messages_recent_calls
             else:
                 # A "lead" shown in the list can come from raw prospects

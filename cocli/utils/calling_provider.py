@@ -352,6 +352,8 @@ class TwilioBridgeCallingProvider:
         self,
         account_sid: Optional[str] = None,
         auth_token: Optional[str] = None,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
         caller_id: Optional[str] = None,
         my_phone: Optional[str] = None,
         recording_callback_url: Optional[str] = None,
@@ -360,6 +362,8 @@ class TwilioBridgeCallingProvider:
     ):
         self.account_sid = account_sid or os.environ.get("TWILIO_ACCOUNT_SID")
         self.auth_token = auth_token or os.environ.get("TWILIO_AUTH_TOKEN")
+        self.api_key = api_key or os.environ.get("TWILIO_API_KEY")
+        self.api_secret = api_secret or os.environ.get("TWILIO_API_SECRET")
         self.caller_id = (
             caller_id
             or os.environ.get("TWILIO_CALLER_ID")
@@ -386,35 +390,75 @@ class TwilioBridgeCallingProvider:
         cls._cached_balance = None
 
     def is_configured(self) -> bool:
-        return bool(
-            self.account_sid and self.auth_token and self.caller_id and self.my_phone
+        has_auth = bool(
+            (self.api_key and self.api_secret and self.account_sid)
+            or (self.account_sid and self.auth_token)
         )
+        return bool(has_auth and self.caller_id and self.my_phone)
 
-    def _resolve_credentials(self) -> tuple[Optional[str], Optional[str]]:
-        """Resolve account_sid and auth_token, including op:// 1Password references."""
-        if not self.account_sid or not self.auth_token:
-            return None, None
+    def _resolve_credentials(
+        self,
+    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """Resolve (account_sid, auth_username, auth_password), batch-reading op:// references.
 
+        If api_key and api_secret are provided, HTTP Basic Auth uses (api_key, api_secret)
+        while the API URL uses account_sid. Otherwise, HTTP Basic Auth uses (account_sid, auth_token).
+        All op:// refs are resolved together via read_op_secrets() so Windows Hello / 1Password
+        only prompts once.
+        """
         account_sid = self.account_sid
-        auth_token = self.auth_token
+        auth_user: Optional[str] = None
+        auth_pass: Optional[str] = None
 
-        if account_sid.startswith("op://"):
-            from .op_utils import get_op_secret
+        if self.api_key and self.api_secret:
+            auth_user = self.api_key
+            auth_pass = self.api_secret
+        elif self.account_sid and self.auth_token:
+            auth_user = self.account_sid
+            auth_pass = self.auth_token
+        else:
+            return None, None, None
 
-            resolved_sid = get_op_secret(account_sid)
-            if resolved_sid:
-                account_sid = resolved_sid
+        if not account_sid or not auth_user or not auth_pass:
+            return None, None, None
 
-        if auth_token.startswith("op://"):
-            from .op_utils import get_op_secret
+        # Collect op:// refs to batch-resolve
+        op_refs: list[str] = []
+        for ref in (account_sid, auth_user, auth_pass):
+            if ref and ref.startswith("op://") and ref not in op_refs:
+                op_refs.append(ref)
 
-            resolved_token = get_op_secret(auth_token)
-            if resolved_token:
-                auth_token = resolved_token
+        resolved_map: dict[str, str] = {}
+        if op_refs:
+            from .op_utils import get_op_secret, read_op_secrets
+
+            batch_res = read_op_secrets(*op_refs)
+            if batch_res and len(batch_res) == len(op_refs):
+                resolved_map = dict(zip(op_refs, batch_res))
             else:
-                return None, None
+                for ref in op_refs:
+                    val = get_op_secret(ref)
+                    if val:
+                        resolved_map[ref] = val
 
-        return account_sid, auth_token
+            if account_sid in resolved_map:
+                account_sid = resolved_map[account_sid]
+            if auth_user in resolved_map:
+                auth_user = resolved_map[auth_user]
+            if auth_pass in resolved_map:
+                auth_pass = resolved_map[auth_pass]
+
+        if (
+            not account_sid
+            or account_sid.startswith("op://")
+            or not auth_user
+            or auth_user.startswith("op://")
+            or not auth_pass
+            or auth_pass.startswith("op://")
+        ):
+            return None, None, None
+
+        return account_sid, auth_user, auth_pass
 
     def get_balance(
         self, bypass_cache: bool = False
@@ -433,8 +477,8 @@ class TwilioBridgeCallingProvider:
             if now - cached_time < TwilioBridgeCallingProvider._balance_cache_ttl:
                 return cached_bal, cached_curr
 
-        account_sid, auth_token = self._resolve_credentials()
-        if not account_sid or not auth_token:
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
             return None, None
 
         if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -445,7 +489,7 @@ class TwilioBridgeCallingProvider:
 
         url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Balance.json"
         try:
-            resp = requests.get(url, auth=(account_sid, auth_token), timeout=8)
+            resp = requests.get(url, auth=(auth_user, auth_pass), timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 balance = float(data.get("balance", 0.0))
@@ -476,8 +520,8 @@ class TwilioBridgeCallingProvider:
         """
         import requests
 
-        account_sid, auth_token = self._resolve_credentials()
-        if not account_sid or not auth_token:
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
             self.last_error = "Twilio credentials not configured or could not be resolved"
             return []
 
@@ -497,7 +541,7 @@ class TwilioBridgeCallingProvider:
 
         try:
             resp = requests.get(
-                url, params=params, auth=(account_sid, auth_token), timeout=15
+                url, params=params, auth=(auth_user, auth_pass), timeout=15
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -538,21 +582,20 @@ class TwilioBridgeCallingProvider:
             self.last_error = (
                 "Twilio calling provider is missing required configuration: "
                 f"account_sid={bool(self.account_sid)}, auth_token={bool(self.auth_token)}, "
+                f"api_key={bool(self.api_key)}, api_secret={bool(self.api_secret)}, "
                 f"caller_id={bool(self.caller_id)}, my_phone={bool(self.my_phone)}"
             )
             logger.error(self.last_error)
             return False
 
-        account_sid, auth_token = self._resolve_credentials()
-        if not account_sid or not auth_token:
-            self.last_error = f"Could not resolve 1Password secret for Twilio auth_token: {self.auth_token}"
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = f"Could not resolve Twilio credentials for account={self.account_sid}"
             logger.error(self.last_error)
             return False
 
         assert self.caller_id is not None
         assert self.my_phone is not None
-        assert account_sid is not None
-        assert auth_token is not None
 
         cleaned_caller_id = clean_phone_e164(self.caller_id)
         cleaned_my_phone = clean_phone_e164(self.my_phone)
@@ -587,7 +630,7 @@ class TwilioBridgeCallingProvider:
             resp = requests.post(
                 url,
                 data=data,
-                auth=(account_sid, auth_token),
+                auth=(auth_user, auth_pass),
                 timeout=10,
             )
             if resp.status_code in (200, 201):
@@ -679,6 +722,8 @@ def get_calling_provider(campaign_name: Optional[str] = None) -> CallingProvider
         return TwilioBridgeCallingProvider(
             account_sid=tw_cfg.get("account_sid"),
             auth_token=tw_cfg.get("auth_token"),
+            api_key=tw_cfg.get("api_key"),
+            api_secret=tw_cfg.get("api_secret"),
             caller_id=tw_cfg.get("caller_id") or tw_cfg.get("business_number"),
             my_phone=tw_cfg.get("my_phone") or tw_cfg.get("bridge_to"),
             recording_callback_url=tw_cfg.get("recording_callback_url"),

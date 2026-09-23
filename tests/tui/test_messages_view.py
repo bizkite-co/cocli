@@ -653,3 +653,85 @@ async def test_messages_view_recent_emails_right_below_recent_calls(
 
         assert len(app.query(RecentEmailsView)) == 1
 
+
+@pytest.mark.asyncio
+async def test_messages_view_drilldown_and_return_from_recent_emails(
+    mock_cocli_env, mocker
+) -> None:
+    from datetime import UTC, datetime, timedelta
+    from cocli.core.paths import paths
+    from cocli.models.companies.company import Company
+    from cocli.models.companies.email_note import EmailNote
+    from cocli.tui.widgets.company_detail import CompanyDetail
+
+    company = Company(name="Acme Corp", slug="acme-corp", tags=[CAMPAIGN])
+    company.save()
+    notes_dir = paths.companies.entry(company.slug).path / "notes"
+    EmailNote(
+        timestamp=datetime.now(UTC) - timedelta(hours=1),
+        title="Email from client",
+        direction="received",
+        sender="client@acme.test",
+        recipient="me@test.local",
+        content="Great proposal!",
+    ).to_file(notes_dir)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.press("m")
+        await pilot.pause(0.2)
+
+        # Select Recent Emails (index 3)
+        await pilot.press("j")
+        await pilot.press("j")
+        await pilot.press("j")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        assert len(app.query(RecentEmailsView)) == 1
+        list_view = app.query_one("#send-log-list", ListView)
+        assert len(list_view.children) == 1
+        assert list_view.has_focus
+
+        # Press 'l' to open CompanyDetail
+        await pilot.press("l")
+        await pilot.pause(0.2)
+        assert len(app.query(CompanyDetail)) == 1
+
+        # Press 'h' to return to Recent Emails
+        await pilot.press("h")
+        await pilot.pause(0.2)
+
+        # Should return smoothly without NoMatches crash
+        assert len(app.query(RecentEmailsView)) == 1
+        list_view_after = app.query_one("#send-log-list", ListView)
+        assert list_view_after.has_focus
+
+
+@pytest.mark.asyncio
+async def test_messages_view_action_focus_when_unmounted(mock_cocli_env, mocker) -> None:
+    """Invoking focus on an unmounted messages section switches to it safely without crashing."""
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        await pilot.press("space")
+        await pilot.press("m")
+        await pilot.pause(0.2)
+
+        mv = app.query_one(MessagesView)
+        # Initially FollowUpQueueView is mounted
+        assert len(app.query(RecentCallsView)) == 0
+
+        # Calling action_focus_recent_calls() should mount RecentCallsView without raising NoMatches
+        mv.action_focus_recent_calls()
+        await pilot.pause(0.2)
+        assert len(app.query(RecentCallsView)) == 1
+
+        # Now calling action_focus_recent_emails() should mount RecentEmailsView without raising NoMatches
+        mv.action_focus_recent_emails()
+        await pilot.pause(0.2)
+        assert len(app.query(RecentEmailsView)) == 1
+
+

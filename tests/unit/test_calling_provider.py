@@ -610,3 +610,62 @@ def test_twilio_fetch_messages() -> None:
             assert kwargs["params"]["PageSize"] == 25
             assert kwargs["params"]["To"] == "+17144514350"
 
+
+def test_twilio_bridge_calling_provider_with_api_key_and_secret() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        api_key="SKtest456",
+        api_secret="secret789",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    assert provider.is_configured() is True
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"sid": "CA12345"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.post", return_value=mock_resp) as mock_post,
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
+    ):
+        assert provider.dial("5551234567") is True
+
+    mock_post.assert_called_once()
+    args, kwargs = mock_post.call_args
+    assert args[0] == "https://api.twilio.com/2010-04-01/Accounts/ACtest123/Calls.json"
+    assert kwargs["auth"] == ("SKtest456", "secret789")
+
+
+def test_twilio_bridge_calling_provider_batch_resolves_op_secrets() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="op://Vault/Twilio/auth-token",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"sid": "CA999"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch(
+            "cocli.utils.op_utils.read_op_secrets",
+            return_value=["batch_resolved_token"],
+        ) as mock_batch,
+        patch("requests.post", return_value=mock_resp) as mock_post,
+        patch(
+            "cocli.utils.calling_provider.copy_to_windows_clipboard", return_value=True
+        ),
+    ):
+        assert provider.dial("5551234567") is True
+
+    mock_batch.assert_called_once_with("op://Vault/Twilio/auth-token")
+    args, kwargs = mock_post.call_args
+    assert kwargs["auth"] == ("ACtest123", "batch_resolved_token")
+
+

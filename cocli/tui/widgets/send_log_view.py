@@ -218,7 +218,8 @@ class RecentEmailsView(MasterDetailView):
             if isinstance(item, RecentEmailListItem) and item.email.company_slug:
                 cast("CocliApp", self.app).open_company_detail(
                     item.email.company_slug,
-                    return_to_messages_recent_calls=True,
+                    return_to_messages=True,
+                    return_to_messages_section="recent-emails",
                 )
             event.prevent_default()
             event.stop()
