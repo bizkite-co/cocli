@@ -22,6 +22,7 @@ Supports multiple dialer providers:
 
 from __future__ import annotations
 
+from datetime import datetime
 import glob
 import logging
 import os
@@ -389,23 +390,8 @@ class TwilioBridgeCallingProvider:
             self.account_sid and self.auth_token and self.caller_id and self.my_phone
         )
 
-    def get_balance(
-        self, bypass_cache: bool = False
-    ) -> tuple[Optional[float], Optional[str]]:
-        """Query Twilio Balance API. Returns (balance, currency) or (None, None).
-
-        Caches balance in memory for `_balance_cache_ttl` seconds unless bypass_cache=True.
-        """
-        import requests
-
-        now = time.time()
-        if not bypass_cache and TwilioBridgeCallingProvider._cached_balance is not None:
-            cached_bal, cached_curr, cached_time = (
-                TwilioBridgeCallingProvider._cached_balance
-            )
-            if now - cached_time < TwilioBridgeCallingProvider._balance_cache_ttl:
-                return cached_bal, cached_curr
-
+    def _resolve_credentials(self) -> tuple[Optional[str], Optional[str]]:
+        """Resolve account_sid and auth_token, including op:// 1Password references."""
         if not self.account_sid or not self.auth_token:
             return None, None
 
@@ -427,6 +413,29 @@ class TwilioBridgeCallingProvider:
                 auth_token = resolved_token
             else:
                 return None, None
+
+        return account_sid, auth_token
+
+    def get_balance(
+        self, bypass_cache: bool = False
+    ) -> tuple[Optional[float], Optional[str]]:
+        """Query Twilio Balance API. Returns (balance, currency) or (None, None).
+
+        Caches balance in memory for `_balance_cache_ttl` seconds unless bypass_cache=True.
+        """
+        import requests
+
+        now = time.time()
+        if not bypass_cache and TwilioBridgeCallingProvider._cached_balance is not None:
+            cached_bal, cached_curr, cached_time = (
+                TwilioBridgeCallingProvider._cached_balance
+            )
+            if now - cached_time < TwilioBridgeCallingProvider._balance_cache_ttl:
+                return cached_bal, cached_curr
+
+        account_sid, auth_token = self._resolve_credentials()
+        if not account_sid or not auth_token:
+            return None, None
 
         if os.environ.get("PYTEST_CURRENT_TEST"):
             logger.debug(
@@ -453,6 +462,57 @@ class TwilioBridgeCallingProvider:
         except Exception as exc:
             logger.warning("Failed to query Twilio Balance API: %s", exc)
             return None, None
+
+    def fetch_messages(
+        self,
+        to_phone: Optional[str] = None,
+        limit: int = 50,
+        date_sent_after: Optional[datetime] = None,
+    ) -> list[dict[str, Any]]:
+        """Query Twilio REST API for messages.
+
+        If to_phone is provided (or defaults to self.caller_id), queries incoming messages sent to that number.
+        Returns a list of raw message dicts from Twilio API.
+        """
+        import requests
+
+        account_sid, auth_token = self._resolve_credentials()
+        if not account_sid or not auth_token:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return []
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated fetch_messages in test mode"
+            )
+            return []
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+        params: dict[str, Any] = {"PageSize": limit}
+        target_to = to_phone or self.caller_id
+        if target_to:
+            params["To"] = clean_phone_e164(target_to)
+        if date_sent_after:
+            params["DateSent>="] = date_sent_after.strftime("%Y-%m-%d")
+
+        try:
+            resp = requests.get(
+                url, params=params, auth=(account_sid, auth_token), timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_msgs = data.get("messages", [])
+                return [m for m in raw_msgs if isinstance(m, dict)]
+            else:
+                self.last_error = (
+                    f"Twilio Messages API error {resp.status_code}: {resp.text}"
+                )
+                logger.warning(self.last_error)
+                return []
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio messages: {exc}"
+            logger.warning(self.last_error)
+            return []
 
     def is_low_balance(
         self, threshold: Optional[float] = None, bypass_cache: bool = False
@@ -483,26 +543,11 @@ class TwilioBridgeCallingProvider:
             logger.error(self.last_error)
             return False
 
-        account_sid = self.account_sid
-        auth_token = self.auth_token
-
-        if account_sid and account_sid.startswith("op://"):
-            from .op_utils import get_op_secret
-
-            resolved_sid = get_op_secret(account_sid)
-            if resolved_sid:
-                account_sid = resolved_sid
-
-        if auth_token and auth_token.startswith("op://"):
-            from .op_utils import get_op_secret
-
-            resolved_token = get_op_secret(auth_token)
-            if resolved_token:
-                auth_token = resolved_token
-            else:
-                self.last_error = f"Could not resolve 1Password secret for Twilio auth_token: {auth_token}"
-                logger.error(self.last_error)
-                return False
+        account_sid, auth_token = self._resolve_credentials()
+        if not account_sid or not auth_token:
+            self.last_error = f"Could not resolve 1Password secret for Twilio auth_token: {self.auth_token}"
+            logger.error(self.last_error)
+            return False
 
         assert self.caller_id is not None
         assert self.my_phone is not None

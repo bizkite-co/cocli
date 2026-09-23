@@ -572,3 +572,41 @@ def test_get_cached_twilio_balance_warning() -> None:
         ),
     ):
         assert get_cached_twilio_balance_warning() is None
+
+
+def test_twilio_fetch_messages() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="AC1234567890",
+        auth_token="dummy-auth-token",
+        caller_id="+17144514350",
+        my_phone="+17144967059",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "messages": [
+            {
+                "sid": "SM123",
+                "from": "+19495551234",
+                "to": "+17144514350",
+                "body": "Hello!",
+            }
+        ]
+    }
+
+    with (
+        patch.dict("os.environ", {}, clear=False),
+        patch("requests.get", return_value=mock_resp) as mock_get,
+    ):
+        # Remove PYTEST_CURRENT_TEST temporarily to exercise the real requests path
+        with patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}):
+            messages = provider.fetch_messages(limit=25)
+            assert len(messages) == 1
+            assert messages[0]["sid"] == "SM123"
+            mock_get.assert_called_once()
+            args, kwargs = mock_get.call_args
+            assert "Messages.json" in args[0]
+            assert kwargs["params"]["PageSize"] == 25
+            assert kwargs["params"]["To"] == "+17144514350"
+

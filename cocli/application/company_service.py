@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from pathlib import Path
 import datetime
+import re
 
 from ..models.companies.company import Company
 from ..models.people.person import Person
@@ -744,6 +745,7 @@ def get_company_activity(
     from ..models.companies.email_note import EmailNote
     from ..models.companies.meeting import Meeting
     from ..models.companies.note import Note
+    from ..models.companies.sms_note import SmsNote
 
     entry = paths.companies.entry(company_slug)
     if not entry.exists():
@@ -801,6 +803,28 @@ def get_company_activity(
                             "from_address": item.from_address,
                             "to_addresses": item.to_addresses,
                             "message_id": item.message_id,
+                        },
+                        is_scheduled=False,
+                    )
+                )
+            elif isinstance(item, SmsNote):
+                sms_dir = str(item.direction or "sms")
+                clean_body = item.content.replace("\n", " ").strip()
+                preview = f"[{sms_dir.upper()}] {clean_body[:80]}" if clean_body else f"[{sms_dir.upper()}]"
+                activities.append(
+                    CompanyActivity(
+                        timestamp=item.timestamp,
+                        activity_type="sms",
+                        icon="💬",
+                        title=item.title,
+                        preview=preview,
+                        content=item.content,
+                        file_path=note_file,
+                        metadata={
+                            "direction": item.direction,
+                            "from_phone": item.from_phone,
+                            "to_phone": item.to_phone,
+                            "message_sid": item.message_sid,
                         },
                         is_scheduled=False,
                     )
@@ -970,5 +994,97 @@ def get_company_activity(
     b2 = sorted([a for a in activities if not a.is_scheduled], key=_ts_aware, reverse=True)
 
     return b0 + b1 + b2
+
+
+def find_company_by_phone(
+    phone_input: str, campaign_name: Optional[str] = None
+) -> Optional[str]:
+    """Reverse lookup a company slug from a phone number using index-first search."""
+    if not phone_input or not phone_input.strip():
+        return None
+
+    raw_digits = re.sub(r"\D", "", phone_input)
+    if not raw_digits:
+        return None
+
+    # Determine match keys: 10-digit national number and full digits
+    match_keys: set[str] = {raw_digits}
+    if len(raw_digits) >= 10:
+        match_keys.add(raw_digits[-10:])
+    if raw_digits.startswith("1") and len(raw_digits) == 11:
+        match_keys.add(raw_digits[1:])
+
+    # 1. Index-First: Search company_cache.usv
+    from ..core.cache import get_cache_path, CACHE_FILE_NAME
+    from ..core.constants import UNIT_SEP
+    from ..core.paths import paths
+
+    cache_file = get_cache_path(campaign=campaign_name) / CACHE_FILE_NAME
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.split(UNIT_SEP)
+                    # CompanyCacheItem fields: slug(0), name(1), type(2), domain(3), email(4), phone_number(5)
+                    if len(parts) > 5:
+                        cached_phone = re.sub(r"\D", "", parts[5])
+                        if cached_phone:
+                            for mk in match_keys:
+                                if cached_phone.endswith(mk) or mk.endswith(cached_phone):
+                                    return parts[0]
+        except Exception as e:
+            logger.debug(f"Error searching company cache for phone {phone_input}: {e}")
+
+    # 2. Search prospects index if campaign is active
+    if campaign_name:
+        from ..core.ordinant import IndexIdentity
+
+        prospects_usv = (
+            paths.campaign(campaign_name).index(IndexIdentity.PROSPECTS).path
+            / "prospects.usv"
+        )
+        if prospects_usv.exists():
+            try:
+                with open(prospects_usv, "r", encoding="utf-8") as f:
+                    for line in f:
+                        parts = line.split(UNIT_SEP)
+                        for part in parts:
+                            part_digits = re.sub(r"\D", "", part)
+                            if len(part_digits) >= 10:
+                                for mk in match_keys:
+                                    if part_digits.endswith(mk):
+                                        return parts[0]
+            except Exception as e:
+                logger.debug(
+                    f"Error searching prospects index for phone {phone_input}: {e}"
+                )
+
+    # 3. Fallback: Check company directories on disk
+    companies_dir = paths.companies.path
+    if companies_dir.exists():
+        for comp_dir in sorted(companies_dir.iterdir()):
+            if not comp_dir.is_dir():
+                continue
+            idx_file = comp_dir / "_index.md"
+            if not idx_file.exists():
+                continue
+            try:
+                with open(idx_file, "r", encoding="utf-8") as f:
+                    header = f.read(2048)
+                for line in header.splitlines():
+                    lower = line.lower()
+                    if any(
+                        lower.startswith(k)
+                        for k in ("phone:", "phone_1:", "phone_number:")
+                    ):
+                        line_digits = re.sub(r"\D", "", line)
+                        for mk in match_keys:
+                            if mk in line_digits or line_digits.endswith(mk):
+                                return comp_dir.name
+            except Exception:
+                continue
+
+    return None
+
 
 

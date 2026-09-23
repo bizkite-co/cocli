@@ -462,6 +462,11 @@ class DataPaths:
         return WalPaths(lambda: self.root / "wal")
 
     @property
+    def sms_inbox(self) -> PathObject:
+        """Directory for incoming SMS messages that could not be matched to an existing company."""
+        return PathObject(lambda: self.root / "inbox" / "sms")
+
+    @property
     def indexes(self) -> Path:
         return self.root / "indexes"
 

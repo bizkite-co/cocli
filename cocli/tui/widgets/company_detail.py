@@ -162,6 +162,19 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
             else f"{icon} [{direction}] {title}",
             max_lines=PREVIEW_MAX_LINES,
         )
+    elif (
+        act_type == "sms"
+        or "message_sid" in meta
+        or title.lower().startswith(("sms sent:", "sms received:", "sms:"))
+    ):
+        icon = "💬"
+        direction = str(meta.get("direction") or "SMS").upper()
+        return wrap_content(
+            f"{icon} [{direction}] {clean_content}"
+            if clean_content
+            else f"{icon} [{direction}] {title}",
+            max_lines=PREVIEW_MAX_LINES,
+        )
     elif act_type == "meeting":
         icon = "📅"
         m_type = meta.get("meeting_type", "meeting")
@@ -1929,10 +1942,14 @@ class CompanyDetail(MarkPrefixMixin, Container):
                 for k, v in n.items()
                 if k not in ("title", "content", "timestamp", "file_path")
             }
-            clean_act_type: Literal["call", "email", "note", "meeting"] = (
+            clean_act_type: Literal["call", "email", "note", "meeting", "sms"] = (
                 "call"
                 if n_type == "call"
-                else ("email" if n_type == "email" else "note")
+                else (
+                    "email"
+                    if n_type == "email"
+                    else ("sms" if n_type == "sms" else "note")
+                )
             )
             activities.append(
                 CompanyActivity(
@@ -1940,7 +1957,11 @@ class CompanyDetail(MarkPrefixMixin, Container):
                     activity_type=clean_act_type,
                     icon="📞"
                     if clean_act_type == "call"
-                    else ("✉" if clean_act_type == "email" else "📝"),
+                    else (
+                        "✉"
+                        if clean_act_type == "email"
+                        else ("💬" if clean_act_type == "sms" else "📝")
+                    ),
                     title=title,
                     preview=format_activity_preview(n).plain,
                     content=content,

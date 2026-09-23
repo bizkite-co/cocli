@@ -113,6 +113,8 @@ cocli
             --recording-callback (text)
             --low-balance-threshold (float)
         status - Show the resolved calling provider config and whether the Edge PWA
+        sync-messages - Poll Twilio for incoming SMS replies and sync them into company Activity timelines.
+            --limit/-l (integer)
         test - Actually dial `phone` with the currently configured provider - use
             phone (text) [required]
     campaign - Manage campaigns.

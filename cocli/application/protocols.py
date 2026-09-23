@@ -37,6 +37,16 @@ class CallNoteProtocol(NoteProtocol, Protocol):
 
 
 @runtime_checkable
+class SmsNoteProtocol(NoteProtocol, Protocol):
+    type: str
+    direction: str
+    from_phone: str
+    to_phone: str
+    message_sid: Optional[str]
+
+
+
+@runtime_checkable
 class CompanyActivityProtocol(Protocol):
     timestamp: datetime
     activity_type: str

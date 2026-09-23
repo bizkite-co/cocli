@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 import logging
 from .email_note import EmailNote
 from .call_note import CallNote
+from .sms_note import SmsNote
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,12 @@ class Note(BaseModel):
     content: str
 
     @classmethod
-    def from_file(cls, note_path: Path) -> Optional[Union["Note", EmailNote, CallNote]]:
+    def from_file(
+        cls, note_path: Path
+    ) -> Optional[Union["Note", EmailNote, CallNote, SmsNote]]:
         """
-        Loads a Note or EmailNote from a Markdown file with YAML frontmatter.
-        Supports both modern frontmatter email notes and legacy notes.
+        Loads a Note, EmailNote, CallNote, or SmsNote from a Markdown file with YAML frontmatter.
+        Supports both modern frontmatter notes and legacy notes.
         """
         if not note_path.exists():
             return None
@@ -68,10 +71,24 @@ class Note(BaseModel):
             except ValueError:
                 timestamp = datetime.fromtimestamp(note_path.stat().st_mtime, tz=UTC)
 
+        # Check if note is an SMS Note
+        is_sms = (
+            frontmatter_data.get("type") == "sms"
+            or "message_sid" in frontmatter_data
+            or "-sms-" in note_path.stem
+            or title.lower().startswith("sms:")
+            or title.lower().startswith("sms ")
+        )
+        if is_sms:
+            return SmsNote.from_file(note_path)
+
         # Check if note is an Email Note (modern or legacy)
         is_email = (
             frontmatter_data.get("type") == "email"
-            or "direction" in frontmatter_data
+            or (
+                "direction" in frontmatter_data
+                and ("from" in frontmatter_data or "@" in str(frontmatter_data.get("from_address", "")))
+            )
             or title.lower().startswith(("email sent:", "email received:"))
             or ("- Direction:" in markdown_content or "- From:" in markdown_content)
         )

@@ -11,8 +11,8 @@ class CompanyActivity:
     """A unified activity item (call, email, note, or meeting) for a company."""
 
     timestamp: datetime
-    activity_type: Literal["call", "email", "note", "meeting"]
-    icon: str  # "📞", "✉", "📝", "📅"
+    activity_type: Literal["call", "email", "note", "meeting", "sms"]
+    icon: str  # "📞", "✉", "📝", "📅", "💬"
     title: str
     preview: str
     content: str

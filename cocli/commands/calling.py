@@ -148,6 +148,39 @@ def balance(
         )
 
 
+@app.command("sync-messages")
+def sync_messages(
+    limit: int = typer.Option(
+        50, "--limit", "-l", help="Max messages to fetch from Twilio"
+    ),
+) -> None:
+    """Poll Twilio for incoming SMS replies and sync them into company Activity timelines."""
+    from ..application.sms_service import sync_twilio_sms
+
+    campaign = get_campaign()
+    console.print("[dim]Checking Twilio for new incoming SMS messages...[/dim]")
+    result = sync_twilio_sms(campaign_name=campaign, limit=limit)
+
+    if result.errors:
+        for err in result.errors:
+            console.print(f"[bold red]{err}[/bold red]")
+
+    if result.synced_count > 0:
+        console.print(
+            f"[bold green]Synced {result.synced_count} SMS messages "
+            f"({result.matched_count} matched to companies, {result.unmatched_count} in inbox).[/bold green]"
+        )
+        for note_path in result.notes_created:
+            console.print(f"  💬 [cyan]{note_path.name}[/cyan]")
+    elif not result.errors:
+        if result.skipped_count > 0:
+            console.print(
+                f"[dim]No new messages to sync ({result.skipped_count} already recorded).[/dim]"
+            )
+        else:
+            console.print("[dim]No incoming SMS messages found on Twilio.[/dim]")
+
+
 @app.command("status")
 def status() -> None:
     """Show the resolved calling provider config and whether the Edge PWA
