@@ -90,7 +90,7 @@ def set_twilio(
         "", "--recording-callback", help="Optional webhook URL for recordings"
     ),
     low_balance_threshold: float = typer.Option(
-        20.0, "--low-balance-threshold", help="Warning threshold in USD for low balance"
+        5.0, "--low-balance-threshold", help="Warning threshold in USD for low balance"
     ),
 ) -> None:
     """Save Twilio credentials and phone numbers for call bridging."""
@@ -278,6 +278,43 @@ def status() -> None:
                 else:
                     console.print("Twilio SMS Forwarding (SmsUrl): [dim](none configured - SMS forwarding inactive)[/dim]")
 
+            trust_info = tw_provider.get_trusthub_status()
+            if trust_info:
+                prof_name = trust_info.get("friendly_name", "Primary Profile")
+                prof_status = trust_info.get("status", "unknown")
+                policy_desc = trust_info.get("policy_name") or "Profile"
+                if "individual" in policy_desc.lower():
+                    policy_label = "Individual"
+                elif "business" in policy_desc.lower():
+                    policy_label = "Business"
+                else:
+                    policy_label = policy_desc
+
+                status_styled = (
+                    f"[bold green]{prof_status}[/bold green]"
+                    if "approved" in prof_status.lower()
+                    else f"[bold yellow]{prof_status}[/bold yellow]"
+                )
+                console.print(
+                    f"Twilio TrustHub Profile: {prof_name} ({policy_label}) - {status_styled}"
+                )
+
+            dial_perm = tw_provider.get_dialing_permissions("US")
+            if dial_perm:
+                low_risk = (
+                    "[bold green]Enabled[/bold green]"
+                    if dial_perm.get("low_risk_numbers_enabled")
+                    else "[bold red]Disabled[/bold red]"
+                )
+                high_risk = (
+                    "[bold green]Enabled[/bold green]"
+                    if dial_perm.get("high_risk_special_numbers_enabled")
+                    else "[dim]Disabled[/dim]"
+                )
+                console.print(
+                    f"Twilio US Dialing Permissions: Low Risk: {low_risk}, High Risk: {high_risk}"
+                )
+
             is_low, bal, curr = tw_provider.is_low_balance()
             if bal is not None:
                 c = curr or "USD"
@@ -344,7 +381,98 @@ def test(phone: str) -> None:
             f"[bold green]Launched call to {phone} via {type(provider).__name__}.[/bold green]"
         )
     else:
+        err = getattr(provider, "last_error", None)
         console.print(f"[bold red]Could not launch a call to {phone}.[/bold red]")
+        if err:
+            console.print(f"[yellow]{err}[/yellow]")
+            if "21216" in err:
+                console.print(
+                    "\n[bold yellow]Note on Error 21216:[/] Twilio blocked this outbound call. "
+                    "Since your Customer Profile is approved, this is typically Twilio's automated "
+                    "fraud protection filter on newly funded accounts. "
+                    "Submit a ticket at https://help.twilio.com to request lifting the outbound voice block."
+                )
+        raise typer.Exit(code=1)
+
+
+@app.command("test-voice")
+def test_voice(
+    phone: Optional[str] = typer.Argument(
+        None, help="Optional phone number to call (defaults to configured my_phone)"
+    ),
+) -> None:
+    """Place a direct single-leg test call with an automated spoken confirmation.
+
+    Unlike 'test', this does not bridge calls together, avoiding feedback loops.
+    """
+    campaign = get_campaign()
+    provider = get_calling_provider(campaign)
+    if not isinstance(provider, TwilioBridgeCallingProvider):
+        console.print(
+            "[yellow]test-voice is only supported for the 'twilio' calling provider.[/yellow]"
+        )
+        raise typer.Exit(code=1)
+
+    target = phone or provider.my_phone
+    if not target:
+        console.print(
+            "[bold red]No phone number provided and no 'my_phone' configured in Twilio settings.[/bold red]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print(f"Initiating test voice call to [cyan]{target}[/cyan]...")
+    ok, res = provider.test_voice_call(target)
+    if ok:
+        console.print(
+            f"[bold green]✓ Test voice call placed successfully! (Call SID: {res})[/bold green]"
+        )
+        console.print("Answer your phone to hear the automated confirmation message.")
+    else:
+        console.print(f"[bold red]✗ Test voice call failed:[/] [yellow]{res}[/yellow]")
+        if res and "21216" in res:
+            console.print(
+                "\n[bold yellow]Note on Error 21216:[/] Twilio blocked this call. "
+                "Contact Twilio Support (https://help.twilio.com) to lift the automated outbound voice restriction."
+            )
+        raise typer.Exit(code=1)
+
+
+@app.command("test-sms")
+def test_sms(
+    phone: Optional[str] = typer.Argument(
+        None, help="Optional phone number to text (defaults to configured my_phone)"
+    ),
+    message: str = typer.Option(
+        "CoCli Test: Twilio SMS is working properly!",
+        "--message",
+        "-m",
+        help="Text message body to send",
+    ),
+) -> None:
+    """Send a test SMS message from your Twilio number to your phone."""
+    campaign = get_campaign()
+    provider = get_calling_provider(campaign)
+    if not isinstance(provider, TwilioBridgeCallingProvider):
+        console.print(
+            "[yellow]test-sms is only supported for the 'twilio' calling provider.[/yellow]"
+        )
+        raise typer.Exit(code=1)
+
+    target = phone or provider.my_phone
+    if not target:
+        console.print(
+            "[bold red]No phone number provided and no 'my_phone' configured in Twilio settings.[/bold red]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print(f"Sending test SMS to [cyan]{target}[/cyan]...")
+    ok, res = provider.send_sms(to_phone=target, body=message)
+    if ok:
+        console.print(
+            f"[bold green]✓ Test SMS sent successfully! (Message SID: {res})[/bold green]"
+        )
+    else:
+        console.print(f"[bold red]✗ Test SMS failed:[/] [yellow]{res}[/yellow]")
         raise typer.Exit(code=1)
 
 

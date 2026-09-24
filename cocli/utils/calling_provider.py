@@ -362,7 +362,7 @@ class TwilioBridgeCallingProvider:
         my_phone: Optional[str] = None,
         recording_callback_url: Optional[str] = None,
         record: bool = True,
-        low_balance_threshold: float = 20.0,
+        low_balance_threshold: float = 5.0,
     ):
         self.account_sid = account_sid or os.environ.get("TWILIO_ACCOUNT_SID")
         self.auth_token = auth_token or os.environ.get("TWILIO_AUTH_TOKEN")
@@ -831,6 +831,265 @@ class TwilioBridgeCallingProvider:
             self.last_error = f"Twilio bridge error: {exc}"
             logger.error("Failed to initiate Twilio bridge call: %s", exc)
             return False
+
+    def test_voice_call(
+        self, to_phone: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """Initiate a single-leg automated test call to verify voice calling works.
+
+        Uses inline TwiML with an automated spoken message so it does not bridge to another number.
+        Returns (True, call_sid) on success or (False, error_message) on failure.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            err = "Twilio credentials not configured or could not be resolved"
+            self.last_error = err
+            return False, err
+
+        target_phone = to_phone or self.my_phone
+        if not target_phone or not self.caller_id:
+            err = "Missing caller_id or destination phone number"
+            self.last_error = err
+            return False, err
+
+        cleaned_target = clean_phone_e164(target_phone)
+        cleaned_caller_id = clean_phone_e164(self.caller_id)
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated test_voice_call in test mode"
+            )
+            return True, "CA1234567890abcdef1234567890abcdef"
+
+        twiml = (
+            "<Response>"
+            "<Say voice=\"alice\">Hello! This is an automated test call from Company CLI. "
+            "Your Twilio voice connection is working properly.</Say>"
+            "</Response>"
+        )
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls.json"
+        data = {
+            "To": cleaned_target,
+            "From": cleaned_caller_id,
+            "Twiml": twiml,
+        }
+        try:
+            resp = requests.post(
+                url, data=data, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code in (200, 201):
+                call_info = resp.json()
+                call_sid = call_info.get("sid", "unknown")
+                logger.info(
+                    "Twilio test voice call initiated (SID: %s) to %s",
+                    call_sid,
+                    cleaned_target,
+                )
+                self.last_error = None
+                return True, call_sid
+            else:
+                err_msg = resp.text
+                err_code = None
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("message", resp.text)
+                    err_code = err_json.get("code")
+                except Exception:
+                    pass
+                code_prefix = f" [{err_code}]" if err_code else ""
+                err = f"Twilio error {resp.status_code}{code_prefix}: {err_msg}"
+                self.last_error = err
+                logger.warning(err)
+                return False, err
+        except Exception as exc:
+            err = f"Failed to initiate Twilio test voice call: {exc}"
+            self.last_error = err
+            logger.warning(err)
+            return False, err
+
+    def send_sms(
+        self, to_phone: str, body: str, from_phone: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """Send an SMS message via Twilio REST API.
+
+        Returns (True, message_sid) on success or (False, error_message) on failure.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            err = "Twilio credentials not configured or could not be resolved"
+            self.last_error = err
+            return False, err
+
+        source_phone = from_phone or self.caller_id
+        if not source_phone:
+            err = "Missing outbound caller_id / phone number"
+            self.last_error = err
+            return False, err
+
+        cleaned_target = clean_phone_e164(to_phone)
+        cleaned_source = clean_phone_e164(source_phone)
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated send_sms in test mode"
+            )
+            return True, "SM1234567890abcdef1234567890abcdef"
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+        data = {
+            "To": cleaned_target,
+            "From": cleaned_source,
+            "Body": body,
+        }
+        try:
+            resp = requests.post(
+                url, data=data, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code in (200, 201):
+                msg_info = resp.json()
+                msg_sid = msg_info.get("sid", "unknown")
+                logger.info(
+                    "Twilio SMS sent (SID: %s) to %s",
+                    msg_sid,
+                    cleaned_target,
+                )
+                self.last_error = None
+                return True, msg_sid
+            else:
+                err_msg = resp.text
+                err_code = None
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("message", resp.text)
+                    err_code = err_json.get("code")
+                except Exception:
+                    pass
+                code_prefix = f" [{err_code}]" if err_code else ""
+                err = f"Twilio SMS error {resp.status_code}{code_prefix}: {err_msg}"
+                self.last_error = err
+                logger.warning(err)
+                return False, err
+        except Exception as exc:
+            err = f"Failed to send Twilio SMS: {exc}"
+            self.last_error = err
+            logger.warning(err)
+            return False, err
+
+    def get_trusthub_status(self) -> Optional[dict[str, Any]]:
+        """Query Twilio TrustHub API for Primary Customer Profile status.
+
+        Returns dict with: sid, friendly_name, status, policy_sid, policy_name.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return None
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated get_trusthub_status in test mode"
+            )
+            return {
+                "sid": "BU1234567890abcdef1234567890abcdef",
+                "friendly_name": "Test Profile",
+                "status": "twilio-approved",
+                "policy_sid": "RN1234567890abcdef1234567890abcdef",
+                "policy_name": "Primary customer profile for individual",
+            }
+
+        url = "https://trusthub.twilio.com/v1/CustomerProfiles"
+        try:
+            resp = requests.get(url, auth=(auth_user, auth_pass), timeout=10)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                if not results:
+                    return None
+                prof = results[0]
+                prof_sid = prof.get("sid", "")
+                friendly_name = prof.get("friendly_name", "")
+                status = prof.get("status", "")
+                policy_sid = prof.get("policy_sid", "")
+                policy_name: Optional[str] = None
+                if policy_sid:
+                    try:
+                        p_resp = requests.get(
+                            f"https://trusthub.twilio.com/v1/Policies/{policy_sid}",
+                            auth=(auth_user, auth_pass),
+                            timeout=8,
+                        )
+                        if p_resp.status_code == 200:
+                            policy_name = p_resp.json().get("friendly_name")
+                    except Exception:
+                        pass
+                return {
+                    "sid": prof_sid,
+                    "friendly_name": friendly_name,
+                    "status": status,
+                    "policy_sid": policy_sid,
+                    "policy_name": policy_name or "Individual",
+                }
+            else:
+                self.last_error = f"Twilio TrustHub API error {resp.status_code}: {resp.text}"
+                logger.warning(self.last_error)
+                return None
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio TrustHub status: {exc}"
+            logger.warning(self.last_error)
+            return None
+
+    def get_dialing_permissions(
+        self, iso_code: str = "US"
+    ) -> Optional[dict[str, Any]]:
+        """Query Twilio Voice Dialing Permissions API for country-level permissions.
+
+        Returns dict with: iso_code, name, low_risk_numbers_enabled, high_risk_special_numbers_enabled, high_risk_tollfraud_numbers_enabled.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return None
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated get_dialing_permissions in test mode"
+            )
+            return {
+                "iso_code": iso_code.upper(),
+                "name": "United States/Canada",
+                "low_risk_numbers_enabled": True,
+                "high_risk_special_numbers_enabled": False,
+                "high_risk_tollfraud_numbers_enabled": False,
+            }
+
+        url = f"https://voice.twilio.com/v1/DialingPermissions/Countries/{iso_code.upper()}"
+        try:
+            resp = requests.get(url, auth=(auth_user, auth_pass), timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "iso_code": data.get("iso_code", iso_code.upper()),
+                    "name": data.get("name", ""),
+                    "low_risk_numbers_enabled": bool(data.get("low_risk_numbers_enabled", False)),
+                    "high_risk_special_numbers_enabled": bool(data.get("high_risk_special_numbers_enabled", False)),
+                    "high_risk_tollfraud_numbers_enabled": bool(data.get("high_risk_tollfraud_numbers_enabled", False)),
+                }
+            else:
+                self.last_error = f"Twilio Dialing Permissions API error {resp.status_code}: {resp.text}"
+                logger.warning(self.last_error)
+                return None
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio dialing permissions: {exc}"
+            logger.warning(self.last_error)
+            return None
 
 
 def twilio_config(campaign_name: Optional[str] = None) -> dict[str, Any]:

@@ -124,6 +124,11 @@ cocli
             --limit/-l (integer)
         test - Actually dial `phone` with the currently configured provider - use
             phone (text) [required]
+        test-sms - Send a test SMS message from your Twilio number to your phone.
+            phone (text)
+            --message/-m (text)
+        test-voice - Place a direct single-leg test call with an automated spoken confirmation.
+            phone (text)
     campaign - Manage campaigns.
         achieve-goal - Deprecated - superseded by Discovery Gen; not called in production since ~2026-06.
             --emails/--limit (integer)

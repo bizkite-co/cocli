@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from cocli.utils.calling_provider import (
@@ -781,6 +782,169 @@ def test_twilio_bridge_update_incoming_phone_number_sms_url() -> None:
         == "https://api.twilio.com/2010-04-01/Accounts/ACtest123/IncomingPhoneNumbers/PN111222333.json"
     )
     assert mock_post.call_args[1]["data"]["SmsUrl"] == "https://handler.twilio.com/twiml/EHnew"
+
+
+def test_twilio_bridge_test_voice_call_success() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"sid": "CA111222333"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.post", return_value=mock_resp) as mock_post,
+    ):
+        ok, sid = provider.test_voice_call("+19095551234")
+
+    assert ok is True
+    assert sid == "CA111222333"
+    mock_post.assert_called_once()
+    assert "Calls.json" in mock_post.call_args[0][0]
+    data = mock_post.call_args[1]["data"]
+    assert data["To"] == "+19095551234"
+    assert data["From"] == "+19093232647"
+    assert "<Say" in data["Twiml"]
+
+
+def test_twilio_bridge_test_voice_call_error() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 400
+    mock_resp.json.return_value = {
+        "code": 21216,
+        "message": "Account not allowed to call +19095551234",
+    }
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.post", return_value=mock_resp),
+    ):
+        ok, err = provider.test_voice_call("+19095551234")
+
+    assert ok is False
+    assert err is not None
+    assert "21216" in err
+    assert "Account not allowed to call" in err
+
+
+def test_twilio_bridge_send_sms_success() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"sid": "SM111222333"}
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.post", return_value=mock_resp) as mock_post,
+    ):
+        ok, sid = provider.send_sms(to_phone="+19095551234", body="Hello test")
+
+    assert ok is True
+    assert sid == "SM111222333"
+    mock_post.assert_called_once()
+    assert "Messages.json" in mock_post.call_args[0][0]
+    data = mock_post.call_args[1]["data"]
+    assert data["To"] == "+19095551234"
+    assert data["From"] == "+19093232647"
+    assert data["Body"] == "Hello test"
+
+
+def test_twilio_bridge_get_trusthub_status() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "results": [
+            {
+                "sid": "BU111222333",
+                "friendly_name": "My Customer Profile",
+                "status": "twilio-approved",
+                "policy_sid": "RN111222333",
+            }
+        ]
+    }
+    mock_policy_resp = MagicMock()
+    mock_policy_resp.status_code = 200
+    mock_policy_resp.json.return_value = {
+        "friendly_name": "Primary customer profile for individual"
+    }
+
+    def mock_get(url: str, **kwargs: Any) -> MagicMock:
+        if "Policies" in url:
+            return mock_policy_resp
+        return mock_resp
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", side_effect=mock_get),
+    ):
+        status = provider.get_trusthub_status()
+
+    assert status is not None
+    assert status["sid"] == "BU111222333"
+    assert status["friendly_name"] == "My Customer Profile"
+    assert status["status"] == "twilio-approved"
+    assert "individual" in status["policy_name"].lower()
+
+
+def test_twilio_bridge_get_dialing_permissions() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "iso_code": "US",
+        "name": "United States/Canada",
+        "low_risk_numbers_enabled": True,
+        "high_risk_special_numbers_enabled": False,
+        "high_risk_tollfraud_numbers_enabled": False,
+    }
+
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch("requests.get", return_value=mock_resp) as mock_get,
+    ):
+        perms = provider.get_dialing_permissions("US")
+
+    assert perms is not None
+    assert perms["iso_code"] == "US"
+    assert perms["low_risk_numbers_enabled"] is True
+    assert perms["high_risk_special_numbers_enabled"] is False
+    assert "Countries/US" in mock_get.call_args[0][0]
+
+
+def test_twilio_bridge_low_balance_threshold_default() -> None:
+    provider = TwilioBridgeCallingProvider(
+        account_sid="ACtest123",
+        auth_token="auth_tok_secret",
+        caller_id="+19093232647",
+        my_phone="+19095551234",
+    )
+    assert provider.low_balance_threshold == 5.0
 
 
 
