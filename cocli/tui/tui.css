@@ -439,6 +439,15 @@ ModalScreen {
     height: 100%;
 }
 
+#call_error_banner {
+    color: #ff5555;
+    background: #331111;
+    padding: 0 1;
+    margin: 0 0 1 0;
+    height: auto;
+    text-style: bold;
+}
+
 #company_local_time {
     color: #00ff00;
     text-style: bold;

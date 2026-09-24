@@ -960,9 +960,13 @@ class CompanyDetail(MarkPrefixMixin, Container):
             from .call_log_modal import CallLogModal
 
             caller_id = getattr(provider, "caller_id", None)
+            call_error = None if voice_opened else getattr(provider, "last_error", None)
             await self.app.push_screen_wait(
                 CallLogModal(
-                    company_slug=slug, phone=str(phone), caller_id=caller_id
+                    company_slug=slug,
+                    phone=str(phone),
+                    caller_id=caller_id,
+                    call_error=call_error,
                 )
             )
 

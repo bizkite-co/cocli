@@ -75,12 +75,14 @@ class CallLogModal(ModalScreen[bool]):
         company_slug: str,
         phone: str,
         caller_id: Optional[str] = None,
+        call_error: Optional[str] = None,
         *args: Any,
         **kwargs: Any,
     ):
         super().__init__(*args, **kwargs)
         self.company_slug = company_slug
         self.phone = phone
+        self.call_error = call_error
         if caller_id is not None:
             self.caller_id: Optional[str] = caller_id
         else:
@@ -132,6 +134,11 @@ class CallLogModal(ModalScreen[bool]):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield self.local_time_widget
             yield Label(phone_markup, classes="modal-subtitle", id="call_phone")
+            if self.call_error:
+                yield Label(
+                    f"⚠️ [bold red]Call Failed:[/] [yellow]{self.call_error}[/]",
+                    id="call_error_banner",
+                )
 
             with Horizontal(id="call-log-columns"):
                 with VerticalScroll(id="call-log-left"):

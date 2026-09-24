@@ -580,3 +580,51 @@ async def test_call_log_modal_displays_calling_from_in_yellow(
         content = str(modal.query_one("#call_phone").content)
         assert "(555) 333-1111" in content
         assert "Calling from: [bold yellow](714) 451-4350[/bold yellow]" in content
+
+
+@pytest.mark.asyncio
+async def test_call_log_modal_displays_call_error_banner(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """When a call fails to initiate, an in-modal error banner is displayed."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="Error Co",
+        slug="error-co",
+        domain="error.com",
+        phone="555-444-2222",
+    )
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        # Case 1: Error passed
+        error_msg = "Twilio error 400: Account not allowed to call +17144967059"
+        modal_with_err = CallLogModal(
+            company_slug="error-co",
+            phone="555-444-2222",
+            call_error=error_msg,
+        )
+        app.push_screen(modal_with_err)
+        await driver.pause()
+
+        banner = modal_with_err.query_one("#call_error_banner")
+        assert banner is not None
+        banner_content = str(banner.content)
+        assert "Call Failed" in banner_content
+        assert error_msg in banner_content
+
+        modal_with_err.dismiss(False)
+        await driver.pause()
+
+        # Case 2: No error passed
+        modal_no_err = CallLogModal(
+            company_slug="error-co",
+            phone="555-444-2222",
+        )
+        app.push_screen(modal_no_err)
+        await driver.pause()
+
+        assert not modal_no_err.query("#call_error_banner")
