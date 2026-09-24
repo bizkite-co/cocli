@@ -14,6 +14,24 @@ from ..base import CocliPanel
 class CompanyPreview(CocliPanel):
     """A widget to display a preview of a company."""
 
+    DEFAULT_CSS = """
+    CompanyPreview .testimonial-target-banner {
+        background: #3b0764;
+        color: #fdf4ff;
+        padding: 0 1;
+        margin-bottom: 1;
+        text-align: center;
+        border: solid #d946ef;
+    }
+    CompanyPreview .testimonial-target-stats {
+        background: #1e1e2e;
+        color: #f1f5f9;
+        padding: 0 1;
+        margin-bottom: 1;
+        border-left: thick #a855f7;
+    }
+    """
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Capture initial widgets to mount in preview_content later
         self._initial_widgets = args
@@ -98,7 +116,47 @@ class CompanyPreview(CocliPanel):
         else:
             enriched_str = "No"
 
-        preview_widgets = [
+        # Testimonial Target banner and stats
+        is_testimonial = "testimonial-target" in company.tags or any(
+            "testimonial" in t.lower() for t in company.tags
+        )
+        testimonial_widgets = []
+        if is_testimonial:
+            testimonial_widgets.append(
+                Static(
+                    "⭐ [bold white]TESTIMONIAL TARGET[/]  [bold magenta]• Active RTA User[/]",
+                    classes="testimonial-target-banner",
+                )
+            )
+            parts = []
+            metrics = getattr(company, "rta_metrics", None)
+            if metrics and isinstance(metrics, dict):
+                if "rank" in metrics:
+                    parts.append(f"Rank [bold cyan]#{metrics['rank']}[/]")
+                if "login_count" in metrics:
+                    parts.append(f"[bold green]{metrics['login_count']}[/] logins")
+                if "active_minutes" in metrics:
+                    parts.append(f"[bold yellow]{metrics['active_minutes']}[/] active mins")
+                if "active_days" in metrics:
+                    parts.append(f"[bold white]{metrics['active_days']}[/] active days")
+                if "event_count" in metrics:
+                    parts.append(f"[bold magenta]{metrics['event_count']}[/] events")
+            if not parts:
+                for tag in company.tags:
+                    if tag.startswith("rta-rank-"):
+                        rank_num = tag.split("rta-rank-")[-1]
+                        parts.append(f"Rank [bold cyan]#{rank_num}[/]")
+                        break
+            if parts:
+                stats_str = " • ".join(parts)
+                testimonial_widgets.append(
+                    Static(
+                        f"📊 [bold magenta]RTA Activity:[/] {stats_str}",
+                        classes="testimonial-target-stats",
+                    )
+                )
+
+        preview_widgets = testimonial_widgets + [
             Static(f"Name: [b]{escape(str(company.name) if company.name else '')}[/b]"),
             Static(
                 f"[b]Domain:[/b] [cyan]{escape(str(company.domain))}[/cyan]"

@@ -47,6 +47,7 @@ class Company(BaseModel):
     company_hash: Optional[str] = None
     description: Optional[str] = None
     visits_per_day: Optional[int] = None
+    rta_metrics: Optional[dict[str, Any]] = None
 
     # --- Ordinant Protocol Implementation ---
     @property

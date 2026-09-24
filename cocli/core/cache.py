@@ -102,9 +102,9 @@ def _fast_extract_metadata(index_path: Path) -> dict[str, Any]:
         if m:
             data["email"] = m.group(1).strip()
 
-        m = re.search(r"^phone:\s*(.*)$", content, re.MULTILINE)
+        m = re.search(r"^phone(?:_number)?:\s*(.*)$", content, re.MULTILINE)
         if m:
-            data["phone"] = m.group(1).strip()
+            data["phone"] = m.group(1).strip().strip('"').strip("'")
 
         m = re.search(r"^average_rating:\s*(.*)$", content, re.MULTILINE)
         if m:
@@ -129,6 +129,22 @@ def _fast_extract_metadata(index_path: Path) -> dict[str, Any]:
                     line = line.strip()
                     if line.startswith("- "):
                         tags.append(line[2:].strip())
+
+        if "campaigns:" in content:
+            camp_flow = re.search(r"^campaigns:\s*\[(.*)\]", content, re.MULTILINE)
+            if camp_flow:
+                tags.extend([
+                    t.strip().strip('"').strip("'")
+                    for t in camp_flow.group(1).split(",")
+                    if t.strip()
+                ])
+            else:
+                camp_section = content.split("campaigns:")[1].split("\n\n")[0]
+                for line in camp_section.split("\n"):
+                    line = line.strip()
+                    if line.startswith("- "):
+                        tags.append(line[2:].strip())
+
         data["tags"] = tags
     except Exception:
         pass
