@@ -49,6 +49,48 @@ class FollowUpService:
         task.save()
         return task
 
+    def enqueue_by_tag(
+        self,
+        tag: str,
+        *,
+        template_id: str,
+        initiative: str = "rta",
+        format: Literal["call", "email"] = "email",
+        scheduled_at: Optional[datetime] = None,
+    ) -> list[FollowUpTask]:
+        """Enqueue follow-up tasks for all companies in this campaign that have `tag`."""
+        from .personalized_outreach_service import PersonalizedOutreachService
+        from ..models.companies.company import Company
+        from ..core.paths import paths
+
+        outreach = PersonalizedOutreachService(self.campaign_name)
+        scheduled_at = scheduled_at or datetime.now(UTC)
+        tasks: list[FollowUpTask] = []
+
+        companies_dir = paths.companies.ensure()
+        for idx_file in sorted(companies_dir.glob("*/_index.md")):
+            slug = idx_file.parent.name
+            company = Company.get(slug)
+            if not company or not company.belongs_to_campaign(self.campaign_name):
+                continue
+            if tag not in (company.tags or []):
+                continue
+
+            match = outreach.find_contact_for_company(slug)
+            recipient_email = match.recipient_email if match else (str(company.email) if company.email else None)
+
+            task = self.add_follow_up(
+                company_slug=slug,
+                domain=company.domain or "unknown",
+                scheduled_at=scheduled_at,
+                format=format,
+                template_id=template_id,
+                initiative=initiative,
+                recipient_email=recipient_email,
+            )
+            tasks.append(task)
+        return tasks
+
     def list_pending(self, company_slug: Optional[str] = None) -> list[FollowUpTask]:
         base = self._pending_dir()
         if not base.exists():

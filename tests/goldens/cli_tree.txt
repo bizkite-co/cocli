@@ -456,6 +456,11 @@ cocli
             phone (text) [required]
     email - Send via SES and poll a configured IMAP inbox into company notes. Not a mail client.
         authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
+        enqueue-followups - Batch-enqueue email follow-ups for all companies matching a tag.
+            --tag (text) [required]
+            --template/-t (text) [required]
+            --initiative/-i (text)
+            --render/-r (boolean)
         list-pending - List every not-yet-sent pending-batch row - the answer to "what's
         poll - Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match.
             --limit (integer)
@@ -463,7 +468,9 @@ cocli
             --limit (integer)
         prepare-batch - Generate personalized outreach email drafts for testing (filters prospects with contact first names).
             --limit/-l (integer)
+            --template/-t (text)
             --initiative/-i (text)
+            --tag (text)
         render-html-preview - Regenerate rendered-outreach/<slug>/<template>.html from the
             company_slug (text) [required]
             template (text) [required]

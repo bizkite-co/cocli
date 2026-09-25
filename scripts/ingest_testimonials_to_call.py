@@ -373,7 +373,13 @@ def ingest_testimonials(
             company.save(rebuild_cache=False)
             # 2. Save person
             person.save()
-            # 3. Save to-call pending task
+            # 3. Link person contact to company
+            contacts_dir = company.get_local_path().parent / "contacts"
+            contacts_dir.mkdir(parents=True, exist_ok=True)
+            symlink = contacts_dir / person.slug
+            if not symlink.exists():
+                symlink.symlink_to(person.get_local_path().parent)
+            # 4. Save to-call pending task
             task.save()
 
         results.append(

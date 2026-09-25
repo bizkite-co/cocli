@@ -161,3 +161,36 @@ def test_process_due_email_without_template_id_is_an_error_not_a_crash(
     assert len(result.errors) == 1
     # Left in place to retry, not silently dropped.
     assert len(service.list_pending()) == 1
+
+
+def test_enqueue_by_tag(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_company_with_contact(paths, "acme-corp")
+    # Tag acme-corp with testimonial-target
+    c = Company.get("acme-corp")
+    assert c is not None
+    c.tags = ["roadmap", "testimonial-target"]
+    c.save()
+
+    # Another company without the tag
+    c2 = Company(name="Other Co", slug="other-co", tags=["roadmap"], domain="other.test")
+    c2.save()
+
+    service = FollowUpService("roadmap")
+    tasks = service.enqueue_by_tag(
+        "testimonial-target",
+        template_id="request_testimonial.md",
+        initiative="testimonials",
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].company_slug == "acme-corp"
+    assert tasks[0].template_id == "request_testimonial.md"
+    assert tasks[0].initiative == "testimonials"
+
+    pending = service.list_pending()
+    assert len(pending) == 1
+    assert pending[0].company_slug == "acme-corp"
+

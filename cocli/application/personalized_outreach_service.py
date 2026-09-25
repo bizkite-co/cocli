@@ -99,6 +99,7 @@ class PersonalizedOutreachService:
         limit: int = 10,
         template_name: str = "email_01_pas_hook.md",
         initiative: str = "rta",
+        tag: Optional[str] = None,
     ) -> list[ProspectContactMatch]:
         """Find campaign companies having valid email addresses and contact first names."""
         matches: list[ProspectContactMatch] = []
@@ -113,6 +114,9 @@ class PersonalizedOutreachService:
             slug = index_file.parent.name
             company = Company.get(slug)
             if not company or not company.belongs_to_campaign(self.campaign_name):
+                continue
+
+            if tag and tag not in (company.tags or []):
                 continue
 
             if self.exclusion_mgr.is_excluded(slug=company.slug, domain=company.domain):
@@ -142,8 +146,8 @@ class PersonalizedOutreachService:
                     )
                 )
 
-        # Fallback to scanning paths.people if more matches needed
-        if len(matches) < limit and paths.people.path.exists():
+        # Fallback to scanning paths.people if more matches needed (only when not filtering by tag)
+        if not tag and len(matches) < limit and paths.people.path.exists():
             from cocli.models.people.person import Person
             seen_slugs = {m.company_slug for m in matches}
             seen_emails = {m.recipient_email.lower() for m in matches}
@@ -224,6 +228,10 @@ class PersonalizedOutreachService:
                 fname = extract_first_name(raw_name)
                 if fname:
                     return co_email, fname, raw_name, str(contact.get("role") or "")
+            co_name = str(company.name or "")
+            derived_name = co_name.split(" - ")[-1] if " - " in co_name else co_name
+            fname = extract_first_name(derived_name) or "there"
+            return co_email, fname, derived_name, ""
 
         return None
 
@@ -288,15 +296,34 @@ class PersonalizedOutreachService:
 
     def list_templates(self) -> list[str]:
         """Filenames available via load_template()'s fallback chain -
-        generic dir first, then the roadmap/RTA-specific dir - deduplicated
+        generic dir first, then all initiative email-sequences dirs - deduplicated
         and sorted for stable display."""
         generic_dir = paths.campaigns / self.campaign_name / "email-templates"
-        rta_dir = paths.campaigns / self.campaign_name / "initiatives" / "rta" / "email-sequences"
         names: set[str] = set()
-        for d in (generic_dir, rta_dir):
-            if d.exists():
-                names.update(p.name for p in d.glob("*.md"))
+        if generic_dir.exists():
+            names.update(p.name for p in generic_dir.glob("*.md"))
+        rta_dir = paths.campaigns / self.campaign_name / "initiatives" / "rta" / "email-sequences"
+        if rta_dir.exists():
+            names.update(p.name for p in rta_dir.glob("*.md"))
+        for init in self.list_initiatives():
+            names.update(self.list_initiative_templates(init))
         return sorted(names)
+
+    def list_templates_with_initiative(self) -> list[tuple[str, str, str]]:
+        """Returns list of (display_label, template_name, initiative) across
+        all available templates.
+        E.g. ('[testimonials] request_testimonial.md', 'request_testimonial.md', 'testimonials')
+             ('[rta] email_01_pas_hook.md', 'email_01_pas_hook.md', 'rta')
+        """
+        choices: list[tuple[str, str, str]] = []
+        generic_dir = paths.campaigns / self.campaign_name / "email-templates"
+        if generic_dir.exists():
+            for p in sorted(generic_dir.glob("*.md")):
+                choices.append((f"[generic] {p.name}", p.name, "generic"))
+        for init in self.list_initiatives():
+            for tpl in self.list_initiative_templates(init):
+                choices.append((f"[{init}] {tpl}", tpl, init))
+        return choices
 
     _INITIATIVE_CATEGORIES = ("email-sequences", "rendered-outreach", "tracking")
 
@@ -357,10 +384,9 @@ class PersonalizedOutreachService:
     def _template_path(self, template_name: str, initiative: str = "rta") -> Path:
         """Resolve a template (or layout) filename to its actual path:
         campaigns/<c>/email-templates/ (campaign-generic) first, then
-        campaigns/<c>/initiatives/<initiative>/email-sequences/. Shared by
-        load_template() and _layout_for_template() so both agree on where
-        a given filename lives - an .njk layout sits in the same
-        directory as the .md template that references it."""
+        campaigns/<c>/initiatives/<initiative>/email-sequences/. If not
+        found, falls back to scanning other initiatives under
+        campaigns/<c>/initiatives/*/email-sequences/."""
         generic_dir = paths.campaigns / self.campaign_name / "email-templates"
         initiative_dir = (
             paths.campaigns / self.campaign_name / "initiatives" / initiative / "email-sequences"
@@ -368,6 +394,19 @@ class PersonalizedOutreachService:
         template_path = generic_dir / template_name
         if not template_path.exists():
             template_path = initiative_dir / template_name
+        if not template_path.exists():
+            for init in self.list_initiatives():
+                if init != initiative:
+                    candidate = (
+                        paths.campaigns
+                        / self.campaign_name
+                        / "initiatives"
+                        / init
+                        / "email-sequences"
+                        / template_name
+                    )
+                    if candidate.exists():
+                        return candidate
         return template_path
 
     def _layout_for_template(self, template_name: str, initiative: str = "rta") -> Optional[str]:
@@ -745,7 +784,14 @@ class PersonalizedOutreachService:
 
         return result
 
-    def freeze_batch(self, *, limit: int, template_id: str, initiative: str = "rta") -> str:
+    def freeze_batch(
+        self,
+        *,
+        limit: int,
+        template_id: str,
+        initiative: str = "rta",
+        tag: Optional[str] = None,
+    ) -> str:
         """Selects and fully renders a batch, then writes it to
         indexes/email-pending-batch/pending.usv before it is ever
         sendable - a bad template placeholder raises here (from
@@ -758,7 +804,12 @@ class PersonalizedOutreachService:
 
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
-        matches = self.find_eligible_prospects(limit=limit, template_name=template_id, initiative=initiative)
+        matches = self.find_eligible_prospects(
+            limit=limit,
+            template_name=template_id,
+            initiative=initiative,
+            tag=tag,
+        )
 
         batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         entries = [

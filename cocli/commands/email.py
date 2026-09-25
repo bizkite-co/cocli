@@ -206,8 +206,14 @@ def list_suppressed(
 @app.command("prepare-batch")
 def prepare_batch(
     limit: int = typer.Option(10, "--limit", "-l", help="Number of prospects with contact first names to select."),
+    template: str = typer.Option(
+        "email_01_pas_hook.md", "--template", "-t", help="Template filename."
+    ),
     initiative: str = typer.Option(
         "rta", "--initiative", "-i", help="Which campaigns/<c>/initiatives/<name>/ this batch belongs to."
+    ),
+    tag: Optional[str] = typer.Option(
+        None, "--tag", help="Filter prospects by tag (e.g. testimonial-target)."
     ),
 ) -> None:
     """Generate personalized outreach email drafts for testing (filters prospects with contact first names)."""
@@ -215,7 +221,12 @@ def prepare_batch(
     from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     service = PersonalizedOutreachService(campaign_name)
-    matches = service.find_eligible_prospects(limit=limit, initiative=initiative)
+    matches = service.find_eligible_prospects(
+        limit=limit,
+        template_name=template,
+        initiative=initiative,
+        tag=tag,
+    )
 
     if not matches:
         console.print(f"[yellow]No eligible prospects with contact first names found in campaign '{campaign_name}'.[/yellow]")
@@ -223,12 +234,45 @@ def prepare_batch(
 
     console.print(f"[bold green]Prepared & rendered {len(matches)} personalized email drafts for '{campaign_name}':[/bold green]\n")
     for idx, match in enumerate(matches, 1):
-        draft_path = service.render_and_save_draft(match, initiative=initiative)
+        draft_path = service.render_and_save_draft(match, template_id=template, initiative=initiative)
         console.print(f"[bold cyan][{idx}] {match.company_name}[/bold cyan] ({match.company_slug})")
         console.print(f"    Recipient: {match.contact_name} <{match.recipient_email}> (First Name: [bold]{match.first_name}[/bold])")
         console.print(f"    Subject: {match.subject}")
         console.print(f"    Saved Draft: [dim]{draft_path}[/dim]")
         console.print(f"    Body Preview:\n{match.body[:200]}...\n")
+
+
+@app.command("enqueue-followups")
+def enqueue_followups(
+    tag: str = typer.Option(..., "--tag", help="Company tag to select targets by (e.g. testimonial-target)."),
+    template: str = typer.Option(..., "--template", "-t", help="Template filename (e.g. request_testimonial.md)."),
+    initiative: str = typer.Option("rta", "--initiative", "-i", help="Initiative name (e.g. testimonials)."),
+    render: bool = typer.Option(
+        False, "--render", "-r", help="Immediately render and freeze due follow-ups into batch drafts."
+    ),
+) -> None:
+    """Batch-enqueue email follow-ups for all companies matching a tag."""
+    campaign_name = _require_campaign()
+    from cocli.application.follow_up_service import FollowUpService
+
+    service = FollowUpService(campaign_name)
+    tasks = service.enqueue_by_tag(
+        tag,
+        template_id=template,
+        initiative=initiative,
+        format="email",
+    )
+    console.print(
+        f"[bold green]Enqueued {len(tasks)} follow-up(s)[/bold green] for tag='{tag}' with [{initiative}] {template}."
+    )
+    if render:
+        result = service.process_due()
+        console.print(
+            f"[bold green]Rendered {result.emails_queued} email draft(s) into Batch Email Drafts.[/bold green]"
+        )
+        if result.errors:
+            for err in result.errors:
+                console.print(f"[yellow]  - {err}[/yellow]")
 
 
 @app.command("send-batch")

@@ -31,8 +31,8 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
         align: center middle;
     }
     #enqueue_follow_up_form {
-        width: 70;
-        height: auto;
+        width: 78;
+        height: 32;
         border: round $primary;
         background: $surface;
         padding: 1 2;
@@ -42,6 +42,13 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
         text-style: bold;
         color: $accent;
         margin-bottom: 1;
+    }
+    #enqueue_follow_up_form SearchSelect > ListView {
+        max-height: 5;
+    }
+    #modal_help {
+        margin-top: 1;
+        text-align: center;
     }
     """
 
@@ -66,9 +73,23 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         campaign = get_campaign() or "default"
         service = PersonalizedOutreachService(campaign)
-        templates = service.list_templates()
-        if not templates:
-            templates = ["email_01_pas_hook.md"]
+        template_choices_raw = service.list_templates_with_initiative()
+        if not template_choices_raw:
+            template_choices_raw = [("[rta] email_01_pas_hook.md", "email_01_pas_hook.md", "rta")]
+
+        template_choices: list[tuple[str, str]] = [
+            (label, f"{init}::{tpl}") for label, tpl, init in template_choices_raw
+        ]
+
+        # Determine smart default template
+        company = Company.get(self.company_slug)
+        company_tags = (company.tags or []) if company else []
+        initial_template = template_choices[0][1]
+        if "testimonial-target" in company_tags:
+            for label, val in template_choices:
+                if "request_testimonial" in val:
+                    initial_template = val
+                    break
 
         contacts = list_known_contacts(self.company_slug)
         contact_choices: list[tuple[str, str]] = []
@@ -80,7 +101,11 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
             contact_choices.append((line, email))
 
         if not contact_choices:
-            contact_choices.append(("(No contacts on file — company default)", ""))
+            if company and company.email:
+                co_email = str(company.email).strip()
+                contact_choices.append((f"{company.name or self.company_slug} <{co_email}>", co_email))
+            else:
+                contact_choices.append(("(No contacts on file — company default)", ""))
 
         # Default callback date: in 3 days
         default_date = (datetime.now(UTC) + timedelta(days=3)).strftime("%Y-%m-%d")
@@ -97,8 +122,8 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
 
             yield Label("Email Template (type to filter, Enter to pick)", classes="field-label")
             yield SearchSelect(
-                [(t, t) for t in templates],
-                initial_value=templates[0],
+                template_choices,
+                initial_value=initial_template,
                 id="followup_template",
             )
 
@@ -131,10 +156,16 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
             self.app.notify(f"Invalid date: '{date_str}'", severity="error")
             return
 
-        template_id = self.query_one("#followup_template", SearchSelect).value
-        if not template_id:
+        template_raw = self.query_one("#followup_template", SearchSelect).value
+        if not template_raw:
             self.app.notify("Please select an email template", severity="error")
             return
+
+        if "::" in template_raw:
+            initiative, template_id = template_raw.split("::", 1)
+        else:
+            initiative = "rta"
+            template_id = template_raw
 
         recipient_email = self.query_one("#followup_contact", SearchSelect).value
 
@@ -149,11 +180,11 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
                 scheduled_at=scheduled_date,
                 format="email",
                 template_id=template_id,
-                initiative="rta",
+                initiative=initiative,
                 recipient_email=recipient_email or None,
             )
             self.app.notify(
-                f"Scheduled follow-up ({template_id}) for {scheduled_date.strftime('%Y-%m-%d %H:%M')} UTC"
+                f"Scheduled follow-up [{initiative}] ({template_id}) for {scheduled_date.strftime('%Y-%m-%d %H:%M')} UTC"
             )
             self.dismiss(True)
         except Exception as exc:

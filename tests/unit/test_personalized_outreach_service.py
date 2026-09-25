@@ -1248,3 +1248,73 @@ def test_generate_copy_uses_the_given_initiative_not_hardcoded_rta(
 
     assert subject == "WMP hi Sample"
     assert "WMP body for Sample Co" in body
+
+
+def test_list_templates_includes_all_initiatives(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(paths, "rta", {"email-sequences": {"email_01.md": "x"}})
+    _make_initiative(paths, "testimonials", {"email-sequences": {"request_testimonial.md": "x"}})
+
+    service = PersonalizedOutreachService("roadmap")
+    templates = service.list_templates()
+    assert "email_01.md" in templates
+    assert "request_testimonial.md" in templates
+
+
+def test_list_templates_with_initiative(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(paths, "rta", {"email-sequences": {"email_01.md": "x"}})
+    _make_initiative(paths, "testimonials", {"email-sequences": {"request_testimonial.md": "x"}})
+
+    service = PersonalizedOutreachService("roadmap")
+    choices = service.list_templates_with_initiative()
+    assert ("[rta] email_01.md", "email_01.md", "rta") in choices
+    assert ("[testimonials] request_testimonial.md", "request_testimonial.md", "testimonials") in choices
+
+
+def test_template_path_fallback_across_initiatives(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_initiative(paths, "testimonials", {"email-sequences": {"request_testimonial.md": "x"}})
+
+    service = PersonalizedOutreachService("roadmap")
+    # Even if caller passes default initiative="rta", fallback locates it in testimonials
+    path = service._template_path("request_testimonial.md", initiative="rta")
+    assert path.exists()
+    assert "testimonials" in str(path)
+
+
+def test_find_eligible_prospects_filters_by_tag(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    c1 = Company(name="Target Alpha", slug="target-alpha", tags=["roadmap", "testimonial-target"], email="alpha@test.com")
+    c1.save()
+    p1 = Person(name="Alice Alpha", email="alpha@test.com", company_name="Target Alpha", slug="alice-alpha")
+    p1.save()
+    contacts1 = paths.companies.entry("target-alpha").path / "contacts"
+    contacts1.mkdir(parents=True)
+    (contacts1 / "alice-alpha").symlink_to(p1.get_local_path())
+
+    c2 = Company(name="Target Beta", slug="target-beta", tags=["roadmap"], email="beta@test.com")
+    c2.save()
+    p2 = Person(name="Bob Beta", email="beta@test.com", company_name="Target Beta", slug="bob-beta")
+    p2.save()
+    contacts2 = paths.companies.entry("target-beta").path / "contacts"
+    contacts2.mkdir(parents=True)
+    (contacts2 / "bob-beta").symlink_to(p2.get_local_path())
+
+    service = PersonalizedOutreachService("roadmap")
+    all_matches = service.find_eligible_prospects(limit=10)
+    assert len(all_matches) == 2
+
+    tagged_matches = service.find_eligible_prospects(limit=10, tag="testimonial-target")
+    assert len(tagged_matches) == 1
+    assert tagged_matches[0].company_slug == "target-alpha"
+
