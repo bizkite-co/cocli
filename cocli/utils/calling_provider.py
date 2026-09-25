@@ -771,12 +771,15 @@ class TwilioBridgeCallingProvider:
 
         # Inline TwiML executed when you pick up your phone:
         # Twilio dials the prospect with your business caller ID and starts recording.
+        # If the destination fails (e.g. busy, blacklisted, unreachable), Twilio speaks
+        # a clear prompt rather than hanging up abruptly in silence.
         record_attr = ' record="record-from-answer"' if self.record else ""
         twiml = (
             f"<Response>"
             f'<Dial callerId="{cleaned_caller_id}"{record_attr}>'
             f"<Number>{cleaned_prospect}</Number>"
             f"</Dial>"
+            f"<Say>The call could not be connected. Goodbye.</Say>"
             f"</Response>"
         )
 
