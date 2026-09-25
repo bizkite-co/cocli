@@ -461,6 +461,12 @@ cocli
             --template/-t (text) [required]
             --initiative/-i (text)
             --render/-r (boolean)
+        enqueue-initiative - Enqueue follow-up tasks for an initiative based on its declarative manifest (initiative.yaml).
+            initiative (text) [required]
+            --campaign/-c (text)
+            --render (boolean)
+            --template/-t (text)
+            --dry-run (boolean)
         list-pending - List every not-yet-sent pending-batch row - the answer to "what's
         poll - Poll IMAP for UNSEEN mail from monitored addresses; file notes; ntfy if any match.
             --limit (integer)

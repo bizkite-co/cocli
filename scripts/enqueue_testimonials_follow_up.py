@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -42,47 +41,75 @@ def link_person_contacts(campaign: str = "roadmap", dry_run: bool = False) -> in
     companies_dir = paths.companies.ensure()
     linked_count = 0
 
-    for idx_file in sorted(companies_dir.glob("*/_index.md")):
-        slug = idx_file.parent.name
+    logger.info("Indexing people directory once for fast contact matching...")
+    people_records: list[Person] = []
+    for p_dir in paths.people.path.glob("*"):
+        p = Person.from_directory(p_dir)
+        if p:
+            people_records.append(p)
+    logger.info("Indexed %d people records.", len(people_records))
+
+    cache_path = paths.campaign(campaign).path / "indexes" / "company_cache" / "company_cache.usv"
+    candidate_slugs: list[str] = []
+    if cache_path.exists():
+        for line in cache_path.read_text(encoding="utf-8").splitlines():
+            if "testimonial-target" in line:
+                candidate_slugs.append(line.split("\x1f")[0])
+    else:
+        for idx_file in sorted(companies_dir.glob("*/_index.md")):
+            slug = idx_file.parent.name
+            company = Company.get(slug)
+            if company and company.belongs_to_campaign(campaign) and "testimonial-target" in (company.tags or []):
+                candidate_slugs.append(slug)
+
+    for slug in candidate_slugs:
         company = Company.get(slug)
-        if not company or not company.belongs_to_campaign(campaign):
-            continue
-        if "testimonial-target" not in (company.tags or []):
+        if not company:
             continue
 
         # Look for matching Person in paths.people
-        contacts_dir = idx_file.parent / "contacts"
-        existing_symlinks = [p.name for p in contacts_dir.iterdir() if p.is_symlink()] if contacts_dir.exists() else []
+        contacts_dir = paths.companies.entry(slug).path / "contacts"
+        existing_symlinks = [p for p in contacts_dir.iterdir() if p.is_symlink()] if contacts_dir.exists() else []
 
+        valid_existing = False
         if existing_symlinks:
-            logger.debug("Company %s already has contact: %s", slug, existing_symlinks)
+            # Check if any existing symlink is invalid / pointing to the entire people dir
+            for p in existing_symlinks:
+                try:
+                    if p.resolve() == paths.people.path:
+                        if not dry_run:
+                            p.unlink()
+                    elif p.exists():
+                        valid_existing = True
+                except OSError:
+                    pass
+
+        if valid_existing:
+            logger.debug("Company %s already has valid contact", slug)
             continue
 
-        # Find candidate person
+        # Find candidate person from in-memory index
         matched_person: Person | None = None
-        for p_dir in paths.people.path.glob("*"):
-            p = Person.from_directory(p_dir)
-            if not p:
-                continue
+        for p in people_records:
             if p.company_name == company.name or (company.email and p.email == company.email):
                 matched_person = p
                 break
 
         if not matched_person:
             # Fallback by slug matching
-            for p_dir in paths.people.path.glob("*"):
-                if p_dir.name in slug:
-                    matched_person = Person.from_directory(p_dir)
-                    if matched_person:
-                        break
+            for p in people_records:
+                if p.slug in slug:
+                    matched_person = p
+                    break
 
         if matched_person:
             logger.info("Linking %s -> %s", slug, matched_person.slug)
             if not dry_run:
                 contacts_dir.mkdir(parents=True, exist_ok=True)
                 symlink = contacts_dir / matched_person.slug
-                if not symlink.exists():
-                    symlink.symlink_to(matched_person.get_local_path().parent)
+                if symlink.is_symlink():
+                    symlink.unlink()
+                symlink.symlink_to(matched_person.get_local_path())
             linked_count += 1
         else:
             logger.warning("No Person record found for company %s", slug)
@@ -98,16 +125,12 @@ def enqueue_and_render_testimonials(
     render: bool = True,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Enqueue all testimonial targets into FollowUpQueue and optionally render drafts."""
+    """Enqueue all testimonial targets into FollowUpQueue and optionally render drafts via enqueue_initiative."""
     service = FollowUpService(campaign)
 
     logger.info("Checking contact symlinks for %s targets...", tag)
     linked = link_person_contacts(campaign, dry_run=dry_run)
     logger.info("Ensured %d contact symlinks.", linked)
-
-    if dry_run:
-        logger.info("[Dry Run] Would enqueue companies with tag '%s' for template '%s'", tag, template)
-        return {"enqueued": 0, "rendered": 0}
 
     with Progress(
         SpinnerColumn(),
@@ -115,35 +138,29 @@ def enqueue_and_render_testimonials(
         BarColumn(),
         TaskProgressColumn(),
     ) as progress:
-        task_id = progress.add_task("Enqueueing follow-ups...", total=1)
-        tasks = service.enqueue_by_tag(
-            tag=tag,
+        task_id = progress.add_task("Executing initiative enqueue...", total=1)
+        res = service.enqueue_initiative(
+            initiative,
             template_id=template,
-            initiative=initiative,
-            format="email",
-            scheduled_at=datetime.now(UTC),
+            render=render,
+            dry_run=dry_run,
         )
         progress.update(task_id, completed=1)
 
-    logger.info("Enqueued %d follow-up tasks for initiative '%s'.", len(tasks), initiative)
-
-    rendered_count = 0
-    if render:
-        logger.info("Processing due follow-ups to render email drafts...")
-        result = service.process_due()
-        rendered_count = result.emails_queued
-        logger.info(
-            "Rendered %d email draft(s) into Batch Email Drafts. (%d errors)",
-            rendered_count,
-            len(result.errors),
-        )
-        if result.errors:
-            for err in result.errors:
-                logger.warning("Render error: %s", err)
+    logger.info(
+        "Initiative '%s': %d enqueued, %d rendered. (%d errors)",
+        initiative,
+        res.enqueued,
+        res.rendered,
+        len(res.errors),
+    )
+    if res.errors:
+        for err in res.errors:
+            logger.warning("Error: %s", err)
 
     return {
-        "enqueued": len(tasks),
-        "rendered": rendered_count,
+        "enqueued": res.enqueued,
+        "rendered": res.rendered,
     }
 
 

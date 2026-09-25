@@ -499,3 +499,51 @@ def render_html_preview(
             console.print("[yellow]Could not open a browser - open the path above manually.[/yellow]")
 
 
+@app.command("enqueue-initiative")
+def enqueue_initiative_command(
+    initiative: str = typer.Argument(..., help="Initiative name (e.g. testimonials, rta)."),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name. Defaults to active campaign."
+    ),
+    render: bool = typer.Option(
+        True, "--render/--no-render", help="Render email drafts immediately."
+    ),
+    template: Optional[str] = typer.Option(
+        None, "--template", "-t", help="Override initiative default template."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Simulate without writing files."
+    ),
+) -> None:
+    """Enqueue follow-up tasks for an initiative based on its declarative manifest (initiative.yaml)."""
+    campaign_name = campaign or _require_campaign()
+    from cocli.application.follow_up_service import FollowUpService
+
+    service = FollowUpService(campaign_name)
+    try:
+        result = service.enqueue_initiative(
+            initiative,
+            template_id=template,
+            render=render,
+            dry_run=dry_run,
+        )
+    except Exception as exc:
+        logger.error("Failed to enqueue initiative '%s': %s", initiative, exc)
+        console.print(f"[bold red]Failed to enqueue initiative '{initiative}':[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if dry_run:
+        console.print(
+            f"[bold blue]Dry run:[/bold blue] would enqueue {result.enqueued} target(s) for initiative '{initiative}'."
+        )
+    else:
+        console.print(
+            f"[bold green]Enqueued:[/bold green] {result.enqueued} target(s), "
+            f"[bold green]rendered:[/bold green] {result.rendered} draft(s) for initiative '{initiative}'."
+        )
+        if result.errors:
+            for err in result.errors:
+                console.print(f"[bold yellow]Warning:[/bold yellow] {err}")
+
+
+

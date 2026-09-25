@@ -6,7 +6,7 @@ ToCallTask's one-pending-file-per-company path can't represent.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -18,6 +18,14 @@ class ProcessFollowUpsResult:
     due: int = 0
     calls_queued: int = 0
     emails_queued: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EnqueueInitiativeResult:
+    initiative: str
+    enqueued: int = 0
+    rendered: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -90,6 +98,124 @@ class FollowUpService:
             )
             tasks.append(task)
         return tasks
+
+    def enqueue_initiative(
+        self,
+        initiative_name: str,
+        *,
+        template_id: Optional[str] = None,
+        render: bool = True,
+        dry_run: bool = False,
+        scheduled_at: Optional[datetime] = None,
+    ) -> EnqueueInitiativeResult:
+        """Enqueue follow-up tasks for all companies matching the initiative's declarative manifest."""
+        from .personalized_outreach_service import PersonalizedOutreachService
+        from ..models.campaigns.initiative import InitiativeManifest
+        from ..models.companies.company import Company
+        from ..core.paths import paths
+
+        manifest = InitiativeManifest.find(self.campaign_name, initiative_name)
+        if not manifest:
+            raise ValueError(
+                f"No initiative.yaml found for initiative '{initiative_name}' in campaign '{self.campaign_name}'"
+            )
+
+        active_template = template_id or manifest.default_template
+        active_format = manifest.outreach.format
+        scheduled_at = scheduled_at or (datetime.now(UTC) + timedelta(days=manifest.outreach.follow_up_delay_days))
+
+        outreach = PersonalizedOutreachService(self.campaign_name)
+        companies_dir = paths.companies.ensure()
+        matching_companies: list[Company] = []
+
+        cache_path = (
+            paths.campaign(self.campaign_name).path
+            / "indexes"
+            / "company_cache"
+            / "company_cache.usv"
+        )
+        criteria = manifest.target_criteria
+
+        if cache_path.exists():
+            for line in cache_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split("\x1f")
+                if len(parts) < 9:
+                    continue
+                slug = parts[0]
+                raw_tags = parts[8]
+                tags_list = [t.strip().lower() for t in raw_tags.replace(",", ";").split(";") if t.strip()]
+
+                if criteria.tags:
+                    if not all(tag.lower() in tags_list for tag in criteria.tags):
+                        continue
+                if criteria.excluded_tags:
+                    if any(tag.lower() in tags_list for tag in criteria.excluded_tags):
+                        continue
+                if criteria.company_type:
+                    if criteria.company_type.lower() not in tags_list:
+                        continue
+
+                co = Company.get(slug)
+                if co:
+                    matching_companies.append(co)
+        else:
+            for idx_file in sorted(companies_dir.glob("*/_index.md")):
+                slug = idx_file.parent.name
+                company = Company.get(slug)
+                if not company or not company.belongs_to_campaign(self.campaign_name):
+                    continue
+
+                company_tags = [t.lower() for t in (company.tags or [])]
+                if criteria.tags:
+                    if not all(tag.lower() in company_tags for tag in criteria.tags):
+                        continue
+                if criteria.excluded_tags:
+                    if any(tag.lower() in company_tags for tag in criteria.excluded_tags):
+                        continue
+                if criteria.company_type:
+                    if criteria.company_type.lower() not in company_tags:
+                        continue
+
+                matching_companies.append(company)
+
+        if dry_run:
+            return EnqueueInitiativeResult(
+                initiative=initiative_name,
+                enqueued=len(matching_companies),
+                rendered=0,
+            )
+
+        tasks: list[FollowUpTask] = []
+        for company in matching_companies:
+            match = outreach.find_contact_for_company(company.slug)
+            recipient_email = match.recipient_email if match else (str(company.email) if company.email else None)
+
+            task = self.add_follow_up(
+                company_slug=company.slug,
+                domain=company.domain or "unknown",
+                scheduled_at=scheduled_at,
+                format=active_format,
+                template_id=active_template,
+                initiative=initiative_name,
+                recipient_email=recipient_email,
+            )
+            tasks.append(task)
+
+        rendered_count = 0
+        errors: list[str] = []
+        if render:
+            process_res = self.process_due(as_of=scheduled_at)
+            rendered_count = process_res.emails_queued if active_format == "email" else process_res.calls_queued
+            errors.extend(process_res.errors)
+
+        return EnqueueInitiativeResult(
+            initiative=initiative_name,
+            enqueued=len(tasks),
+            rendered=rendered_count,
+            errors=errors,
+        )
 
     def list_pending(self, company_slug: Optional[str] = None) -> list[FollowUpTask]:
         base = self._pending_dir()
@@ -187,7 +313,7 @@ class FollowUpService:
             body=body,
             initiative=task.initiative,
         )
-        service.append_pending_batch_entries([entry])
+        service.upsert_pending_batch_entries([entry])
         # Writes rendered-outreach/<slug>/<template>.md - the file Mark
         # hand-edits before sending (see render_and_save_draft() and
         # entry_to_match()), not just an audit record.

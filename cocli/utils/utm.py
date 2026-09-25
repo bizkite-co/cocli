@@ -33,7 +33,7 @@ def append_utm_params(
     def _replace_url(match: re.Match[str]) -> str:
         raw_url = match.group(0)
         trailing_punct = ""
-        while raw_url and raw_url[-1] in (")", "]", "}", ".", ",", ";", "!"):
+        while raw_url and raw_url[-1] in (")", "]", "}", ".", ",", ";", "!", ":"):
             trailing_punct = raw_url[-1] + trailing_punct
             raw_url = raw_url[:-1]
 

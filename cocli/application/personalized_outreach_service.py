@@ -269,12 +269,23 @@ class PersonalizedOutreachService:
                 full_name = str(matched_c.get("name") or "")
                 first_name = str(
                     matched_c.get("first_name")
-                    or (full_name.split()[0] if full_name else "there")
+                    or (full_name.split()[0] if full_name else "")
                 )
                 role = str(matched_c.get("role") or matched_c.get("title") or "")
             else:
                 email = recipient_email
-                first_name = "there"
+                first_name = ""
+
+            if not first_name or first_name == "there":
+                co_name = str(company.name or "")
+                derived_name = co_name.split(" - ")[-1] if " - " in co_name else co_name
+                fname = extract_first_name(derived_name)
+                if fname:
+                    first_name = fname
+                    if not full_name:
+                        full_name = derived_name
+                elif not first_name:
+                    first_name = "there"
         else:
             selected = self._select_company_contact(company)
             if not selected:
@@ -838,6 +849,30 @@ class PersonalizedOutreachService:
         with open(index_dir / "pending.usv", "a", encoding="utf-8") as f:
             for entry in entries:
                 f.write(entry.to_usv())
+        PendingBatchEntry.save_datapackage(index_dir, "email_pending_batch", "pending.usv")
+
+    def upsert_pending_batch_entries(self, entries: list["PendingBatchEntry"]) -> None:
+        """Idempotently add or update pending batch entries in pending.usv, keyed by (company_slug, template_id, initiative)."""
+        from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        existing = self.list_pending_batches()
+        entry_map = {(e.company_slug, e.template_id, e.initiative): e for e in existing}
+
+        for new_entry in entries:
+            key = (new_entry.company_slug, new_entry.template_id, new_entry.initiative)
+            if key in entry_map:
+                idx = next(
+                    i
+                    for i, e in enumerate(existing)
+                    if (e.company_slug, e.template_id, e.initiative) == key
+                )
+                existing[idx] = new_entry
+            else:
+                existing.append(new_entry)
+                entry_map[key] = new_entry
+
+        self._rewrite_pending(existing)
+        index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
         PendingBatchEntry.save_datapackage(index_dir, "email_pending_batch", "pending.usv")
 
     def list_pending_batches(self) -> list["PendingBatchEntry"]:
