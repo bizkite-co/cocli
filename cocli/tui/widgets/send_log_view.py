@@ -184,6 +184,7 @@ class RecentEmailsView(MasterDetailView):
     def __init__(self, **kwargs: Any) -> None:
         self.log_list = ListView(id="send-log-list")
         self.log_detail = RecentEmailDetail(id="send-log-detail")
+        self._last_g_time: float = 0.0
         super().__init__(master=self.log_list, detail=self.log_detail, master_width=45, **kwargs)
 
     async def on_mount(self) -> None:
@@ -204,8 +205,41 @@ class RecentEmailsView(MasterDetailView):
             self.log_detail.update_entry(None)
 
     def on_key(self, event: events.Key) -> None:
-        """vim-style j/k/l - ListView only binds arrow keys by default."""
-        if event.key == "j":
+        """vim-style navigation - ListView only binds arrow keys by default."""
+        if event.key in ("G", "shift+g") or event.character == "G":
+            if self.log_list.children:
+                self.log_list.index = len(self.log_list.children) - 1
+                self.log_list.scroll_end(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "end":
+            if self.log_list.children:
+                self.log_list.index = len(self.log_list.children) - 1
+                self.log_list.scroll_end(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "home":
+            if self.log_list.children:
+                self.log_list.index = 0
+                self.log_list.scroll_home(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "g":
+            import time
+
+            now = time.time()
+            if hasattr(self, "_last_g_time") and (now - self._last_g_time < 0.5):
+                self._last_g_time = 0.0
+                if self.log_list.children:
+                    self.log_list.index = 0
+                    self.log_list.scroll_home(animate=False)
+                event.prevent_default()
+                event.stop()
+            else:
+                self._last_g_time = now
+                event.prevent_default()
+                event.stop()
+        elif event.key == "j":
             self.log_list.action_cursor_down()
             event.prevent_default()
             event.stop()

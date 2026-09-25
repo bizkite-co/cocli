@@ -544,7 +544,9 @@ def get_fuzzy_search_results(
                 # unrecoverable as UTC downstream without the offset).
                 # TIMESTAMPTZ preserves the real instant with an explicit
                 # offset either way.
-                _con.execute("CREATE TABLE items_to_call (slug VARCHAR, callback_at TIMESTAMPTZ)")
+                _con.execute(
+                    "CREATE TABLE items_to_call (slug VARCHAR, callback_at TIMESTAMPTZ, priority INTEGER)"
+                )
                 if to_call_pending_dir and to_call_pending_dir.exists():
                     # Every pending task is on the queue and should be
                     # findable/visible there - a future callback_at means
@@ -566,18 +568,20 @@ def get_fuzzy_search_results(
                             continue
                         slug = fname.replace(".usv", "")
                         callback_at = None
+                        priority = None
                         try:
                             content = (to_call_pending_dir / fname).read_text()
                             task = ToCallTask.from_usv(content)
                             callback_at = task.callback_at
+                            priority = getattr(task, "priority", None)
                         except Exception:
                             # Malformed/unparsable file - keep it visible
                             # (callback_at=None sorts as "due now") rather
                             # than silently dropping it.
                             pass
-                        items.append([slug, callback_at])
+                        items.append([slug, callback_at, priority])
                     if items:
-                        _con.executemany("INSERT INTO items_to_call VALUES (?, ?)", items)
+                        _con.executemany("INSERT INTO items_to_call VALUES (?, ?, ?)", items)
 
                 _con.execute("CREATE TABLE items_to_call_invalid (slug VARCHAR)")
                 if to_call_invalid_pending_dir and to_call_invalid_pending_dir.exists():
@@ -740,6 +744,7 @@ def get_fuzzy_search_results(
                         COALESCE({lc_enriched}, CAST(NULL AS VARCHAR)) as last_enriched,
                         CASE WHEN tc.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_to_call,
                         tc.callback_at as to_call_callback_at,
+                        tc.priority as to_call_priority,
                         CASE WHEN tci.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_invalid,
                         CASE WHEN lfi.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_filter_in,
                         CASE WHEN lfo.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_filter_out
@@ -773,7 +778,7 @@ def get_fuzzy_search_results(
                     del _counts_cache[campaign]
 
             # 3. Build Query
-            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched, to_call_callback_at FROM items WHERE 1=1"
+            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched, to_call_callback_at, to_call_priority FROM items WHERE 1=1"
             params: list[Any] = []
 
             if item_type:
@@ -815,13 +820,15 @@ def get_fuzzy_search_results(
             elif sort_by == "reviews":
                 sql += " ORDER BY reviews_count DESC NULLS LAST, average_rating DESC NULLS LAST"
             elif filters and filters.get("to_call") and not search_query:
-                # Never-called/due-now (NULL or past callback_at) first,
-                # then future-scheduled callbacks soonest-first - not
-                # buried alphabetically or hidden entirely (Mark,
-                # 2026-09-17: "Not recently called people should be at
-                # the top. Called but soon to be recalled people would be
-                # farther down").
-                sql += " ORDER BY to_call_callback_at ASC NULLS FIRST, name ASC"
+                # Testimonial targets prioritized first (in order of priority/rank),
+                # followed by cold prospects.
+                # Within each tier: never-called/due-now (NULL or past callback_at) first,
+                # then future-scheduled callbacks soonest-first, then alphabetical by name.
+                sql += """ ORDER BY
+                    CASE WHEN list_contains(tags, 'testimonial-target') THEN 0 ELSE 1 END ASC,
+                    to_call_priority ASC NULLS LAST,
+                    to_call_callback_at ASC NULLS FIRST,
+                    name ASC"""
             elif not search_query:
                 sql += " ORDER BY name ASC"
 
@@ -876,6 +883,7 @@ def get_fuzzy_search_results(
                         enqueued_at=str(r[16]) if r[16] else None,
                         last_enriched=str(r[17]) if r[17] else None,
                         to_call_callback_at=str(r[18]) if r[18] else None,
+                        to_call_priority=int(r[19]) if len(r) > 19 and r[19] is not None else None,
                     )
                 )
 

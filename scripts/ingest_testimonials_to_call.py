@@ -359,7 +359,7 @@ def ingest_testimonials(
             company_slug=slug,
             domain=domain,
             campaign_name=campaign,
-            priority=1,
+            priority=rank,
             callback_at=datetime.now(UTC),
         )
 

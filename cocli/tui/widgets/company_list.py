@@ -81,8 +81,10 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         self.current_filters: dict[str, Any] = {}
         self.current_sort: Optional[str] = "recent"
         self.search_offset: int = 0
-        self.search_limit: int = 50
+        self.search_limit: int = 500
         self._ignoring_input_change: bool = False
+        self._last_g_time: float = 0.0
+        self._next_index: Optional[int] = None
 
     def compose(self) -> ComposeResult:
         yield Label("SEARCH", id="search_header", classes="pane-header")
@@ -280,34 +282,98 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                 self.action_open_website()
                 event.stop()
                 return
+            elif event.key in ("G", "shift+g") or event.character == "G":
+                if list_view.children:
+                    list_view.index = len(list_view.children) - 1
+                    list_view.scroll_end(animate=False)
+                event.prevent_default()
+                event.stop()
+                return
+            elif event.key == "end":
+                if list_view.children:
+                    list_view.index = len(list_view.children) - 1
+                    list_view.scroll_end(animate=False)
+                event.prevent_default()
+                event.stop()
+                return
+            elif event.key == "home":
+                if list_view.children:
+                    list_view.index = 0
+                    list_view.scroll_home(animate=False)
+                event.prevent_default()
+                event.stop()
+                return
+            elif event.key == "g":
+                import time
 
-        if event.key == "j":
-            if list_view.has_focus:
-                list_view.action_cursor_down()
+                now = time.time()
+                if hasattr(self, "_last_g_time") and (now - self._last_g_time < 0.5):
+                    self._last_g_time = 0.0
+                    if list_view.children:
+                        list_view.index = 0
+                        list_view.scroll_home(animate=False)
+                    event.prevent_default()
+                    event.stop()
+                    return
+                else:
+                    self._last_g_time = now
+                    event.prevent_default()
+                    event.stop()
+                    return
+            elif event.key == "j":
+                if (
+                    list_view.index is not None
+                    and list_view.index >= len(list_view.children) - 1
+                    and len(self.filtered_fz_items) == self.search_limit
+                ):
+                    self.search_offset += self.search_limit
+                    self._next_index = 0
+                    self.run_search(
+                        self.query_one("#company_search_input", CocliSearchInput).value
+                    )
+                else:
+                    list_view.action_cursor_down()
                 event.prevent_default()
-        elif event.key == "k":
-            if list_view.has_focus:
-                list_view.action_cursor_up()
+                event.stop()
+                return
+            elif event.key == "k":
+                if list_view.index == 0 and self.search_offset > 0:
+                    self.search_offset = max(0, self.search_offset - self.search_limit)
+                    self._next_index = -1
+                    self.run_search(
+                        self.query_one("#company_search_input", CocliSearchInput).value
+                    )
+                else:
+                    list_view.action_cursor_up()
                 event.prevent_default()
-        elif event.key == "]":  # Next Page
-            if list_view.has_focus:
+                event.stop()
+                return
+            elif event.key == "]":  # Next Page
                 self.search_offset += self.search_limit
+                self._next_index = 0
                 self.run_search(
                     self.query_one("#company_search_input", CocliSearchInput).value
                 )
                 event.prevent_default()
-        elif event.key == "[":  # Prev Page
-            if list_view.has_focus and self.search_offset >= self.search_limit:
-                self.search_offset -= self.search_limit
-                self.run_search(
-                    self.query_one("#company_search_input", CocliSearchInput).value
-                )
+                event.stop()
+                return
+            elif event.key == "[":  # Prev Page
+                if self.search_offset >= self.search_limit:
+                    self.search_offset -= self.search_limit
+                    self._next_index = -1
+                    self.run_search(
+                        self.query_one("#company_search_input", CocliSearchInput).value
+                    )
                 event.prevent_default()
-        elif event.key == "escape":
-            # If search is focused, return focus to list
-            if self.query_one(CocliSearchInput).has_focus:
-                list_view.focus()
-                event.prevent_default()
+                event.stop()
+                return
+            elif event.key == "escape":
+                # If search is focused, return focus to list
+                if self.query_one(CocliSearchInput).has_focus:
+                    list_view.focus()
+                    event.prevent_default()
+                    event.stop()
+                    return
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
@@ -497,8 +563,13 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                     return
                 # Only set index if there are children
                 if list_view.children:
-                    # Restore index if it still makes sense for the new result set
-                    if old_index is not None and old_index < len(new_items):
+                    if self._next_index is not None:
+                        if self._next_index == -1:
+                            list_view.index = len(new_items) - 1
+                        else:
+                            list_view.index = min(self._next_index, len(new_items) - 1)
+                        self._next_index = None
+                    elif old_index is not None and old_index < len(new_items):
                         list_view.index = old_index
                     else:
                         list_view.index = 0

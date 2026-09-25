@@ -97,6 +97,7 @@ class TargetBatchesView(MasterDetailView):
     def __init__(self, **kwargs: Any) -> None:
         self.batch_list = ListView(id="target-batch-list")
         self.batch_preview = PendingBatchPreview(id="target-batch-preview")
+        self._last_g_time: float = 0.0
         super().__init__(master=self.batch_list, detail=self.batch_preview, master_width=45, **kwargs)
 
     async def on_mount(self) -> None:
@@ -136,13 +137,48 @@ class TargetBatchesView(MasterDetailView):
             self.batch_preview.update_preview(None, None)
 
     def on_key(self, event: events.Key) -> None:
-        """vim-style j/k - ListView only binds arrow keys by default."""
-        if event.key == "j":
+        """vim-style navigation - ListView only binds arrow keys by default."""
+        if event.key in ("G", "shift+g") or event.character == "G":
+            if self.batch_list.children:
+                self.batch_list.index = len(self.batch_list.children) - 1
+                self.batch_list.scroll_end(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "end":
+            if self.batch_list.children:
+                self.batch_list.index = len(self.batch_list.children) - 1
+                self.batch_list.scroll_end(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "home":
+            if self.batch_list.children:
+                self.batch_list.index = 0
+                self.batch_list.scroll_home(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "g":
+            import time
+
+            now = time.time()
+            if hasattr(self, "_last_g_time") and (now - self._last_g_time < 0.5):
+                self._last_g_time = 0.0
+                if self.batch_list.children:
+                    self.batch_list.index = 0
+                    self.batch_list.scroll_home(animate=False)
+                event.prevent_default()
+                event.stop()
+            else:
+                self._last_g_time = now
+                event.prevent_default()
+                event.stop()
+        elif event.key == "j":
             self.batch_list.action_cursor_down()
             event.prevent_default()
+            event.stop()
         elif event.key == "k":
             self.batch_list.action_cursor_up()
             event.prevent_default()
+            event.stop()
 
     @on(ListView.Highlighted, "#target-batch-list")
     def on_batch_row_highlighted(self, message: ListView.Highlighted) -> None:

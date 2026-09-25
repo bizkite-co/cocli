@@ -102,6 +102,7 @@ class FollowUpQueueView(MasterDetailView):
     def __init__(self, **kwargs: Any) -> None:
         self.task_list = ListView(id="fu-queue-list")
         self.task_preview = FollowUpQueuePreview(id="fu-queue-preview")
+        self._last_g_time: float = 0.0
         super().__init__(
             master=self.task_list, detail=self.task_preview, master_width=45, **kwargs
         )
@@ -152,12 +153,47 @@ class FollowUpQueueView(MasterDetailView):
     # ------------------------------------------------------------------
 
     def on_key(self, event: events.Key) -> None:
-        if event.key == "j":
+        if event.key in ("G", "shift+g") or event.character == "G":
+            if self.task_list.children:
+                self.task_list.index = len(self.task_list.children) - 1
+                self.task_list.scroll_end(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "end":
+            if self.task_list.children:
+                self.task_list.index = len(self.task_list.children) - 1
+                self.task_list.scroll_end(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "home":
+            if self.task_list.children:
+                self.task_list.index = 0
+                self.task_list.scroll_home(animate=False)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "g":
+            import time
+
+            now = time.time()
+            if hasattr(self, "_last_g_time") and (now - self._last_g_time < 0.5):
+                self._last_g_time = 0.0
+                if self.task_list.children:
+                    self.task_list.index = 0
+                    self.task_list.scroll_home(animate=False)
+                event.prevent_default()
+                event.stop()
+            else:
+                self._last_g_time = now
+                event.prevent_default()
+                event.stop()
+        elif event.key == "j":
             self.task_list.action_cursor_down()
             event.prevent_default()
+            event.stop()
         elif event.key == "k":
             self.task_list.action_cursor_up()
             event.prevent_default()
+            event.stop()
 
     # ------------------------------------------------------------------
     # Actions

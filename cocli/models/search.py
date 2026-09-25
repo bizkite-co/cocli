@@ -39,3 +39,4 @@ class SearchResult(BaseModel):
     # timestamp = overdue, a future timestamp = scheduled) - lets the TUI
     # sort/color the to-call list instead of hiding not-yet-due entries.
     to_call_callback_at: Optional[str] = None
+    to_call_priority: Optional[int] = None
