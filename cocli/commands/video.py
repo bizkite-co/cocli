@@ -24,12 +24,8 @@ from cocli.core.config import (
     load_campaign_config,
 )
 from cocli.core.video import (
-    YouTubeUploader,
-    transcriber,
-    thumbnailer,
     get_duration,
     normalize_video,
-    chapters,
 )
 from cocli.core.video.job_runs import (
     save_video_job_run,
@@ -39,7 +35,6 @@ from cocli.core.video.job_runs import (
 )
 from cocli.core.video.display_paths import print_accessible_path
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
-from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
 from cocli.models.campaigns.video_job_run import (
     KIND_TRANSCRIBE,
@@ -169,6 +164,7 @@ def _find_normalized_mp4(video_dir: Path) -> Optional[Path]:
 
 def _existing_transcripts(video_dir: Path) -> dict[str, str]:
     """Load any transcript_*.md already written in the normalized package."""
+    from cocli.core.video import chapters
     return chapters.load_transcripts_from_dir(video_dir)
 
 
@@ -217,6 +213,7 @@ def transcribe_normalized_dir(
         .get("transcription", {})
         .get("provider", "gemini")
     )
+    from cocli.core.video import transcriber, chapters
     transcriber_engine = transcriber.TranscriptionFactory.get_transcriber(provider)
     try:
         transcripts = transcriber_engine.transcribe(video_file, campaign_name)
@@ -598,6 +595,7 @@ def chapters_cmd(
         raise typer.Exit(1)
 
     try:
+        from cocli.core.video import chapters
         console.print(
             f"Generating chapters for {video_slug} (from existing transcripts)..."
         )
@@ -767,6 +765,7 @@ def package_one_video(
 
     try:
         job_run.start_phase("thumbnail")
+        from cocli.core.video import thumbnailer
         thumbnailer.process_thumbnail(video_dir, target_video_dir)
         job_run.end_phase("thumbnail")
     except Exception as e:
@@ -863,6 +862,7 @@ def create_thumbnail(
     pack_dir.mkdir(parents=True, exist_ok=True)
 
     # Process thumbnail
+    from cocli.core.video import thumbnailer
     thumbnailer.process_thumbnail(norm_dir, pack_dir)
     console.print(f"[green]Thumbnail created for {video_slug}[/green]")
 
@@ -1061,6 +1061,7 @@ def upload_one_video(
             console.print(f"[dim]Job run: {receipt_path}[/dim]")
             return True
 
+        from cocli.core.video import YouTubeUploader
         uploader = YouTubeUploader(campaign=campaign_name)
 
         console.print("[cyan]Uploading video...[/cyan]")
@@ -1260,6 +1261,7 @@ def auth(
     console.print(
         f"[cyan]Starting OAuth authentication for campaign: {campaign_name}[/cyan]"
     )
+    from cocli.core.video import auth as video_auth
     authenticator = video_auth.DeviceCodeAuth()
 
     try:

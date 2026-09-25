@@ -1,23 +1,26 @@
+from unittest.mock import AsyncMock
 import pytest
 from cocli.tui.app import CocliApp
 
 @pytest.mark.asyncio
-async def test_cluster_dashboard_navigation(mock_cocli_env):
+async def test_cluster_dashboard_navigation(mock_cocli_env, mocker):
     """Test that navigating to the Cluster Dashboard displays the ClusterView."""
-    app = CocliApp()
+    mocker.patch("cocli.tui.widgets.cluster_view.ClusterView._refresh_registry", new=AsyncMock())
+    mocker.patch("cocli.tui.widgets.cluster_view.ClusterView._refresh_s3_status", new=AsyncMock())
+    app = CocliApp(auto_show=False)
     app.services.sync_search = True # Force synchronous UI updates for test reliability
     
     async with app.run_test() as driver:
         # 1. Open Application Menu (space + a)
         await driver.press("space", "a")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         
         # 2. Navigate to 'Cluster Dashboard' in the sidebar
         # Sidebar indices: 0:Campaigns, 1:Cluster Dashboard
         await driver.press("j") 
-        await driver.pause(0.2)
+        await driver.pause(0.05)
         await driver.press("enter")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         
         # 3. Verify ClusterView has focus and is visible
         cluster_view = app.query_one("#view_cluster")
@@ -30,27 +33,29 @@ async def test_cluster_dashboard_navigation(mock_cocli_env):
         assert "Live Status (Gossip)" in header_texts
 
 @pytest.mark.asyncio
-async def test_navigation_switching(mock_cocli_env):
+async def test_navigation_switching(mock_cocli_env, mocker):
     """Test switching back and forth between Status and Cluster views."""
-    app = CocliApp()
+    mocker.patch("cocli.tui.widgets.cluster_view.ClusterView._refresh_registry", new=AsyncMock())
+    mocker.patch("cocli.tui.widgets.cluster_view.ClusterView._refresh_s3_status", new=AsyncMock())
+    app = CocliApp(auto_show=False)
     app.services.sync_search = True # Force synchronous UI updates
     
     async with app.run_test() as driver:
         await driver.press("space", "a")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         
         # Go to Status (index 2)
         await driver.press("j", "j", "enter")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         assert app.query_one("#view_status").visible is True
         assert app.focused == app.query_one("#view_status")
         
         # IMPORTANT: Focus must return to sidebar to navigate
         await driver.press("h") # Back to sidebar
-        await driver.pause(0.2)
+        await driver.pause(0.05)
         
         # Go to Cluster (index 1)
         await driver.press("k", "enter")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         assert app.query_one("#view_cluster").visible is True
         assert app.focused == app.query_one("#view_cluster")

@@ -411,6 +411,7 @@ def test_twilio_bridge_calling_provider_resolves_op_token() -> None:
 
     with (
         patch.dict("os.environ", {}, clear=True),
+        patch("cocli.utils.op_utils.read_op_secrets", return_value=None),
         patch(
             "cocli.utils.op_utils.get_op_secret", return_value="resolved_token_xyz"
         ) as fake_op,

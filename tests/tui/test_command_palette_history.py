@@ -97,7 +97,7 @@ async def test_palette_finds_to_call_operations_and_navigates_to_compile() -> No
 
     async with app.run_test() as pilot:
         await pilot.press("ctrl+p")
-        await pilot.pause(0.3)
+        await pilot.pause(0.05)
         palette = app.screen
         provider = next(
             p for p in palette._providers if isinstance(p, CocliCommandProvider)
@@ -107,11 +107,10 @@ async def test_palette_finds_to_call_operations_and_navigates_to_compile() -> No
             hits = [h.text for h in [hit async for hit in provider.search(query)]]
             assert any("To-Call" in h for h in hits), f"query={query!r} hits={hits}"
 
-        for ch in "compile to-call":
-            await pilot.press(ch)
-        await pilot.pause(0.3)
+        await pilot.press(*"compile to-call")
+        await pilot.pause(0.05)
         await pilot.press("enter")
-        await pilot.pause(0.5)
+        await pilot.pause(0.05)
 
         assert not isinstance(app.screen, CommandPalette)
         app_view = app.query_one(ApplicationView)
@@ -134,7 +133,7 @@ async def test_palette_finds_and_navigates_to_purge_to_call() -> None:
 
     async with app.run_test() as pilot:
         await pilot.press("ctrl+p")
-        await pilot.pause(0.3)
+        await pilot.pause(0.05)
         palette = app.screen
         provider = next(
             p for p in palette._providers if isinstance(p, CocliCommandProvider)
@@ -143,11 +142,10 @@ async def test_palette_finds_and_navigates_to_purge_to_call() -> None:
         hits = [h.text for h in [hit async for hit in provider.search("purge to-call")]]
         assert any("Purge To-Call" in h for h in hits), hits
 
-        for ch in "purge to-call":
-            await pilot.press(ch)
-        await pilot.pause(0.3)
+        await pilot.press(*"purge to-call")
+        await pilot.pause(0.05)
         await pilot.press("enter")
-        await pilot.pause(0.5)
+        await pilot.pause(0.05)
 
         assert not isinstance(app.screen, CommandPalette)
         app_view = app.query_one(ApplicationView)

@@ -144,14 +144,14 @@ async def test_messages_recent_calls_lists_logged_phone_calls(mock_cocli_env, mo
 
     app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
     async with app.run_test() as pilot:
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         await pilot.press("space")
         await pilot.press("m")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         await pilot.press("j")
         await pilot.press("j")
         await pilot.press("enter")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
 
         assert len(app.query(RecentCallsView)) == 1
         call_list = app.query_one("#recent-call-list", ListView)
@@ -164,20 +164,20 @@ async def test_messages_recent_calls_lists_logged_phone_calls(mock_cocli_env, mo
         assert "Asked for an email with the product overview." in str(preview.content)
 
         await pilot.press("j")
-        await pilot.pause(0.3)
+        await pilot.pause(0.05)
         assert "Requested a call next week." in str(preview.content)
         assert "Company Activity:" in str(preview.content)
 
         # Test f key in RecentCallsView opens EnqueueFollowUpModal
         await pilot.press("f")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         from cocli.tui.widgets.enqueue_follow_up_modal import EnqueueFollowUpModal
 
         assert isinstance(app.screen, EnqueueFollowUpModal)
 
         # Submit follow-up modal
         await pilot.press("ctrl+s")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         assert not isinstance(app.screen, EnqueueFollowUpModal)
 
         from cocli.application.follow_up_service import FollowUpService
@@ -188,15 +188,15 @@ async def test_messages_recent_calls_lists_logged_phone_calls(mock_cocli_env, mo
 
         # Open CompanyDetail
         await pilot.press("l")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         assert len(app.query(CompanyDetail)) == 1
 
         # Test f key in CompanyDetail also opens EnqueueFollowUpModal
         await pilot.press("f")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         assert isinstance(app.screen, EnqueueFollowUpModal)
         await pilot.press("escape")
-        await pilot.pause(0.2)
+        await pilot.pause(0.05)
         assert not isinstance(app.screen, EnqueueFollowUpModal)
 
         await pilot.press("h")

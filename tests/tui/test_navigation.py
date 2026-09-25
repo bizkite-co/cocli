@@ -32,7 +32,7 @@ async def test_l_key_selects_item():
 
     app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")
@@ -41,7 +41,7 @@ async def test_l_key_selects_item():
         assert isinstance(company_list_screen, CompanyList)
 
         # Wait for worker
-        await driver.pause(0.5)
+        await driver.pause(0.05)
 
         list_view = company_list_screen.query_one(ListView)
         list_view.focus()
@@ -49,7 +49,7 @@ async def test_l_key_selects_item():
         list_view.index = 0
         await driver.pause(0.1)
         await driver.press("l")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
 
         company_detail = await wait_for_widget(driver, CompanyDetail)
         assert isinstance(company_detail, CompanyDetail)
@@ -69,14 +69,14 @@ async def test_down_arrow_moves_highlight_in_company_list():
 
     app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")
         await driver.pause(0.1)
         company_list_screen = await wait_for_widget(driver, CompanyList)
 
-        await driver.pause(0.5)
+        await driver.pause(0.05)
 
         # Explicitly focus list as initial focus now goes to templates
         company_list_screen.query_one("#company_list_view").focus()
@@ -104,7 +104,7 @@ async def test_enter_key_selects_item_in_company_list():
 
     app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
-        await driver.pause(0.5)
+        await driver.pause(0.05)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")
@@ -114,7 +114,7 @@ async def test_enter_key_selects_item_in_company_list():
 
         # Simulate typing in the search input
         await driver.press("T", "e", "s", "t")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
 
         # First Enter leaves search typing mode; second Enter opens details
         await driver.press("enter")
@@ -123,7 +123,7 @@ async def test_enter_key_selects_item_in_company_list():
         list_view.focus()
         list_view.index = 0
         await driver.press("enter")
-        await driver.pause(0.5)
+        await driver.pause(0.05)
 
         company_detail = await wait_for_widget(driver, CompanyDetail)
         assert isinstance(company_detail, CompanyDetail)

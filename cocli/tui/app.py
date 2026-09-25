@@ -657,32 +657,35 @@ class CocliApp(App[None]):
             with time_perf("APP: create_default_config_file"):
                 create_default_config_file()
 
-            # Start the Gossip Bridge in background (non-blocking)
-            import threading
-            from ..core.gossip_bridge import bridge
+            if os.environ.get("COCLI_ENV") != "test":
+                # Start the Gossip Bridge in background (non-blocking)
+                import threading
+                from ..core.gossip_bridge import bridge
 
-            def start_bridge() -> None:
-                try:
-                    if bridge:
-                        bridge.start()
-                        tui_debug_log("APP: Gossip Bridge started.")
-                except Exception as e:
-                    tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
+                def start_bridge() -> None:
+                    try:
+                        if bridge:
+                            bridge.start()
+                            tui_debug_log("APP: Gossip Bridge started.")
+                    except Exception as e:
+                        tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
 
-            bridge_thread = threading.Thread(target=start_bridge, daemon=True)
-            bridge_thread.start()
+                bridge_thread = threading.Thread(target=start_bridge, daemon=True)
+                bridge_thread.start()
 
-            # Start PI sync check in background (non-blocking)
-            self._start_pi_sync_background()
+                # Start PI sync check in background (non-blocking)
+                self._start_pi_sync_background()
 
-            # Check Twilio balance in background if configured (non-blocking)
-            self._start_balance_check_background()
+                # Check Twilio balance in background if configured (non-blocking)
+                self._start_balance_check_background()
 
             if self.auto_show:
                 await self.action_show_companies()
 
     async def on_unmount(self) -> None:
         """Handle cleanup on application exit."""
+        if os.environ.get("COCLI_ENV") == "test":
+            return
         from ..core.gossip_bridge import bridge
 
         if bridge:

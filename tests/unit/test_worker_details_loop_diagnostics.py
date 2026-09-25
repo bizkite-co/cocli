@@ -193,6 +193,7 @@ async def test_enrichment_loop_nacks_instead_of_acking_a_failed_scrape(tmp_path,
 
     with patch("cocli.models.campaigns.campaign.Campaign.load", return_value=MagicMock()), \
          patch("cocli.core.enrichment.enrich_company_website", new=AsyncMock(return_value=failed_website)), \
+         patch("cocli.application.company_service.update_company_from_website_data", new=AsyncMock(return_value=True)), \
          caplog.at_level("INFO", logger="cocli.application.worker_service"):
         await service._run_enrichment_task_loop(context, enrichment_queue, False, True)
 
@@ -217,7 +218,8 @@ async def test_enrichment_loop_acks_on_real_success(tmp_path):
     good_website = Website(url="acme-flooring.com", description="A real flooring contractor.")
 
     with patch("cocli.models.campaigns.campaign.Campaign.load", return_value=MagicMock()), \
-         patch("cocli.core.enrichment.enrich_company_website", new=AsyncMock(return_value=good_website)):
+         patch("cocli.core.enrichment.enrich_company_website", new=AsyncMock(return_value=good_website)), \
+         patch("cocli.application.company_service.update_company_from_website_data", new=AsyncMock(return_value=True)):
         await service._run_enrichment_task_loop(context, enrichment_queue, False, True)
 
     enrichment_queue.ack.assert_called_once_with(fake_task)

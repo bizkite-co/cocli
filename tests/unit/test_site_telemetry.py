@@ -48,9 +48,18 @@ def test_robots_txt_and_sitemap_exist() -> None:
     assert "Sitemap: https://getretirementtaxanalyzer.com/sitemap.xml" in robots_content
 
 
-def test_telemetry_provider_status_check() -> None:
+def test_telemetry_provider_status_check(mocker) -> None:
     import pytest
     from cocli.application.telemetry_service import GoogleTelemetryProvider
+
+    mock_res = mocker.MagicMock(
+        returncode=0, stdout='[{"status": "ACTIVE", "account": "test@example.com"}]'
+    )
+    mock_token = mocker.MagicMock(returncode=0, stdout="fake-token")
+    mocker.patch(
+        "subprocess.run",
+        side_effect=[mock_res, mock_token],
+    )
 
     provider = GoogleTelemetryProvider("roadmap")
     status = provider.check_telemetry_status()

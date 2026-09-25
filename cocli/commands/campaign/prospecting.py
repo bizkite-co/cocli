@@ -15,28 +15,53 @@ from rich.progress import (
     TaskProgressColumn,
 )
 from cocli.core.geo_types import LatScale1, LonScale1
-from playwright.async_api import async_playwright
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cocli.core.location_prospects_index import LocationProspectsIndex
 
 from cocli.core.paths import paths
 from cocli.core.config import get_campaign_dir, get_campaign, get_enrichment_service_url
 
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.text_utils import slugify
-from cocli.core.location_prospects_index import LocationProspectsIndex
 from cocli.core.queue.factory import get_queue_manager
 from cocli.planning.generate_grid import get_campaign_grid_tiles
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.models.companies.company import Company
-from cocli.scrapers.google.google_maps import scrape_google_maps
-from cocli.scrapers.google.google_maps_details import scrape_google_maps_details
-from cocli.compilers.website_compiler import WebsiteCompiler
-from cocli.core.enrichment import enrich_company_website
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.campaigns.indexes.google_maps_venue import GoogleMapsVenue
 
 logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer(no_args_is_help=True)
+
+
+def __getattr__(name: str) -> Any:
+    if name == "async_playwright":
+        from playwright.async_api import async_playwright
+        globals()["async_playwright"] = async_playwright
+        return async_playwright
+    if name == "scrape_google_maps":
+        from cocli.scrapers.google.google_maps import scrape_google_maps
+        globals()["scrape_google_maps"] = scrape_google_maps
+        return scrape_google_maps
+    if name == "scrape_google_maps_details":
+        from cocli.scrapers.google.google_maps_details import scrape_google_maps_details
+        globals()["scrape_google_maps_details"] = scrape_google_maps_details
+        return scrape_google_maps_details
+    if name == "enrich_company_website":
+        from cocli.core.enrichment import enrich_company_website
+        globals()["enrich_company_website"] = enrich_company_website
+        return enrich_company_website
+    if name == "WebsiteCompiler":
+        from cocli.compilers.website_compiler import WebsiteCompiler
+        globals()["WebsiteCompiler"] = WebsiteCompiler
+        return WebsiteCompiler
+    if name == "LocationProspectsIndex":
+        from cocli.core.location_prospects_index import LocationProspectsIndex
+        globals()["LocationProspectsIndex"] = LocationProspectsIndex
+        return LocationProspectsIndex
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 async def pipeline(
@@ -110,9 +135,16 @@ async def pipeline(
         )
         scan_task_id = progress.add_task("[dim]Scanning Google Maps...", total=None)
 
+        import sys
+        _mod = sys.modules[__name__]
+        _async_playwright = getattr(_mod, "async_playwright")
+        _WebsiteCompiler = getattr(_mod, "WebsiteCompiler")
+        _enrich_company_website = getattr(_mod, "enrich_company_website")
+        _scrape_google_maps = getattr(_mod, "scrape_google_maps")
+        _scrape_google_maps_details = getattr(_mod, "scrape_google_maps_details")
         launch_proxy = {"server": proxy_url} if proxy_url else None
 
-        async with async_playwright() as p:
+        async with _async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=not headed,
                 devtools=devtools,
@@ -131,7 +163,7 @@ async def pipeline(
                 consumer_context = (
                     await browser.new_context() if not use_cloud_enrichment else None
                 )
-                compiler = WebsiteCompiler()
+                compiler = _WebsiteCompiler()
 
                 while not stop_event.is_set():
                     messages = await asyncio.to_thread(queue_manager.poll, batch_size=1)
@@ -155,7 +187,7 @@ async def pipeline(
                                 slug=msg.company_slug,
                             )
                             try:
-                                website_data = await enrich_company_website(
+                                website_data = await _enrich_company_website(
                                     browser=consumer_context,
                                     company=dummy_company,
                                     force=msg.force_refresh,
@@ -188,7 +220,7 @@ async def pipeline(
                     f"{campaign_name}_enrichment", use_cloud=use_cloud_queue
                 )
 
-                prospect_generator = scrape_google_maps(
+                prospect_generator = _scrape_google_maps(
                     browser=browser,
                     location_param=location_param,
                     search_strings=search_phrases,
@@ -224,7 +256,7 @@ async def pipeline(
 
                     page = await browser.new_page()
                     try:
-                        detailed_data_raw = await scrape_google_maps_details(
+                        detailed_data_raw = await _scrape_google_maps_details(
                             page=page,
                             place_id=list_item.place_id,
                             campaign_name=campaign_name,
@@ -1083,6 +1115,7 @@ def discover_venues(
         console.print(f"[dim]Seeding search from location: {locations[0]}[/dim]")
 
     from cocli.core.paths import paths
+    from cocli.core.location_prospects_index import LocationProspectsIndex
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
     checkpoint_path = (
@@ -1226,6 +1259,7 @@ def achieve_goal(
                     description=f"Scanning database... ({loaded} loaded, {skipped} skipped)",
                 )
 
+    from cocli.core.location_prospects_index import LocationProspectsIndex
     asyncio.run(
         pipeline(
             locations=[],

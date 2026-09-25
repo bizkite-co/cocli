@@ -3,7 +3,6 @@ import logging
 from typing import Optional
 from pathlib import Path
 import typer
-from ..tui.app import CocliApp
 from ..core.logging_config import setup_file_logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,7 @@ def run_tui_app(
         from ..core.paths import paths
 
         async def _dump() -> None:
+            from ..tui.app import CocliApp
             services = ServiceContainer()
             tui_app = CocliApp(services=services, auto_show=False)
             
@@ -82,5 +82,6 @@ def run_tui_app(
         raise typer.Exit()
 
     setup_file_logging("tui", file_level=logging.DEBUG, disable_console=True)
+    from ..tui.app import CocliApp
     tui_app = CocliApp()
     tui_app.run()

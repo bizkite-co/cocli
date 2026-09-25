@@ -65,11 +65,11 @@ async def test_queue_sync_shortcuts(mocker):
 
         # Test action_sync_pending directly (chord bindings may not work in test mode)
         detail.action_sync_pending()
-        await pilot.pause(0.5)
+        await pilot.pause(0.05)
         assert mock_sync.called
 
         # Test action_sync_completed
         mock_sync.reset_mock()
         detail.action_sync_completed()
-        await pilot.pause(0.5)
+        await pilot.pause(0.05)
         assert mock_sync.called

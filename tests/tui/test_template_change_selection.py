@@ -48,8 +48,7 @@ async def test_template_change_updates_selection():
     async with app.run_test() as driver:
         # Manually show companies after app is ready
         await driver.app.action_show_companies()
-        # Ample time for initial load
-        await driver.pause(1.5)
+        await driver.pause(0.05)
         
         company_list = app.query_one(CompanyList)
         
@@ -64,8 +63,7 @@ async def test_template_change_updates_selection():
         await driver.press("j")  # With Email
         await driver.press("enter")
         
-        # Ample time for search worker and UI refresh synchronization
-        await driver.pause(2.0)
+        await driver.pause(0.05)
         
         # Check internal state FIRST
         assert company_list.filtered_fz_items[0].name == "Email Company 1"
@@ -83,7 +81,7 @@ async def test_l_key_drill_down_updates_selection():
     
     async with app.run_test() as driver:
         await driver.app.action_show_companies()
-        await driver.pause(1.5)
+        await driver.pause(0.05)
         
         # Focus templates
         await driver.press("t")
@@ -94,8 +92,7 @@ async def test_l_key_drill_down_updates_selection():
         # Press 'l' to drill down
         await driver.press("l")
         
-        # Ample time for search worker and UI refresh synchronization
-        await driver.pause(2.0)
+        await driver.pause(0.05)
         
         # Company list should have focus
         focused = app.focused
