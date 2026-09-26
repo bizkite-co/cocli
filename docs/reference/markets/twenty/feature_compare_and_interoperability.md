@@ -189,3 +189,12 @@ flowchart LR
    * Set up a small webhook receiver to ingest deal updates and call recordings from Twenty back into `cocli`'s markdown files.
 4. **Phase 4: Twenty App Integration**
    * Build a custom UI extension in Twenty for triggering phone bridge calls and campaign sequences directly from the browser.
+
+---
+
+## Related Documents
+
+* [Distributed Architecture & Multi-User Synchronization: `cocli` vs. Twenty](distributed_architecture_and_aws_auth.md)
+* [Conforming Kanban Phases to Stations Architecture: Deal & Initiative Lifecycle](kanban_stations_and_deal_lifecycle.md)
+* [Directory Overview & Index](README.md)
+
