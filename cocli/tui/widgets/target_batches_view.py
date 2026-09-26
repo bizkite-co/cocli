@@ -45,6 +45,8 @@ class PendingBatchPreview(VerticalScroll):
         subject: str | None,
         body: str | None,
         entry: "PendingBatchEntry | None" = None,
+        rendered_content: str | None = None,
+        is_html: bool = False,
     ) -> None:
         empty = self.query_one("#batch-preview-empty", Label)
         metadata_static = self.query_one("#batch-preview-metadata", Static)
@@ -63,19 +65,26 @@ class PendingBatchPreview(VerticalScroll):
                 if getattr(entry, "created_at", None)
                 else entry.batch_id
             )
+            mode_desc = (
+                "Rendered HTML [dim](press v for raw markdown)[/dim]"
+                if is_html
+                else "Raw Markdown [dim](press v for rendered HTML)[/dim]"
+            )
             meta_lines = [
                 f"[bold]Created:[/bold]   {created_str}",
                 f"[bold]Template:[/bold]  {entry.template_id}",
                 f"[bold]Company:[/bold]   {entry.company_slug}",
                 f"[bold]To:[/bold]        {entry.recipient}",
                 f"[bold]Initiative:[/bold]{entry.initiative}",
+                f"[bold]Preview:[/bold]   {mode_desc}",
             ]
             metadata_static.update("\n".join(meta_lines))
         else:
             metadata_static.update("")
 
         subject_label.update(f"[bold]Subject:[/bold] {subject}")
-        body_static.update(body or "")
+        display_body = rendered_content if rendered_content is not None else (body or "")
+        body_static.update(display_body)
 
 
 class TargetBatchesView(MasterDetailView):
@@ -87,7 +96,8 @@ class TargetBatchesView(MasterDetailView):
         Binding("p", "process_follow_ups", "Prepare Due Follow-ups", show=True),
         Binding("n", "new_batch", "New Batch", show=True),
         Binding("e", "edit_entry", "Edit", show=True),
-        Binding("o", "open_preview", "Open HTML Preview", show=True),
+        Binding("v", "toggle_view_mode", "Toggle HTML/Raw", show=True),
+        Binding("o", "open_preview", "Open in Browser", show=True),
         Binding("s", "send_batch", "Send Batch", show=True),
         Binding("S", "send_all_batches", "Send All Batches", show=True),
         Binding("d", "discard_batch", "Discard Batch", show=True),
@@ -98,6 +108,7 @@ class TargetBatchesView(MasterDetailView):
         self.batch_list = ListView(id="target-batch-list")
         self.batch_preview = PendingBatchPreview(id="target-batch-preview")
         self._last_g_time: float = 0.0
+        self.show_rendered_html: bool = True
         super().__init__(master=self.batch_list, detail=self.batch_preview, master_width=45, **kwargs)
 
     async def on_mount(self) -> None:
@@ -131,10 +142,9 @@ class TargetBatchesView(MasterDetailView):
 
         if entries:
             self.batch_list.index = 0
-            match = service.entry_to_match(entries[0])
-            self.batch_preview.update_preview(match.subject, match.body, entry=entries[0])
+            self._update_entry_preview(entries[0])
         else:
-            self.batch_preview.update_preview(None, None)
+            self._update_entry_preview(None)
 
     def on_key(self, event: events.Key) -> None:
         """vim-style navigation - ListView only binds arrow keys by default."""
@@ -180,29 +190,70 @@ class TargetBatchesView(MasterDetailView):
             event.prevent_default()
             event.stop()
 
+    def _update_entry_preview(self, entry: "PendingBatchEntry | None") -> None:
+        if entry is None:
+            self.batch_preview.update_preview(None, None)
+            return
+
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.utils.terminal_preview import render_html_for_terminal
+
+        app = cast("CocliApp", self.app)
+        service = PersonalizedOutreachService(app.services.campaign_name)
+        match = service.entry_to_match(entry)
+
+        rendered_text: str | None = None
+        is_html_mode = False
+
+        if self.show_rendered_html:
+            try:
+                service.ensure_rendered_outreach_draft(entry)
+                html_path = service.render_and_save_html_preview(
+                    entry.initiative, entry.company_slug, entry.template_id
+                )
+            except Exception:
+                html_path = None
+
+            cols = max(40, self.batch_preview.size.width - 4) if self.batch_preview.size.width > 0 else 76
+
+            if html_path and html_path.exists():
+                rendered_text = render_html_for_terminal(html_path, width=cols)
+                if rendered_text:
+                    is_html_mode = True
+
+            if not rendered_text and match.body and ("<div" in match.body or "<a " in match.body or "<table" in match.body):
+                rendered_text = render_html_for_terminal(match.body, width=cols)
+                if rendered_text:
+                    is_html_mode = True
+
+        self.batch_preview.update_preview(
+            match.subject,
+            match.body,
+            entry=entry,
+            rendered_content=rendered_text,
+            is_html=is_html_mode,
+        )
+
+    def action_toggle_view_mode(self) -> None:
+        """Toggle between rendered HTML layout and raw markdown source."""
+        self.show_rendered_html = not self.show_rendered_html
+        entry = self._highlighted_entry()
+        if entry:
+            self._update_entry_preview(entry)
+            mode = "Rendered HTML" if self.show_rendered_html else "Raw Markdown"
+            self.app.notify(f"Preview mode: {mode}")
+
     @on(ListView.Highlighted, "#target-batch-list")
     def on_batch_row_highlighted(self, message: ListView.Highlighted) -> None:
         if not isinstance(message.item, PendingBatchListItem):
             return
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
-
-        entry = message.item.entry
-        app = cast("CocliApp", self.app)
-        service = PersonalizedOutreachService(app.services.campaign_name)
-        match = service.entry_to_match(entry)
-        self.batch_preview.update_preview(match.subject, match.body, entry=entry)
+        self._update_entry_preview(message.item.entry)
 
     @on(ListView.Selected)
     def on_batch_row_selected(self, message: ListView.Selected) -> None:
         if not isinstance(message.item, PendingBatchListItem):
             return
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
-
-        entry = message.item.entry
-        app = cast("CocliApp", self.app)
-        service = PersonalizedOutreachService(app.services.campaign_name)
-        match = service.entry_to_match(entry)
-        self.batch_preview.update_preview(match.subject, match.body, entry=entry)
+        self._update_entry_preview(message.item.entry)
 
     def _highlighted_entry(self) -> "PendingBatchEntry | None":
         item = self.batch_list.highlighted_child

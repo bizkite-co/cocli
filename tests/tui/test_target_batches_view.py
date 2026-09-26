@@ -210,3 +210,44 @@ async def test_open_preview_materializes_draft_and_opens_html(
     opened_path = mock_open_url.call_args.args[0]
     assert opened_path.endswith("email_02_product_overview.html")
     assert Path(opened_path).exists()
+
+
+@pytest.mark.asyncio
+async def test_v_toggles_between_rendered_html_and_raw_markdown(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.application.services import ServiceContainer
+    from textual.widgets import Static
+
+    _freeze_one_batch(tmp_path, monkeypatch, template_id="email_02_product_overview.md")
+    _write_layout_template()
+
+    app = CocliApp(services=ServiceContainer(campaign_name="roadmap"), auto_show=False)
+    async with app.run_test() as pilot:
+        view = TargetBatchesView()
+        await app.query_one("#app_content").mount(view)
+        await pilot.pause(0.2)
+
+        list_view = view.query_one(ListView)
+        list_view.focus()
+        list_view.index = 0
+        await pilot.pause(0.1)
+
+        assert view.show_rendered_html is True
+        meta = view.batch_preview.query_one("#batch-preview-metadata", Static)
+        assert "Rendered HTML" in str(meta.render())
+
+        # Press v to toggle to raw markdown
+        await pilot.press("v")
+        await pilot.pause(0.1)
+
+        assert view.show_rendered_html is False
+        assert "Raw Markdown" in str(meta.render())
+
+        # Press v again to toggle back to rendered HTML
+        await pilot.press("v")
+        await pilot.pause(0.1)
+
+        assert view.show_rendered_html is True
+        assert "Rendered HTML" in str(meta.render())
+
