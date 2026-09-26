@@ -74,3 +74,48 @@ def test_ingest_telemetry_links_utm_content_to_company(
     note_files = list(notes_dir.glob("*.md"))
     assert len(note_files) == 1
     assert "Landing Page Activity: cta_click" in note_files[0].read_text()
+
+
+def test_list_events_filters_and_returns_newest_first(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    service = EngagementService("roadmap")
+    event1 = EngagementEvent(
+        campaign_name="roadmap",
+        company_slug="prospect-a",
+        event_type="landing_page_view",
+        utm_campaign="testimonials",
+        source="gtm",
+    )
+    event2 = EngagementEvent(
+        campaign_name="roadmap",
+        company_slug="prospect-b",
+        event_type="feedback_submit",
+        utm_campaign="testimonials",
+        source="gtm",
+        details={"message": "Great spend-down table"},
+    )
+    event3 = EngagementEvent(
+        campaign_name="roadmap",
+        company_slug="prospect-c",
+        event_type="cta_click",
+        utm_campaign="rta",
+        source="gtm",
+    )
+
+    service.record_event(event1)
+    service.record_event(event2)
+    service.record_event(event3)
+
+    all_events = service.list_events()
+    assert len(all_events) == 3
+    assert all_events[0].event_type in ("landing_page_view", "feedback_submit", "cta_click")
+
+    testimonial_events = service.list_events(initiative="testimonials")
+    assert len(testimonial_events) == 2
+    assert all(e.utm_campaign == "testimonials" for e in testimonial_events)
+

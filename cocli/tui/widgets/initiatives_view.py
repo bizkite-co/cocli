@@ -26,7 +26,7 @@ from ...core.paths import paths
 from .message_templates_view import TemplateListItem, TemplatePreview
 
 if TYPE_CHECKING:
-    from ...models.campaigns.indexes.email_send_log import SendLogEntry
+    pass
 
 _CATEGORY_LABELS = {
     "email-sequences": "Email Sequences",
@@ -221,17 +221,33 @@ class _FileBrowserPane(Horizontal):
 
 
 class TrackingListItem(ListItem):
-    def __init__(self, entry: "SendLogEntry", event_type: str | None = None) -> None:
+    def __init__(self, entry: Any, event_type: str | None = None) -> None:
         super().__init__()
         self.entry = entry
         self.event_type = event_type
 
     def compose(self) -> Any:
-        icon = "[green]sent[/green]" if self.entry.status == "sent" else "[red]failed[/red]"
-        label = f"{icon}  {self.entry.recipient}  {self.entry.subject[:40]}"
-        if self.event_type:
-            label += f"  [bold red]{self.event_type}[/bold red]"
-        yield Label(label)
+        if hasattr(self.entry, "event_type") and hasattr(self.entry, "source"):
+            # EngagementEvent (web landing page / UTM / GTM signal)
+            icon_map = {
+                "feedback_submit": "[bold magenta]feedback[/bold magenta]",
+                "cta_click": "[bold cyan]cta_click[/bold cyan]",
+                "landing_page_view": "[bold yellow]page_view[/bold yellow]",
+                "demo_video_start": "[bold green]video_start[/bold green]",
+                "calculator_interactive_use": "[bold blue]calculator[/bold blue]",
+            }
+            badge = icon_map.get(self.entry.event_type, f"[bold]{self.entry.event_type}[/bold]")
+            ts_str = self.entry.timestamp.strftime("%m/%d %H:%M")
+            co = self.entry.company_slug or self.entry.utm_content or "(web visitor)"
+            source_tag = self.entry.utm_source or self.entry.source
+            yield Label(f"{badge}  {co}  [dim]{source_tag} ({ts_str})[/dim]")
+        else:
+            # SendLogEntry
+            icon = "[green]sent[/green]" if self.entry.status == "sent" else "[red]failed[/red]"
+            label = f"{icon}  {self.entry.recipient}  {self.entry.subject[:40]}"
+            if self.event_type:
+                label += f"  [bold red]{self.event_type}[/bold red]"
+            yield Label(label)
 
 
 class TrackingPreview(VerticalScroll):
@@ -239,7 +255,7 @@ class TrackingPreview(VerticalScroll):
         yield Label("Select an entry to see details", id="tracking-preview-empty")
         yield Static("", id="tracking-preview-body")
 
-    def update_preview(self, entry: "SendLogEntry | None", event_type: str | None = None) -> None:
+    def update_preview(self, entry: Any | None, event_type: str | None = None) -> None:
         empty = self.query_one("#tracking-preview-empty", Label)
         body = self.query_one("#tracking-preview-body", Static)
         if entry is None:
@@ -247,31 +263,60 @@ class TrackingPreview(VerticalScroll):
             body.update("")
             return
         empty.display = False
-        lines = [
-            f"[bold]Recipient:[/bold] {entry.recipient}",
-            f"[bold]Company:[/bold] {entry.company_slug}",
-            f"[bold]Subject:[/bold] {entry.subject}",
-            f"[bold]Status:[/bold] {entry.status}",
-            f"[bold]Batch:[/bold] {entry.batch_id}",
-            f"[bold]Template:[/bold] {entry.template_id}",
-            f"[bold]Sent at:[/bold] {entry.sent_at}",
-        ]
-        if entry.message_id:
-            lines.append(f"[bold]Message ID:[/bold] {entry.message_id}")
-        if entry.error:
-            lines.append(f"[bold]Error:[/bold] {entry.error}")
-        if event_type:
-            lines.append(f"[bold red]{event_type}[/bold red] - see the tracking event log for details")
-        lines.append("")
-        lines.append("[dim]l: open company[/dim]")
+        lines: list[str] = []
+
+        if hasattr(entry, "event_type") and hasattr(entry, "source"):
+            # EngagementEvent
+            lines = [
+                f"[bold magenta]Signal:[/] {entry.event_type}",
+                f"[bold]Company Slug:[/] {entry.company_slug or '(unknown)'}",
+                f"[bold]Source:[/] {entry.source}",
+                f"[bold]UTM Source:[/] {entry.utm_source or 'N/A'}",
+                f"[bold]UTM Medium:[/] {entry.utm_medium or 'N/A'}",
+                f"[bold]UTM Campaign:[/] {entry.utm_campaign or 'N/A'}",
+                f"[bold]UTM Content:[/] {entry.utm_content or 'N/A'}",
+                f"[bold]Timestamp:[/] {entry.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            ]
+            if getattr(entry, "details", None):
+                lines.append("")
+                lines.append("[bold]Payload Details:[/bold]")
+                details_dict = entry.details if isinstance(entry.details, dict) else {}
+                feedback_msg = details_dict.get("message")
+                if feedback_msg:
+                    lines.append(f"\n[bold green]Advisor Feedback Message:[/] {feedback_msg}\n")
+                for k, v in details_dict.items():
+                    if k != "message":
+                        lines.append(f"  [dim]{k}:[/dim] {v}")
+            if getattr(entry, "company_slug", None):
+                lines.append("")
+                lines.append("[dim]l: open company detail[/dim]")
+        else:
+            # SendLogEntry
+            lines = [
+                f"[bold]Recipient:[/bold] {entry.recipient}",
+                f"[bold]Company:[/bold] {entry.company_slug}",
+                f"[bold]Subject:[/bold] {entry.subject}",
+                f"[bold]Status:[/bold] {entry.status}",
+                f"[bold]Batch:[/bold] {entry.batch_id}",
+                f"[bold]Template:[/bold] {entry.template_id}",
+                f"[bold]Sent at:[/bold] {entry.sent_at}",
+            ]
+            if getattr(entry, "message_id", None):
+                lines.append(f"[bold]Message ID:[/bold] {entry.message_id}")
+            if getattr(entry, "error", None):
+                lines.append(f"[bold]Error:[/bold] {entry.error}")
+            if event_type:
+                lines.append(f"[bold red]{event_type}[/bold red] - see the tracking event log for details")
+            lines.append("")
+            lines.append("[dim]l: open company[/dim]")
+
         body.update("\n".join(lines))
 
 
 class _TrackingPane(Horizontal):
     """Tracking category content: this initiative's send log (sent +
-    failed attempts), newest first - the "list of stats, details on the
-    right" shape Mark asked about, backed by real SendLogEntry rows
-    instead of the raw JSON/CSV files _FileBrowserPane used to show."""
+    failed attempts) and web engagement signals (landing page views, CTA
+    clicks, feedback submissions), newest first."""
 
     def __init__(self, initiative: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -287,31 +332,41 @@ class _TrackingPane(Horizontal):
         yield self.preview
 
     async def on_mount(self) -> None:
+        from cocli.application.engagement_service import EngagementService
         from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
         service = PersonalizedOutreachService(campaign)
+        eng_service = EngagementService(campaign)
+
         entries = service.list_send_log(initiative=self.initiative)
         sent = sum(1 for e in entries if e.status == "sent")
         failed = sum(1 for e in entries if e.status == "failed")
         events = service.list_ses_events(initiative=self.initiative)
         bounced = sum(1 for e in events if e.event_type == "BOUNCE")
         complaints = sum(1 for e in events if e.event_type == "COMPLAINT")
+
+        web_events = eng_service.list_events(initiative=self.initiative)
+
         self.stats_label.update(
-            f"Sent: {sent}   Failed: {failed}   Bounced: {bounced}   Complaints: {complaints}"
+            f"Sent: {sent}   Failed: {failed}   Bounced: {bounced}   Complaints: {complaints}   Web Signals: {len(web_events)}"
         )
-        # Newest event wins if a message_id somehow has more than one -
-        # events list is already sorted newest-first by list_ses_events().
+        # Newest event wins if a message_id somehow has more than one
         event_by_message_id: dict[str, str] = {}
         for event in reversed(events):
             if event.message_id:
                 event_by_message_id[event.message_id] = event.event_type
+
+        # Mount web events first (newest real-time incoming signals)
+        for w_evt in web_events:
+            self.entry_list.append(TrackingListItem(w_evt))
+
         for entry in entries:
             self.entry_list.append(
                 TrackingListItem(entry, event_type=event_by_message_id.get(entry.message_id or ""))
             )
-        if not entries:
+        if not entries and not web_events:
             self.preview.update_preview(None)
         self.entry_list.focus()
 
@@ -322,8 +377,6 @@ class _TrackingPane(Horizontal):
         self.preview.update_preview(message.item.entry, event_type=message.item.event_type)
 
     def on_key(self, event: events.Key) -> None:
-        # See _EmailSequencesPane.on_key()'s comment - event.stop() is
-        # required here too, for the same reason.
         if event.key == "j":
             self.entry_list.action_cursor_down()
             event.prevent_default()
@@ -339,7 +392,9 @@ class _TrackingPane(Horizontal):
         elif event.key == "l":
             highlighted = self.entry_list.highlighted_child
             if isinstance(highlighted, TrackingListItem):
-                cast("CocliApp", self.app).open_company_detail(highlighted.entry.company_slug)
+                co_slug = getattr(highlighted.entry, "company_slug", None)
+                if co_slug:
+                    cast("CocliApp", self.app).open_company_detail(co_slug)
             event.prevent_default()
             event.stop()
 

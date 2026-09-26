@@ -440,3 +440,63 @@ async def test_tracking_pane_l_opens_the_highlighted_entrys_company(mock_cocli_e
         await pilot.pause(0.1)
 
         mock_open.assert_called_once_with("acme-financial")
+
+
+@pytest.mark.asyncio
+async def test_tracking_pane_displays_web_engagement_events_and_details(mock_cocli_env, mocker) -> None:
+    """_TrackingPane displays both email send log and incoming web engagement signals (feedback_submit, cta_click)."""
+    from cocli.application.engagement_service import EngagementService
+    from cocli.models.engagement import EngagementEvent
+
+    _make_initiative(CAMPAIGN, "testimonials", {"tracking": {".keep": "x"}})
+
+    eng_service = EngagementService(CAMPAIGN)
+    feedback_event = EngagementEvent(
+        campaign_name=CAMPAIGN,
+        company_slug="higginbotham-jake-dukart",
+        event_type="feedback_submit",
+        utm_campaign="testimonials",
+        source="gtm",
+        details={
+            "name": "Jake Dukart",
+            "message": "Loved the 30-year spend-down tables!",
+            "firm": "Higginbotham",
+        },
+    )
+    eng_service.record_event(feedback_event)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_TrackingPane)
+        entry_list = pane.query_one("#tracking_entry_list", ListView)
+        assert len(entry_list.children) == 1
+
+        # Check stats label contains Web Signals count
+        assert "Web Signals: 1" in str(pane.stats_label.content)
+
+        # Check preview shows signal details and feedback message
+        pane.preview.update_preview(feedback_event)
+        preview_body = pane.preview.query_one("#tracking-preview-body")
+        text = str(preview_body.content)
+        assert "feedback_submit" in text
+        assert "higginbotham-jake-dukart" in text
+        assert "Loved the 30-year spend-down tables!" in text
+
+

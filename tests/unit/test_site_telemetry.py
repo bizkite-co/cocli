@@ -86,3 +86,30 @@ def test_telemetry_wizard_cli_runner() -> None:
     assert "Phase 2: Compiling GTM IaC Manifest" in res.output
     assert "Phase 4: Container Quality & Completion Summary" in res.output
 
+
+def test_testimonials_page_and_feedback_form_structure() -> None:
+    testimonials_html = WEBSITE_ROOT / "src" / "testimonials.html"
+    assert testimonials_html.exists(), "src/testimonials.html must exist"
+    content = testimonials_html.read_text(encoding="utf-8")
+
+    assert 'id="feedback-form"' in content, "Testimonials page must include feedback form"
+    assert 'id="feedback-name"' in content, "Feedback form must include name input"
+    assert 'id="feedback-firm"' in content, "Feedback form must include firm input"
+    assert 'id="feedback-email"' in content, "Feedback form must include email input"
+    assert 'id="feedback-message"' in content, "Feedback form must include message textarea"
+    assert 'id="feedback-submit-btn"' in content, "Feedback form must include submit button"
+    assert 'id="feedback-success-msg"' in content, "Feedback form must include success message div"
+    assert "mark@bizkite.net" in content, "Testimonials page must reference maintainer email"
+
+
+def test_script_js_contains_feedback_submit_handler() -> None:
+    script_js = WEBSITE_ROOT / "src" / "assets" / "script.js"
+    assert script_js.exists()
+    content = script_js.read_text(encoding="utf-8")
+
+    assert "feedback-form" in content, "script.js must bind to feedback-form"
+    assert "feedback_submit" in content, "script.js must push feedback_submit event to dataLayer"
+    assert "formsubmit.co/ajax/mark@bizkite.net" in content, "script.js must dispatch to delivery endpoint"
+    assert "rta_feedback_backups" in content, "script.js must cache backup in localStorage"
+
+

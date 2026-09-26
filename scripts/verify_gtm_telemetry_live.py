@@ -46,15 +46,31 @@ def run_verification(target_url: str = UTM_TEST_URL) -> None:
         for req in gtm_reqs:
             print(f"    - {req}")
 
-        # Test CTA click telemetry
-        print("[4] Simulating CTA click...")
-        cta_btn = page.query_selector("a[href='/signup'], a.btn-primary")
-        if cta_btn:
-            cta_btn.click()
-            page.wait_for_timeout(1000)
-            data_layer_after = page.evaluate("() => window.dataLayer || []")
-            print("    DataLayer after CTA click:")
-            print(json.dumps(data_layer_after, indent=2))
+        # Test CTA click telemetry or feedback form submission if on testimonials
+        if "testimonials" in target_url:
+            print("[4] Simulating Feedback Form submission on /testimonials/...")
+            form = page.query_selector("#feedback-form")
+            if form:
+                page.fill("#feedback-name", "Verification Test Advisor, CFP")
+                page.fill("#feedback-firm", "Test Advisory Group")
+                page.fill("#feedback-email", "test-advisor@example.com")
+                page.fill("#feedback-message", "Playwright automated verification: testing feedback form submission.")
+                page.click("#feedback-submit-btn")
+                page.wait_for_timeout(2000)
+                data_layer_after = page.evaluate("() => window.dataLayer || []")
+                print("    DataLayer after Feedback submit:")
+                print(json.dumps(data_layer_after, indent=2))
+                success_displayed = page.is_visible("#feedback-success-msg")
+                print(f"    Success message displayed: {success_displayed}")
+        else:
+            print("[4] Simulating CTA click...")
+            cta_btn = page.query_selector("a[href='/signup'], a.btn-primary")
+            if cta_btn:
+                cta_btn.click()
+                page.wait_for_timeout(1000)
+                data_layer_after = page.evaluate("() => window.dataLayer || []")
+                print("    DataLayer after CTA click:")
+                print(json.dumps(data_layer_after, indent=2))
 
         browser.close()
         print("=== Telemetry Verification Complete ===")
@@ -63,3 +79,4 @@ def run_verification(target_url: str = UTM_TEST_URL) -> None:
 if __name__ == "__main__":
     url = sys.argv[1] if len(sys.argv) > 1 else UTM_TEST_URL
     run_verification(url)
+
