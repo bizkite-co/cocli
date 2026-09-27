@@ -12,6 +12,7 @@ from cocli.application.company_service import get_company_details_for_view
 from cocli.core.exclusions import ExclusionManager
 from cocli.core.paths import paths
 from cocli.models.companies.company import Company
+from cocli.core.text_utils import slugify
 from cocli.utils.utm import append_utm_params
 
 if TYPE_CHECKING:
@@ -35,6 +36,7 @@ class ProspectContactMatch:
     role: Optional[str]
     subject: str
     body: str
+    person_slug: Optional[str] = None
 
 
 @dataclass
@@ -124,7 +126,7 @@ class PersonalizedOutreachService:
 
             selected = self._select_company_contact(company)
             if selected:
-                selected_email, selected_first_name, selected_full_name, selected_role = selected
+                selected_email, selected_first_name, selected_full_name, selected_role, selected_person_slug = selected
                 company_display_name = str(company.name) if company.name else slug.replace("-", " ").title()
                 subject, body = self.generate_copy(
                     first_name=selected_first_name,
@@ -132,6 +134,7 @@ class PersonalizedOutreachService:
                     company_slug=slug,
                     template_name=template_name,
                     initiative=initiative,
+                    person_slug=selected_person_slug,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -143,6 +146,7 @@ class PersonalizedOutreachService:
                         role=selected_role,
                         subject=subject,
                         body=body,
+                        person_slug=selected_person_slug,
                     )
                 )
 
@@ -179,12 +183,14 @@ class PersonalizedOutreachService:
                 seen_slugs.add(co_slug)
                 seen_emails.add(email_str)
 
+                p_slug = person.slug or person_dir.name
                 subject, body = self.generate_copy(
                     first_name=fname,
                     company_name=co_name,
                     company_slug=co_slug,
                     template_name=template_name,
                     initiative=initiative,
+                    person_slug=p_slug,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -196,6 +202,7 @@ class PersonalizedOutreachService:
                         role=person.role,
                         subject=subject,
                         body=body,
+                        person_slug=p_slug,
                     )
                 )
 
@@ -203,12 +210,12 @@ class PersonalizedOutreachService:
 
     def _select_company_contact(
         self, company: Company
-    ) -> Optional[tuple[str, str, str, Optional[str]]]:
+    ) -> Optional[tuple[str, str, str, Optional[str], Optional[str]]]:
         """Extracted from find_eligible_prospects() (2026-09-16) so a
         single-company lookup (FollowUpService, rendering a due email
         follow-up) can reuse the exact same contact-selection rules
         instead of duplicating them. Returns
-        (email, first_name, full_name, role) or None if nothing usable."""
+        (email, first_name, full_name, role, person_slug) or None if nothing usable."""
         details = get_company_details_for_view(company.slug)
         if not details:
             return None
@@ -219,7 +226,8 @@ class PersonalizedOutreachService:
             email = str(contact.get("email") or "").strip()
             fname = extract_first_name(raw_name)
             if email and fname:
-                return email, fname, raw_name, str(contact.get("role") or "")
+                p_slug = contact.get("slug") or (slugify(raw_name) if raw_name else None)
+                return email, fname, raw_name, str(contact.get("role") or ""), p_slug
 
         if company.email:
             co_email = str(company.email).strip()
@@ -227,11 +235,13 @@ class PersonalizedOutreachService:
                 raw_name = str(contact.get("name") or "").strip()
                 fname = extract_first_name(raw_name)
                 if fname:
-                    return co_email, fname, raw_name, str(contact.get("role") or "")
+                    p_slug = contact.get("slug") or (slugify(raw_name) if raw_name else None)
+                    return co_email, fname, raw_name, str(contact.get("role") or ""), p_slug
             co_name = str(company.name or "")
             derived_name = co_name.split(" - ")[-1] if " - " in co_name else co_name
             fname = extract_first_name(derived_name) or "there"
-            return co_email, fname, derived_name, ""
+            p_slug = slugify(derived_name) if derived_name else None
+            return co_email, fname, derived_name, "", p_slug
 
         return None
 
@@ -251,6 +261,7 @@ class PersonalizedOutreachService:
         full_name = ""
         role = ""
 
+        person_slug = None
         if recipient_email:
             from .company_service import list_known_contacts
 
@@ -272,6 +283,7 @@ class PersonalizedOutreachService:
                     or (full_name.split()[0] if full_name else "")
                 )
                 role = str(matched_c.get("role") or matched_c.get("title") or "")
+                person_slug = matched_c.get("slug") or (slugify(full_name) if full_name else None)
             else:
                 email = recipient_email
                 first_name = ""
@@ -284,13 +296,15 @@ class PersonalizedOutreachService:
                     first_name = fname
                     if not full_name:
                         full_name = derived_name
+                    if not person_slug:
+                        person_slug = slugify(derived_name)
                 elif not first_name:
                     first_name = "there"
         else:
             selected = self._select_company_contact(company)
             if not selected:
                 return None
-            email, first_name, full_name, sel_role = selected
+            email, first_name, full_name, sel_role, person_slug = selected
             role = sel_role or ""
 
         company_display_name = str(company.name) if company.name else company_slug.replace("-", " ").title()
@@ -303,6 +317,7 @@ class PersonalizedOutreachService:
             role=role,
             subject="",
             body="",
+            person_slug=person_slug,
         )
 
     def list_templates(self) -> list[str]:
@@ -550,6 +565,7 @@ class PersonalizedOutreachService:
         company_slug: str,
         template_name: str = "email_01_pas_hook.md",
         initiative: str = "rta",
+        person_slug: Optional[str] = None,
     ) -> tuple[str, str]:
         """Generate outcome-driven, personalized email subject and body with UTM links."""
         subject_template, body_template = self.load_template(template_name, initiative=initiative)
@@ -581,13 +597,32 @@ class PersonalizedOutreachService:
             # untouched since they aren't "\n" characters.
             raw_body = re.sub(r"[ \t]*\n[ \t]*", " ", raw_body)
 
+        utm_camp = self.campaign_name
+        utm_src = "email_sequence"
+        utm_med = "email"
+        try:
+            from cocli.models.campaigns.initiative import InitiativeManifest
+
+            manifest = InitiativeManifest.find(self.campaign_name, initiative)
+            if manifest and manifest.outreach:
+                if manifest.outreach.utm_campaign:
+                    utm_camp = manifest.outreach.utm_campaign
+                if manifest.outreach.utm_source:
+                    utm_src = manifest.outreach.utm_source
+                if manifest.outreach.utm_medium:
+                    utm_med = manifest.outreach.utm_medium
+        except Exception:
+            pass
+
         body_with_utm = append_utm_params(
             raw_body,
-            campaign=self.campaign_name,
+            campaign=utm_camp,
             company_slug=company_slug,
-            source="email_sequence",
-            medium="email",
-            term=first_name.lower(),
+            person_slug=person_slug,
+            source=utm_src,
+            medium=utm_med,
+            term=person_slug or first_name.lower(),
+            override=True,
         )
 
         return subject, body_with_utm
@@ -623,6 +658,8 @@ class PersonalizedOutreachService:
             f"first_name: {match.first_name}",
             f'subject: "{match.subject}"',
         ]
+        if match.person_slug:
+            frontmatter_lines.append(f"person_slug: {match.person_slug}")
         if layout:
             frontmatter_lines.append(f"layout: {layout}")
         frontmatter_lines.append("---\n\n")
@@ -942,9 +979,18 @@ class PersonalizedOutreachService:
             entry.initiative, entry.company_slug, entry.template_id
         )
         current = self._read_rendered_outreach(rendered_path)
+        person_slug = None
         if current is not None:
             subject, body = current
             self.render_and_save_html_preview(entry.initiative, entry.company_slug, entry.template_id)
+            try:
+                import yaml
+                parts = rendered_path.read_text(encoding="utf-8").split("---", 2)
+                if len(parts) >= 3:
+                    meta = yaml.safe_load(parts[1]) or {}
+                    person_slug = meta.get("person_slug")
+            except Exception:
+                pass
 
         return ProspectContactMatch(
             company_slug=entry.company_slug,
@@ -955,6 +1001,7 @@ class PersonalizedOutreachService:
             role=None,
             subject=subject,
             body=body,
+            person_slug=person_slug,
         )
 
     def ensure_rendered_outreach_draft(self, entry: "PendingBatchEntry") -> Path:

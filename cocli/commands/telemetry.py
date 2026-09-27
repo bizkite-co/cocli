@@ -139,3 +139,62 @@ def wizard_telemetry(
     """Guided wizard for inspecting status, syncing IaC spec, verifying live site, and deploying GTM across Google accounts."""
     _, _, wizard_cmd, _ = _get_wizard_cmds()
     wizard_cmd(domain=domain, container_id=container_id, ga4_id=None, config=None, skip_verify=skip_verify)
+
+
+@app.command(name="query")
+def query_telemetry(
+    property_id: Optional[str] = typer.Option(
+        None, "--property-id", "-p", help="Google Analytics 4 Property ID (e.g. 555090946)"
+    ),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name filter"
+    ),
+    path: Optional[str] = typer.Option(
+        None, "--path", help="Page path filter"
+    ),
+    days: int = typer.Option(
+        7, "--days", "-d", help="Days of history to query"
+    ),
+    realtime: bool = typer.Option(
+        False, "--realtime", "-r", help="Run realtime report instead of date range"
+    ),
+) -> None:
+    """Query Google Analytics 4 traffic and UTM campaign attribution."""
+    try:
+        from gtm_telemetry_wizard.cli import query_cmd
+
+        query_cmd(property_id=property_id, campaign=campaign, path=path, days=days, realtime=realtime)
+    except ImportError:
+        typer.echo("Error: gtm_telemetry_wizard package is not installed.", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.command(name="pull")
+def pull_telemetry(
+    property_id: Optional[str] = typer.Option(
+        None, "--property-id", "-p", help="Google Analytics 4 Property ID (e.g. 555090946)"
+    ),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+    initiative: Optional[str] = typer.Option(
+        None, "--initiative", "-i", help="Specific initiative to filter (e.g. testimonials, rta)"
+    ),
+    days: int = typer.Option(
+        7, "--days", "-d", help="Days of history to query"
+    ),
+) -> None:
+    """Poll GA4 Data API for recent campaign hits with company/person attribution and append to local engagement log."""
+    camp = campaign or get_campaign() or "roadmap"
+    service = EngagementService(camp)
+    typer.echo(f"Pulling GA4 telemetry for campaign '{camp}' (past {days} days)...")
+    new_events = service.pull_from_ga4(property_id=property_id, initiative=initiative, days=days)
+    if not new_events:
+        typer.echo("No new prospect engagement signals found in GA4.")
+        return
+
+    typer.echo(f"Successfully pulled {len(new_events)} new engagement signal(s):")
+    for evt in new_events:
+        person_info = f" ({evt.utm_term})" if evt.utm_term else ""
+        typer.echo(f"  - [{evt.event_type}] {evt.company_slug}{person_info} -> {evt.details.get('page_path')}")
+

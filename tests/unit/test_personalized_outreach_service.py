@@ -1317,4 +1317,44 @@ def test_find_eligible_prospects_filters_by_tag(tmp_path: Any, monkeypatch: Any)
     tagged_matches = service.find_eligible_prospects(limit=10, tag="testimonial-target")
     assert len(tagged_matches) == 1
     assert tagged_matches[0].company_slug == "target-alpha"
+    assert tagged_matches[0].person_slug == "alice-alpha"
+
+
+def test_generate_copy_and_draft_with_person_slug(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    match = _match("acme-co", "alice@acme.test", subject="Subject")
+    match.first_name = "Alice"
+    match.contact_name = "Alice Smith"
+    match.person_slug = "alice-smith"
+
+    subject, body = service.generate_copy(
+        first_name=match.first_name,
+        company_name=match.company_name,
+        company_slug=match.company_slug,
+        person_slug=match.person_slug,
+    )
+    assert "utm_content=acme-co" in body
+    assert "utm_term=alice-smith" in body
+
+    draft_path = service.render_and_save_draft(match, template_id="email_02_product_overview.md")
+    draft_content = draft_path.read_text(encoding="utf-8")
+    assert "person_slug: alice-smith" in draft_content
+
+    entry = PendingBatchEntry(
+        batch_id="b_test",
+        template_id="email_02_product_overview.md",
+        company_slug="acme-co",
+        recipient="alice@acme.test",
+        subject=subject,
+        body="Frozen body",
+        initiative="rta",
+    )
+    recovered = service.entry_to_match(entry)
+    assert recovered.person_slug == "alice-smith"
 

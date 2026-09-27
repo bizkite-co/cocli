@@ -10,6 +10,7 @@ treating Yazi as a supplemental UI over the same data.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, cast, TYPE_CHECKING
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 from textual import events, on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 
 from textual.widgets import Label, ListItem, ListView, Static
@@ -221,15 +223,22 @@ class _FileBrowserPane(Horizontal):
 
 
 class TrackingListItem(ListItem):
-    def __init__(self, entry: Any, event_type: str | None = None) -> None:
+    def __init__(
+        self,
+        entry: Any,
+        event_type: str | None = None,
+        clicked: bool = False,
+    ) -> None:
         super().__init__()
         self.entry = entry
         self.event_type = event_type
+        self.clicked = clicked
 
     def compose(self) -> Any:
         if hasattr(self.entry, "event_type") and hasattr(self.entry, "source"):
             # EngagementEvent (web landing page / UTM / GTM signal)
             icon_map = {
+                "link_click": "[bold green]click[/bold green]",
                 "feedback_submit": "[bold magenta]feedback[/bold magenta]",
                 "cta_click": "[bold cyan]cta_click[/bold cyan]",
                 "landing_page_view": "[bold yellow]page_view[/bold yellow]",
@@ -239,12 +248,15 @@ class TrackingListItem(ListItem):
             badge = icon_map.get(self.entry.event_type, f"[bold]{self.entry.event_type}[/bold]")
             ts_str = self.entry.timestamp.strftime("%m/%d %H:%M")
             co = self.entry.company_slug or self.entry.utm_content or "(web visitor)"
+            person = f" [cyan]({self.entry.utm_term})[/cyan]" if getattr(self.entry, "utm_term", None) else ""
             source_tag = self.entry.utm_source or self.entry.source
-            yield Label(f"{badge}  {co}  [dim]{source_tag} ({ts_str})[/dim]")
+            yield Label(f"{badge}  {co}{person}  [dim]{source_tag} ({ts_str})[/dim]")
         else:
             # SendLogEntry
             icon = "[green]sent[/green]" if self.entry.status == "sent" else "[red]failed[/red]"
             label = f"{icon}  {self.entry.recipient}  {self.entry.subject[:40]}"
+            if self.clicked:
+                label += "  [bold green][CLICKED][/bold green]"
             if self.event_type:
                 label += f"  [bold red]{self.event_type}[/bold red]"
             yield Label(label)
@@ -255,7 +267,12 @@ class TrackingPreview(VerticalScroll):
         yield Label("Select an entry to see details", id="tracking-preview-empty")
         yield Static("", id="tracking-preview-body")
 
-    def update_preview(self, entry: Any | None, event_type: str | None = None) -> None:
+    def update_preview(
+        self,
+        entry: Any | None,
+        event_type: str | None = None,
+        clicked: bool = False,
+    ) -> None:
         empty = self.query_one("#tracking-preview-empty", Label)
         body = self.query_one("#tracking-preview-body", Static)
         if entry is None:
@@ -270,13 +287,18 @@ class TrackingPreview(VerticalScroll):
             lines = [
                 f"[bold magenta]Signal:[/] {entry.event_type}",
                 f"[bold]Company Slug:[/] {entry.company_slug or '(unknown)'}",
+            ]
+            if getattr(entry, "utm_term", None):
+                lines.append(f"[bold]Contact (Person):[/] [cyan]{entry.utm_term}[/cyan]")
+            lines.extend([
                 f"[bold]Source:[/] {entry.source}",
                 f"[bold]UTM Source:[/] {entry.utm_source or 'N/A'}",
                 f"[bold]UTM Medium:[/] {entry.utm_medium or 'N/A'}",
                 f"[bold]UTM Campaign:[/] {entry.utm_campaign or 'N/A'}",
                 f"[bold]UTM Content:[/] {entry.utm_content or 'N/A'}",
+                f"[bold]UTM Term:[/] {entry.utm_term or 'N/A'}",
                 f"[bold]Timestamp:[/] {entry.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-            ]
+            ])
             if getattr(entry, "details", None):
                 lines.append("")
                 lines.append("[bold]Payload Details:[/bold]")
@@ -289,7 +311,7 @@ class TrackingPreview(VerticalScroll):
                         lines.append(f"  [dim]{k}:[/dim] {v}")
             if getattr(entry, "company_slug", None):
                 lines.append("")
-                lines.append("[dim]l: open company detail[/dim]")
+                lines.append("[dim]l: open company detail   p: pull GA4 telemetry   r: refresh[/dim]")
         else:
             # SendLogEntry
             lines = [
@@ -297,10 +319,14 @@ class TrackingPreview(VerticalScroll):
                 f"[bold]Company:[/bold] {entry.company_slug}",
                 f"[bold]Subject:[/bold] {entry.subject}",
                 f"[bold]Status:[/bold] {entry.status}",
+            ]
+            if clicked:
+                lines.append("[bold green]Link Clicked:[/] Yes [bold green][CLICKED][/bold green]")
+            lines.extend([
                 f"[bold]Batch:[/bold] {entry.batch_id}",
                 f"[bold]Template:[/bold] {entry.template_id}",
                 f"[bold]Sent at:[/bold] {entry.sent_at}",
-            ]
+            ])
             if getattr(entry, "message_id", None):
                 lines.append(f"[bold]Message ID:[/bold] {entry.message_id}")
             if getattr(entry, "error", None):
@@ -308,7 +334,7 @@ class TrackingPreview(VerticalScroll):
             if event_type:
                 lines.append(f"[bold red]{event_type}[/bold red] - see the tracking event log for details")
             lines.append("")
-            lines.append("[dim]l: open company[/dim]")
+            lines.append("[dim]l: open company   p: pull GA4 telemetry   r: refresh[/dim]")
 
         body.update("\n".join(lines))
 
@@ -317,6 +343,15 @@ class _TrackingPane(Horizontal):
     """Tracking category content: this initiative's send log (sent +
     failed attempts) and web engagement signals (landing page views, CTA
     clicks, feedback submissions), newest first."""
+
+    BINDINGS = [
+        Binding("p", "pull_telemetry", "Pull GA4", show=True),
+        Binding("r", "refresh_tracking", "Refresh", show=True),
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("h", "navigate_back", "Back", show=False),
+        Binding("l", "drill_down", "Open Company", show=False),
+    ]
 
     def __init__(self, initiative: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -332,6 +367,9 @@ class _TrackingPane(Horizontal):
         yield self.preview
 
     async def on_mount(self) -> None:
+        await self.refresh_tracking()
+
+    async def refresh_tracking(self) -> None:
         from cocli.application.engagement_service import EngagementService
         from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
@@ -349,9 +387,23 @@ class _TrackingPane(Horizontal):
 
         web_events = eng_service.list_events(initiative=self.initiative)
 
+        # Calculate clicked companies
+        clicked_slugs = {
+            e.company_slug
+            for e in web_events
+            if e.company_slug
+            and e.event_type in ("link_click", "cta_click", "feedback_submit", "landing_page_view")
+        }
+        sent_clicked = sum(1 for e in entries if e.company_slug in clicked_slugs)
+        ctr_str = f"{(sent_clicked / sent * 100):.1f}%" if sent > 0 else "0.0%"
+
         self.stats_label.update(
-            f"Sent: {sent}   Failed: {failed}   Bounced: {bounced}   Complaints: {complaints}   Web Signals: {len(web_events)}"
+            f"Sent: {sent}   Failed: {failed}   Bounced: {bounced}   Complaints: {complaints}   "
+            f"Web Signals: {len(web_events)}   CTR: {ctr_str} ({sent_clicked}/{sent})"
         )
+
+        await self.entry_list.clear()
+
         # Newest event wins if a message_id somehow has more than one
         event_by_message_id: dict[str, str] = {}
         for event in reversed(events):
@@ -360,43 +412,91 @@ class _TrackingPane(Horizontal):
 
         # Mount web events first (newest real-time incoming signals)
         for w_evt in web_events:
-            self.entry_list.append(TrackingListItem(w_evt))
+            await self.entry_list.append(TrackingListItem(w_evt))
 
         for entry in entries:
-            self.entry_list.append(
-                TrackingListItem(entry, event_type=event_by_message_id.get(entry.message_id or ""))
+            is_clicked = bool(entry.company_slug and entry.company_slug in clicked_slugs)
+            await self.entry_list.append(
+                TrackingListItem(
+                    entry,
+                    event_type=event_by_message_id.get(entry.message_id or ""),
+                    clicked=is_clicked,
+                )
             )
+
         if not entries and not web_events:
             self.preview.update_preview(None)
+        elif self.entry_list.children:
+            self.entry_list.index = 0
+            first_child = self.entry_list.children[0]
+            if isinstance(first_child, TrackingListItem):
+                self.preview.update_preview(
+                    first_child.entry,
+                    event_type=first_child.event_type,
+                    clicked=getattr(first_child, "clicked", False),
+                )
         self.entry_list.focus()
+
+    def action_pull_telemetry(self) -> None:
+        self.run_worker(self.pull_telemetry(), exclusive=True)
+
+    def action_refresh_tracking(self) -> None:
+        self.run_worker(self.refresh_tracking(), exclusive=True)
+
+    def action_cursor_down(self) -> None:
+        self.entry_list.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.entry_list.action_cursor_up()
+
+    def action_navigate_back(self) -> None:
+        self.app.query_one("#categories_list", ListView).focus()
+
+    def action_drill_down(self) -> None:
+        highlighted = self.entry_list.highlighted_child
+        if isinstance(highlighted, TrackingListItem):
+            co_slug = getattr(highlighted.entry, "company_slug", None)
+            if co_slug:
+                cast("CocliApp", self.app).open_company_detail(co_slug)
+
+    async def pull_telemetry(self) -> None:
+        from cocli.application.engagement_service import EngagementService
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        eng_service = EngagementService(campaign)
+
+        self.notify("Pulling GA4 telemetry...")
+        try:
+            new_events = await asyncio.to_thread(
+                eng_service.pull_from_ga4,
+                initiative=self.initiative,
+            )
+            count = len(new_events)
+            self.notify(f"Pulled {count} new GA4 signal(s)")
+            await self.refresh_tracking()
+        except Exception as exc:
+            self.notify(f"GA4 pull failed: {exc}", severity="error")
 
     @on(ListView.Selected)
     def on_entry_selected(self, message: ListView.Selected) -> None:
         if not isinstance(message.item, TrackingListItem):
             return
-        self.preview.update_preview(message.item.entry, event_type=message.item.event_type)
+        self.preview.update_preview(
+            message.item.entry,
+            event_type=message.item.event_type,
+            clicked=getattr(message.item, "clicked", False),
+        )
 
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "j":
-            self.entry_list.action_cursor_down()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "k":
-            self.entry_list.action_cursor_up()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "h":
-            self.app.query_one("#categories_list", ListView).focus()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "l":
-            highlighted = self.entry_list.highlighted_child
-            if isinstance(highlighted, TrackingListItem):
-                co_slug = getattr(highlighted.entry, "company_slug", None)
-                if co_slug:
-                    cast("CocliApp", self.app).open_company_detail(co_slug)
-            event.prevent_default()
-            event.stop()
+    @on(ListView.Highlighted)
+    def on_entry_highlighted(self, message: ListView.Highlighted) -> None:
+        if not isinstance(message.item, TrackingListItem):
+            return
+        self.preview.update_preview(
+            message.item.entry,
+            event_type=message.item.event_type,
+            clicked=getattr(message.item, "clicked", False),
+        )
 
 
 class InitiativesView(Container):

@@ -500,3 +500,155 @@ async def test_tracking_pane_displays_web_engagement_events_and_details(mock_coc
         assert "Loved the 30-year spend-down tables!" in text
 
 
+@pytest.mark.asyncio
+async def test_tracking_pane_calculates_ctr_and_badges_clicked_send_log_entries(
+    mock_cocli_env, mocker
+) -> None:
+    """Tracking pane computes CTR from sent messages and web clicks, renders
+    person slug in web signal rows, and marks clicked send-log entries."""
+    from cocli.application.engagement_service import EngagementService
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+    from cocli.models.engagement import EngagementEvent
+    from cocli.tui.widgets.initiatives_view import TrackingListItem
+
+    _make_initiative(CAMPAIGN, "testimonials", {"tracking": {".keep": "x"}})
+    _write_send_log(
+        CAMPAIGN,
+        [
+            SendLogEntry(
+                batch_id="b1",
+                template_id="t1",
+                company_slug="blauner-financial",
+                recipient="don@blauner.test",
+                subject="Testimonial request",
+                message_id="msg-1",
+                status="sent",
+                initiative="testimonials",
+            ),
+            SendLogEntry(
+                batch_id="b1",
+                template_id="t1",
+                company_slug="calibrate-wealth",
+                recipient="dave@calibrate.test",
+                subject="Testimonial request",
+                message_id="msg-2",
+                status="sent",
+                initiative="testimonials",
+            ),
+        ],
+    )
+
+    eng_service = EngagementService(CAMPAIGN)
+    click_event = EngagementEvent(
+        campaign_name=CAMPAIGN,
+        company_slug="blauner-financial",
+        event_type="link_click",
+        utm_campaign="testimonials",
+        utm_term="don-blauner",
+        source="ga4",
+        details={"page_path": "/testimonials/"},
+    )
+    eng_service.record_event(click_event)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_TrackingPane)
+        stats_text = str(pane.stats_label.content)
+        assert "Sent: 2" in stats_text
+        assert "Web Signals: 1" in stats_text
+        assert "CTR: 50.0% (1/2)" in stats_text
+
+        items = [i for i in pane.entry_list.children if isinstance(i, TrackingListItem)]
+        assert len(items) == 3
+
+        # First item is the click event
+        click_item = items[0]
+        assert getattr(click_item.entry, "event_type", None) == "link_click"
+        assert click_item.entry.utm_term == "don-blauner"
+
+        # Check send log items: blauner is marked clicked, calibrate is not
+        blauner_item = next(i for i in items if getattr(i.entry, "company_slug", None) == "blauner-financial" and not hasattr(i.entry, "event_type"))
+        calibrate_item = next(i for i in items if getattr(i.entry, "company_slug", None) == "calibrate-wealth")
+
+        assert blauner_item.clicked is True
+        assert calibrate_item.clicked is False
+
+        # Preview of click event shows person slug
+        pane.preview.update_preview(click_item.entry)
+        preview_body = str(pane.preview.query_one("#tracking-preview-body").content)
+        assert "don-blauner" in preview_body
+        assert "Contact (Person):" in preview_body
+
+
+@pytest.mark.asyncio
+async def test_tracking_pane_p_key_pulls_ga4_telemetry(mock_cocli_env, mocker) -> None:
+    """Pressing 'p' in the tracking pane triggers pull_from_ga4 and updates signals."""
+    from cocli.application.engagement_service import EngagementService
+    from cocli.models.engagement import EngagementEvent
+
+    _make_initiative(CAMPAIGN, "testimonials", {"tracking": {".keep": "x"}})
+
+    pulled_event = EngagementEvent(
+        campaign_name=CAMPAIGN,
+        company_slug="pulled-firm",
+        event_type="link_click",
+        utm_campaign="testimonials",
+        utm_term="contact-slug",
+        source="ga4",
+    )
+
+    mock_pull = mocker.patch.object(
+        EngagementService,
+        "pull_from_ga4",
+        return_value=[pulled_event],
+    )
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_TrackingPane)
+        entry_list = pane.query_one("#tracking_entry_list", ListView)
+        entry_list.focus()
+        await pilot.pause(0.1)
+
+        await pilot.press("p")
+        await app.workers.wait_for_complete()
+        await pilot.pause(0.1)
+
+        assert mock_pull.called
+
+
+

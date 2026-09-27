@@ -21,11 +21,15 @@ def append_utm_params(
     content: Optional[str] = None,
     term: Optional[str] = None,
     target_domain: Optional[str] = None,
+    person_slug: Optional[str] = None,
+    override: bool = False,
 ) -> str:
     """
     Search `text` for URLs and auto-inject UTM tracking parameters into them.
     If `target_domain` is specified, only URLs containing target_domain are modified.
     If target_domain is None, all HTTP/HTTPS URLs get UTM parameters attached.
+    If `override` is True, caller-specified UTM parameters take precedence over
+    any existing UTM parameters already in the URL (non-UTM parameters are always preserved).
     """
     if not text:
         return text
@@ -44,19 +48,20 @@ def append_utm_params(
         query_params = parse_qs(parsed.query, keep_blank_values=True)
         flat_params: dict[str, str] = {k: v[0] for k, v in query_params.items() if v}
 
-        if "utm_source" not in flat_params:
+        if override or "utm_source" not in flat_params:
             flat_params["utm_source"] = source
-        if "utm_medium" not in flat_params:
+        if override or "utm_medium" not in flat_params:
             flat_params["utm_medium"] = medium
-        if campaign and "utm_campaign" not in flat_params:
+        if campaign and (override or "utm_campaign" not in flat_params):
             flat_params["utm_campaign"] = campaign
 
         utm_content_val = content or company_slug
-        if utm_content_val and "utm_content" not in flat_params:
+        if utm_content_val and (override or "utm_content" not in flat_params):
             flat_params["utm_content"] = utm_content_val
 
-        if term and "utm_term" not in flat_params:
-            flat_params["utm_term"] = term
+        utm_term_val = person_slug or term
+        if utm_term_val and (override or "utm_term" not in flat_params):
+            flat_params["utm_term"] = utm_term_val
 
         new_query = urlencode(flat_params)
         new_parsed = parsed._replace(query=new_query)

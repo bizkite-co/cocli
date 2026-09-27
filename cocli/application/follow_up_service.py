@@ -299,6 +299,7 @@ class FollowUpService:
             company_slug=task.company_slug,
             template_name=task.template_id,
             initiative=task.initiative,
+            person_slug=match.person_slug,
         )
         match.subject = subject
         match.body = body

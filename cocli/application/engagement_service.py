@@ -85,6 +85,7 @@ class EngagementService:
             "calculator_interactive_use",
             "demo_video_start",
             "feedback_submit",
+            "link_click",
         ):
             notes_dir = paths.companies.entry(company_slug).path / "notes"
             details = payload.get("details") or {}
@@ -129,4 +130,105 @@ class EngagementService:
 
         events.sort(key=lambda e: e.timestamp, reverse=True)
         return events
+
+    def pull_from_ga4(
+        self,
+        property_id: Optional[str] = None,
+        initiative: Optional[str] = None,
+        days: int = 7,
+    ) -> list[EngagementEvent]:
+        """Query Google Analytics 4 for recent campaign sessions with company/person attribution,
+        and append new hits to the campaign's engagement USV log."""
+        try:
+            from gtm_telemetry_wizard.service import TelemetryProvider
+        except ImportError:
+            logger.warning("gtm_telemetry_wizard package is not installed; cannot pull GA4 telemetry.")
+            return []
+
+        provider = TelemetryProvider()
+        campaign_filter = initiative or self.campaign_name
+        try:
+            report = provider.query_analytics(
+                property_id=property_id,
+                campaign=campaign_filter,
+                days=days,
+            )
+        except Exception as exc:
+            logger.warning("Failed to query GA4 Data API: %s", exc)
+            return []
+
+        dim_headers = [d.get("name", "") for d in report.get("dimensionHeaders", [])]
+        metric_headers = [m.get("name", "") for m in report.get("metricHeaders", [])]
+
+        existing_events = self.list_events(initiative=initiative)
+        seen_keys = {
+            (
+                e.company_slug,
+                e.utm_campaign,
+                (e.details or {}).get("page_path"),
+            )
+            for e in existing_events
+        }
+
+        new_events: list[EngagementEvent] = []
+        for row in report.get("rows", []):
+            d_vals = [v.get("value", "") for v in row.get("dimensionValues", [])]
+            m_vals = [v.get("value", "0") for v in row.get("metricValues", [])]
+            dims = dict(zip(dim_headers, d_vals))
+            metrics = dict(zip(metric_headers, m_vals))
+
+            co_slug = dims.get("sessionManualAdContent")
+            if not co_slug or co_slug == "(not set)":
+                continue
+
+            person_slug = dims.get("sessionManualTerm")
+            if person_slug == "(not set)":
+                person_slug = None
+
+            page_path = dims.get("pagePath")
+            camp = dims.get("sessionCampaignName") or campaign_filter
+
+            fingerprint = (co_slug, camp, page_path)
+            if fingerprint in seen_keys:
+                continue
+
+            event = EngagementEvent(
+                campaign_name=camp,
+                company_slug=co_slug,
+                event_type="link_click",
+                source="ga4",
+                utm_source="email",
+                utm_medium="outreach",
+                utm_campaign=camp,
+                utm_content=co_slug,
+                utm_term=person_slug,
+                details={
+                    "page_path": page_path,
+                    "sessions": int(metrics.get("sessions", 0)),
+                    "screen_page_views": int(metrics.get("screenPageViews", 0)),
+                    "active_users": int(metrics.get("activeUsers", 0)),
+                },
+            )
+            self.record_event(event)
+            if co_slug:
+                try:
+                    notes_dir = paths.companies.entry(co_slug).path / "notes"
+                    if notes_dir.parent.exists():
+                        person_info = f" ({person_slug})" if person_slug else ""
+                        note_content = (
+                            f"Prospect{person_info} clicked outreach link and visited {page_path or 'landing page'} via UTM sequence.\n"
+                            f"Source: GA4 Data API\nCampaign: {camp}\n"
+                        )
+                        note = Note(
+                            title="Landing Page Activity: link_click",
+                            content=note_content,
+                        )
+                        note.to_file(notes_dir)
+                except Exception as note_err:
+                    logger.warning("Could not record note for %s: %s", co_slug, note_err)
+
+            seen_keys.add(fingerprint)
+            new_events.append(event)
+
+        return new_events
 

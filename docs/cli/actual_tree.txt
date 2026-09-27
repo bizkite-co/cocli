@@ -779,6 +779,17 @@ cocli
         ping - Send an initial telemetry hit to GA4 to warm up data ingestion and clear 48-hour missing traffic alerts.
             --measurement-id/-m (text)
             --domain/-d (text)
+        pull - Poll GA4 Data API for recent campaign hits with company/person attribution and append to local engagement log.
+            --property-id/-p (text)
+            --campaign/-c (text)
+            --initiative/-i (text)
+            --days/-d (integer)
+        query - Query Google Analytics 4 traffic and UTM campaign attribution.
+            --property-id/-p (text)
+            --campaign/-c (text)
+            --path (text)
+            --days/-d (integer)
+            --realtime/-r (boolean)
         sync - Resolve/create GA4 Measurement ID and compile declarative GTM IaC container spec.
             --measurement-id/-m (text)
             --campaign/-c (text)
