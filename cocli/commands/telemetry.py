@@ -134,11 +134,12 @@ def wizard_telemetry(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name override"),
     domain: str = typer.Option("getretirementtaxanalyzer.com", "--domain", "-d", help="Target website domain"),
     container_id: str = typer.Option("GTM-53F6J2WX", "--container-id", help="Target GTM Container ID"),
+    ga4_id: str = typer.Option("G-HJJ9TK2TKY", "--ga4-id", "-g", help="Target GA4 Measurement ID"),
     skip_verify: bool = typer.Option(False, "--skip-verify", help="Skip Playwright live URL verification"),
 ) -> None:
     """Guided wizard for inspecting status, syncing IaC spec, verifying live site, and deploying GTM across Google accounts."""
     _, _, wizard_cmd, _ = _get_wizard_cmds()
-    wizard_cmd(domain=domain, container_id=container_id, ga4_id=None, config=None, skip_verify=skip_verify)
+    wizard_cmd(domain=domain, container_id=container_id, ga4_id=ga4_id, config=None, skip_verify=skip_verify)
 
 
 @app.command(name="query")
@@ -197,4 +198,30 @@ def pull_telemetry(
     for evt in new_events:
         person_info = f" ({evt.utm_term})" if evt.utm_term else ""
         typer.echo(f"  - [{evt.event_type}] {evt.company_slug}{person_info} -> {evt.details.get('page_path')}")
+
+
+@app.command(name="process-testimonials")
+def process_testimonials(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+    initiative: Optional[str] = typer.Option(
+        "testimonials", "--initiative", "-i", help="Initiative to fall back to for first-name matching"
+    ),
+) -> None:
+    """Process pending testimonial-form submissions (run `cocli smart-sync`
+    first to pull queues/testimonials/pending/ down from S3) into the
+    engagement log and a company note, then mark each completed."""
+    camp = campaign or get_campaign() or "roadmap"
+    service = EngagementService(camp)
+    new_events = service.process_testimonial_submissions(initiative=initiative)
+    if not new_events:
+        typer.echo("No pending testimonial submissions to process.")
+        return
+
+    typer.echo(f"Processed {len(new_events)} testimonial submission(s):")
+    for evt in new_events:
+        name = evt.details.get("name") or evt.details.get("email") or "(unknown)"
+        match_status = evt.company_slug or "UNMATCHED"
+        typer.echo(f"  - {name} -> {match_status}")
 

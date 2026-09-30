@@ -784,6 +784,9 @@ cocli
         ping - Send an initial telemetry hit to GA4 to warm up data ingestion and clear 48-hour missing traffic alerts.
             --measurement-id/-m (text)
             --domain/-d (text)
+        process-testimonials - Process pending testimonial-form submissions (run `cocli smart-sync`
+            --campaign/-c (text)
+            --initiative/-i (text)
         pull - Poll GA4 Data API for recent campaign hits with company/person attribution and append to local engagement log.
             --property-id/-p (text)
             --campaign/-c (text)
@@ -805,6 +808,7 @@ cocli
             --campaign/-c (text)
             --domain/-d (text)
             --container-id (text)
+            --ga4-id/-g (text)
             --skip-verify (boolean)
     tui - Launches the Textual TUI for cocli.
         --dump-tree (path)

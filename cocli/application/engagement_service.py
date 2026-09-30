@@ -131,6 +131,33 @@ class EngagementService:
         events.sort(key=lambda e: e.timestamp, reverse=True)
         return events
 
+    def _match_initiative_recipients_by_first_name(
+        self, initiative: str, first_name: str
+    ) -> list[str]:
+        """Slugs of this initiative's rendered-outreach recipients whose
+        first name (the convention's second-to-last slug segment, e.g.
+        "calibrate-wealth-partners-dave-halvorson" -> "dave") matches
+        `first_name`. May return more than one slug - first names aren't
+        guaranteed unique across recipients, so callers must not silently
+        pick one when this returns more than one match."""
+        outreach_dir = (
+            paths.campaign(self.campaign_name).path
+            / "initiatives"
+            / initiative
+            / "rendered-outreach"
+        )
+        if not outreach_dir.is_dir():
+            return []
+        target = first_name.strip().lower()
+        matches = []
+        for entry in outreach_dir.iterdir():
+            if not entry.is_dir():
+                continue
+            parts = entry.name.split("-")
+            if len(parts) >= 2 and parts[-2].lower() == target:
+                matches.append(entry.name)
+        return matches
+
     def pull_from_ga4(
         self,
         property_id: Optional[str] = None,
@@ -140,12 +167,36 @@ class EngagementService:
         """Query Google Analytics 4 for recent campaign sessions with company/person attribution,
         and append new hits to the campaign's engagement USV log."""
         try:
+            from gtm_telemetry_wizard.config import TelemetryConfig
             from gtm_telemetry_wizard.service import TelemetryProvider
-        except ImportError:
-            logger.warning("gtm_telemetry_wizard package is not installed; cannot pull GA4 telemetry.")
-            return []
+        except ImportError as exc:
+            raise RuntimeError(
+                "gtm_telemetry_wizard package is not installed; cannot pull GA4 telemetry."
+            ) from exc
 
-        provider = TelemetryProvider()
+        # TelemetryProvider() with no config defaults to loading a
+        # `telemetry.toml` from the current working directory - a separate
+        # mechanism that was never actually wired to cocli's own campaign
+        # config. Build it explicitly from cocli_config.toml instead, so the
+        # ga4_measurement_id/container_id already configured per-campaign is
+        # what gets used (ga4_property_id can then be auto-discovered from
+        # ga4_measurement_id via the Analytics Admin API if not set).
+        from cocli.core.config import load_campaign_config
+
+        campaign_cfg = load_campaign_config(self.campaign_name)
+        ga_cfg = campaign_cfg.get("google_analytics", {}) or {}
+        gtm_cfg = campaign_cfg.get("gtm", {}) or {}
+        telemetry_config = TelemetryConfig(
+            campaign_name=self.campaign_name,
+            ga4_measurement_id=ga_cfg.get("ga4_measurement_id"),
+            ga4_property_id=ga_cfg.get("ga4_property_id") or property_id,
+            container_id=gtm_cfg.get("container_id"),
+            gtm_container_api_id=gtm_cfg.get("gtm_container_api_id"),
+            analytics_account_id=ga_cfg.get("analytics_account_id"),
+            gtm_account_id=gtm_cfg.get("gtm_account_id"),
+        )
+
+        provider = TelemetryProvider(config=telemetry_config)
         campaign_filter = initiative or self.campaign_name
         try:
             report = provider.query_analytics(
@@ -154,8 +205,23 @@ class EngagementService:
                 days=days,
             )
         except Exception as exc:
-            logger.warning("Failed to query GA4 Data API: %s", exc)
-            return []
+            # Deliberately not swallowed into a log-only warning + return [] -
+            # that made every failure (auth, config, a stale/incompatible
+            # gtm_telemetry_wizard install, network) look identical to "ran
+            # fine, found 0 events" in the TUI. Let it propagate so the
+            # caller's existing `except Exception as exc: notify(f"GA4 pull
+            # failed: {exc}")` actually shows the real reason.
+            #
+            # gtm_telemetry_wizard's ConfigurationError carries the
+            # actionable fix as a separate `.solution` attribute, not part
+            # of str(exc) - duck-typed here (not imported) to avoid a hard
+            # dependency on that exception type's exact class.
+            solution = getattr(exc, "solution", None)
+            message = f"Failed to query GA4 Data API: {exc}"
+            if solution:
+                message = f"{message} ({solution})"
+            logger.error(message)
+            raise RuntimeError(message) from exc
 
         dim_headers = [d.get("name", "") for d in report.get("dimensionHeaders", [])]
         metric_headers = [m.get("name", "") for m in report.get("metricHeaders", [])]
@@ -166,6 +232,7 @@ class EngagementService:
                 e.company_slug,
                 e.utm_campaign,
                 (e.details or {}).get("page_path"),
+                e.utm_term,
             )
             for e in existing_events
         }
@@ -177,20 +244,49 @@ class EngagementService:
             dims = dict(zip(dim_headers, d_vals))
             metrics = dict(zip(metric_headers, m_vals))
 
-            co_slug = dims.get("sessionManualAdContent")
-            if not co_slug or co_slug == "(not set)":
-                continue
+            ad_content = dims.get("sessionManualAdContent")
+            if ad_content == "(not set)":
+                ad_content = None
+            term = dims.get("sessionManualTerm")
+            if term == "(not set)":
+                term = None
 
-            person_slug = dims.get("sessionManualTerm")
-            if person_slug == "(not set)":
-                person_slug = None
+            # Which UTM param actually identifies the company depends on how
+            # the outreach link was built: personalized_outreach_service.py
+            # injects the real company slug into utm_content. But the
+            # request_testimonial.md template (and possibly others) bakes a
+            # fixed CTA label into utm_content ("request_testimonial" for
+            # every recipient) and puts the person's bare first name in
+            # utm_term instead - so utm_content there is never a company at
+            # all. Trust utm_content only when it actually resolves to a
+            # real company; otherwise fall back to matching utm_term's first
+            # name against this initiative's known outreach recipients.
+            co_slug: Optional[str] = ad_content if ad_content and Company.get(ad_content) else None
+            ambiguous_term_match = False
+            if not co_slug and term and initiative:
+                candidates = self._match_initiative_recipients_by_first_name(initiative, term)
+                if len(candidates) == 1:
+                    co_slug = candidates[0]
+                elif len(candidates) > 1:
+                    ambiguous_term_match = True
 
             page_path = dims.get("pagePath")
             camp = dims.get("sessionCampaignName") or campaign_filter
 
-            fingerprint = (co_slug, camp, page_path)
+            fingerprint = (co_slug, camp, page_path, term)
             if fingerprint in seen_keys:
                 continue
+
+            details: dict[str, Any] = {
+                "page_path": page_path,
+                "sessions": int(metrics.get("sessions", 0)),
+                "screen_page_views": int(metrics.get("screenPageViews", 0)),
+                "active_users": int(metrics.get("activeUsers", 0)),
+            }
+            if ad_content and ad_content != co_slug:
+                details["link_label"] = ad_content
+            if ambiguous_term_match:
+                details["ambiguous_first_name"] = term
 
             event = EngagementEvent(
                 campaign_name=camp,
@@ -200,21 +296,16 @@ class EngagementService:
                 utm_source="email",
                 utm_medium="outreach",
                 utm_campaign=camp,
-                utm_content=co_slug,
-                utm_term=person_slug,
-                details={
-                    "page_path": page_path,
-                    "sessions": int(metrics.get("sessions", 0)),
-                    "screen_page_views": int(metrics.get("screenPageViews", 0)),
-                    "active_users": int(metrics.get("activeUsers", 0)),
-                },
+                utm_content=ad_content,
+                utm_term=term,
+                details=details,
             )
             self.record_event(event)
             if co_slug:
                 try:
                     notes_dir = paths.companies.entry(co_slug).path / "notes"
                     if notes_dir.parent.exists():
-                        person_info = f" ({person_slug})" if person_slug else ""
+                        person_info = f" ({term})" if term else ""
                         note_content = (
                             f"Prospect{person_info} clicked outreach link and visited {page_path or 'landing page'} via UTM sequence.\n"
                             f"Source: GA4 Data API\nCampaign: {camp}\n"
@@ -229,6 +320,170 @@ class EngagementService:
 
             seen_keys.add(fingerprint)
             new_events.append(event)
+
+        return new_events
+
+    def _find_company_by_email(self, email: str) -> Optional[str]:
+        """Look up a company slug by email via the compact company_cache.usv
+        index (slug|name|type|domain|email|...), not a per-company
+        _index.md scan. A first version of this scanned every company's
+        _index.md individually via Company.get() - at ~40k companies that
+        took long enough to make `cocli telemetry process-testimonials`
+        look hung. The cache is one file, already built for exactly this
+        kind of fast lookup (see cocli/core/cache.py). Falls back to
+        rebuilding the cache once if it's missing/stale, same as
+        get_cached_items() already does elsewhere.
+
+        Testimonial submissions carry a real work email, a far more
+        reliable identifier than the first-name-only utm_term GA4 clicks
+        are limited to.
+        """
+        from cocli.core.cache import build_cache, get_cache_path, is_cache_valid
+
+        target = email.strip().lower()
+        if not target:
+            return None
+
+        if not is_cache_valid(campaign=self.campaign_name):
+            try:
+                build_cache(campaign=self.campaign_name)
+            except Exception as exc:
+                logger.warning("Could not build company cache for email lookup: %s", exc)
+                return None
+
+        cache_file = get_cache_path(campaign=self.campaign_name) / "company_cache.usv"
+        if not cache_file.exists():
+            return None
+
+        try:
+            with open(cache_file, encoding="utf-8") as f:
+                for line in f:
+                    parts = line.rstrip("\n").split("\x1f")
+                    if len(parts) <= 4:
+                        continue
+                    if parts[4].strip().lower() == target:
+                        return parts[0]
+        except OSError as exc:
+            logger.warning("Could not read company cache for email lookup: %s", exc)
+        return None
+
+    def process_testimonial_submissions(self, initiative: Optional[str] = None) -> list[EngagementEvent]:
+        """Process pending testimonial-form submissions (JSON files synced
+        down from S3 via `cocli smart-sync` - see
+        cdk_scraper_deployment/testimonials_stack.py, which replaced
+        formsubmit.co after it was confirmed to silently drop every
+        submission) into the engagement log plus a company note carrying
+        the full testimonial text, then move each to completed/ as a
+        witness receipt - the same pending/completed lifecycle gm-details
+        tasks already use (see docs/data-management/directory-data-structure.md).
+        """
+        import json as jsonlib
+
+        queue_dir = paths.campaign(self.campaign_name).path / "queues" / "testimonials"
+        pending_dir = queue_dir / "pending"
+        completed_dir = queue_dir / "completed"
+
+        if not pending_dir.is_dir():
+            return []
+        completed_dir.mkdir(parents=True, exist_ok=True)
+
+        # Moving pending -> completed only updates the LOCAL mirror. A
+        # generic `aws s3 sync` (unlike `cocli smart-sync`, which tracks
+        # .smart_sync_state.json) doesn't know a pending/ object was
+        # already consumed and will re-download it on the next run,
+        # causing it to be reprocessed - confirmed empirically (a
+        # already-processed test submission came back and got a second,
+        # duplicate engagement log entry). Delete the S3 source object
+        # once local processing succeeds so it can never come back.
+        s3_client = None
+        bucket_name = None
+        try:
+            from cocli.core.config import load_campaign_config
+            from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+            config = load_campaign_config(self.campaign_name)
+            bucket_name = get_data_bucket_name(config, self.campaign_name)
+            s3_client = get_s3_client(session=get_boto3_session(config))
+        except Exception as exc:
+            logger.debug("S3 cleanup unavailable (local-only campaign?): %s", exc)
+
+        new_events: list[EngagementEvent] = []
+        for task_file in sorted(pending_dir.glob("*.json")):
+            try:
+                data = jsonlib.loads(task_file.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("Could not parse testimonial task %s: %s", task_file, exc)
+                continue
+
+            email = str(data.get("email") or "").strip()
+            name = str(data.get("name") or "").strip()
+            message = str(data.get("message") or "")
+            utm_term = str(data.get("utm_term") or "").strip()
+            camp = str(data.get("utm_campaign") or self.campaign_name)
+
+            co_slug = self._find_company_by_email(email) if email else None
+            if not co_slug and utm_term and initiative:
+                candidates = self._match_initiative_recipients_by_first_name(initiative, utm_term)
+                if len(candidates) == 1:
+                    co_slug = candidates[0]
+
+            event = EngagementEvent(
+                campaign_name=camp,
+                company_slug=co_slug,
+                event_type="testimonial_submitted",
+                source="webhook",
+                utm_source=str(data.get("utm_source") or ""),
+                utm_medium=str(data.get("utm_medium") or ""),
+                utm_campaign=camp,
+                utm_content=str(data.get("utm_content") or ""),
+                utm_term=utm_term,
+                details={
+                    "name": name,
+                    "firm": data.get("firm"),
+                    "email": email,
+                    "message": message,
+                    "permission_to_quote": data.get("permission_to_quote"),
+                    "page_url": data.get("page_url"),
+                },
+            )
+            self.record_event(event)
+            new_events.append(event)
+
+            if co_slug:
+                try:
+                    notes_dir = paths.companies.entry(co_slug).path / "notes"
+                    if notes_dir.parent.exists():
+                        note_content = (
+                            f"Firm: {data.get('firm') or ''}\n"
+                            f"Email: {email}\n"
+                            f"Permission to quote: {data.get('permission_to_quote') or ''}\n\n"
+                            f"{message}"
+                        )
+                        note = Note(
+                            title=f"Testimonial Submitted: {name or email or 'Unknown'}",
+                            content=note_content,
+                        )
+                        note.to_file(notes_dir)
+                except Exception as note_err:
+                    logger.warning("Could not record testimonial note for %s: %s", co_slug, note_err)
+            else:
+                logger.info(
+                    "Testimonial submission %s could not be matched to a company (email=%s, term=%s)",
+                    task_file.name, email, utm_term,
+                )
+
+            task_file.replace(completed_dir / task_file.name)
+
+            if s3_client and bucket_name:
+                s3_key = f"{paths.s3.campaign(self.campaign_name).queue('testimonials').pending()}{task_file.name}"
+                try:
+                    s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
+                except Exception as exc:
+                    logger.warning(
+                        "Processed %s locally but could not delete its S3 source (%s) - "
+                        "it will be re-downloaded and reprocessed on the next sync: %s",
+                        task_file.name, s3_key, exc,
+                    )
 
         return new_events
 

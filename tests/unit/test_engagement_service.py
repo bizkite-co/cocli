@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import sys
+from types import ModuleType
 from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from cocli.application.engagement_service import EngagementService
 from cocli.models.companies.company import Company
@@ -118,4 +123,92 @@ def test_list_events_filters_and_returns_newest_first(
     testimonial_events = service.list_events(initiative="testimonials")
     assert len(testimonial_events) == 2
     assert all(e.utm_campaign == "testimonials" for e in testimonial_events)
+
+
+def test_pull_from_ga4_raises_when_gtm_telemetry_wizard_not_installed(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Regression test: a missing/broken gtm_telemetry_wizard install must
+    surface as a real error, not get logged-and-swallowed into an empty
+    list that looks identical to 'ran fine, found nothing' in the TUI."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    monkeypatch.setitem(sys.modules, "gtm_telemetry_wizard", None)
+    monkeypatch.setitem(sys.modules, "gtm_telemetry_wizard.service", None)
+
+    service = EngagementService("roadmap")
+    with pytest.raises(RuntimeError, match="not installed"):
+        service.pull_from_ga4(initiative="testimonials")
+
+
+def test_pull_from_ga4_raises_when_query_analytics_fails(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Regression test for the actual bug hit in production: a stale
+    gtm-telemetry-wizard install missing query_analytics() raised
+    AttributeError, which pull_from_ga4 used to catch, log as a warning,
+    and hide behind `return []` - the TUI then reported "Pulled 0 new GA4
+    signal(s)" for every failure, indistinguishable from real success."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    # Import the real package first so gtm_telemetry_wizard/__init__.py's
+    # eager `from .cli import app` (which itself imports .config and
+    # .service) has already resolved and cached in sys.modules. Without
+    # this, patching sys.modules["gtm_telemetry_wizard.service"] below would
+    # make the FIRST import of any gtm_telemetry_wizard submodule (e.g. our
+    # own `from gtm_telemetry_wizard.config import TelemetryConfig`)
+    # re-trigger that package init using the incomplete fake .service
+    # module, raising an unrelated ImportError instead of exercising the
+    # AttributeError path this test is actually about.
+    import gtm_telemetry_wizard.service  # noqa: F401
+
+    fake_module = ModuleType("gtm_telemetry_wizard.service")
+    fake_provider_cls = MagicMock()
+    fake_provider_instance = fake_provider_cls.return_value
+    fake_provider_instance.query_analytics.side_effect = AttributeError(
+        "'TelemetryProvider' object has no attribute 'query_analytics'"
+    )
+    fake_module.TelemetryProvider = fake_provider_cls  # type: ignore[attr-defined]
+
+    with patch.dict(sys.modules, {"gtm_telemetry_wizard.service": fake_module}):
+        service = EngagementService("roadmap")
+        with pytest.raises(RuntimeError, match="Failed to query GA4 Data API"):
+            service.pull_from_ga4(initiative="testimonials")
+
+
+def test_pull_from_ga4_includes_configuration_error_solution_hint(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """gtm_telemetry_wizard's ConfigurationError carries its actionable fix
+    in a separate `.solution` attribute, not in str(exc) - e.g. raising it
+    bare for a missing ga4_property_id gave the user "Missing GA4 numeric
+    property ID." with no indication of how to actually fix it."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    # See comment in test_pull_from_ga4_raises_when_query_analytics_fails.
+    import gtm_telemetry_wizard.service  # noqa: F401
+
+    class FakeConfigurationError(ValueError):
+        def __init__(self) -> None:
+            super().__init__("Missing GA4 numeric property ID.")
+            self.solution = (
+                "Specify --property-id, set `ga4_property_id` in "
+                "telemetry.toml, or export GA4_PROPERTY_ID."
+            )
+
+    fake_module = ModuleType("gtm_telemetry_wizard.service")
+    fake_provider_cls = MagicMock()
+    fake_provider_instance = fake_provider_cls.return_value
+    fake_provider_instance.query_analytics.side_effect = FakeConfigurationError()
+    fake_module.TelemetryProvider = fake_provider_cls  # type: ignore[attr-defined]
+
+    with patch.dict(sys.modules, {"gtm_telemetry_wizard.service": fake_module}):
+        service = EngagementService("roadmap")
+        with pytest.raises(RuntimeError, match="set `ga4_property_id` in telemetry.toml"):
+            service.pull_from_ga4(initiative="testimonials")
 

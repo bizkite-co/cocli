@@ -135,6 +135,7 @@ class PersonalizedOutreachService:
                     template_name=template_name,
                     initiative=initiative,
                     person_slug=selected_person_slug,
+                    full_name=selected_full_name,
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -191,6 +192,7 @@ class PersonalizedOutreachService:
                     template_name=template_name,
                     initiative=initiative,
                     person_slug=p_slug,
+                    full_name=str(person.name),
                 )
                 matches.append(
                     ProspectContactMatch(
@@ -566,6 +568,7 @@ class PersonalizedOutreachService:
         template_name: str = "email_01_pas_hook.md",
         initiative: str = "rta",
         person_slug: Optional[str] = None,
+        full_name: Optional[str] = None,
     ) -> tuple[str, str]:
         """Generate outcome-driven, personalized email subject and body with UTM links."""
         subject_template, body_template = self.load_template(template_name, initiative=initiative)
@@ -614,6 +617,27 @@ class PersonalizedOutreachService:
         except Exception:
             pass
 
+        # utm_term identifies WHO clicked - a bare first name isn't a safe
+        # identifier (collisions happen: this campaign already has two
+        # "kevin"s across different companies) and isn't reliably
+        # resolvable back to a contact after the fact. Prefer a real
+        # person_slug; fall back to a first+last slug when we at least have
+        # the full name; only fall back to a bare first name when neither
+        # is available (logged, so under-identified sends are visible
+        # rather than silently shipping something ambiguous).
+        if person_slug:
+            utm_term_val = person_slug
+        elif full_name:
+            utm_term_val = slugify(full_name)
+        else:
+            logger.warning(
+                "generate_copy: no person_slug or full_name for %s (%s) - "
+                "utm_term will be a bare first name and may not be unique",
+                first_name,
+                company_slug,
+            )
+            utm_term_val = first_name.lower()
+
         body_with_utm = append_utm_params(
             raw_body,
             campaign=utm_camp,
@@ -621,7 +645,7 @@ class PersonalizedOutreachService:
             person_slug=person_slug,
             source=utm_src,
             medium=utm_med,
-            term=person_slug or first_name.lower(),
+            term=utm_term_val,
             override=True,
         )
 

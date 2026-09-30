@@ -53,7 +53,7 @@ dependencies = [
     # stations: typed file-path queue/WAL/index Protocols (strangler Phase 1).
     # Not a cocli workspace member (stations decision 0005).
     "stations",
-    "gtm-telemetry-wizard>=0.1.0",
+    "gtm-telemetry-wizard",
 ]
 
 [tool.uv.sources]
@@ -63,6 +63,16 @@ dependencies = [
 # source; do not commit the override. Bump the pinned rev with:
 #   uv lock --upgrade-package stations
 stations = { git = "https://github.com/bizkite-co/stations", subdirectory = "python" }
+# Pinned to v0.1.7. History: the 0.1.0 PyPI release predates
+# query_analytics()/_discover_property_id() (GA4 Data API support), which
+# silently broke "Pull GA4" in the TUI - every pull raised AttributeError,
+# swallowed into a warning log, always reporting "0 signals" instead of the
+# real failure. v0.1.3 had query_analytics() but also a stray .gwt/ worktree
+# gitlink with no .gitmodules entry, which broke `git submodule update
+# --init` on a fresh clone (exactly what `uv sync` does); fixed in v0.1.4.
+# v0.1.6-v0.1.7 added `gtw auth`/`gtw accounts discover` (multi-account GA4
+# property discovery) and fixed a service-account scope-check false negative.
+gtm-telemetry-wizard = { git = "https://github.com/bizkite-co/gtm-telemetry-wizard", tag = "v0.1.7" }
 
 [project.scripts]
 cocli = "cocli.main:app"

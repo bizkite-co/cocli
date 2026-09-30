@@ -109,7 +109,12 @@ def test_script_js_contains_feedback_submit_handler() -> None:
 
     assert "feedback-form" in content, "script.js must bind to feedback-form"
     assert "feedback_submit" in content, "script.js must push feedback_submit event to dataLayer"
-    assert "formsubmit.co/ajax/mark@bizkite.net" in content, "script.js must dispatch to delivery endpoint"
+    # formsubmit.co (no account, silently 500'd every submission) was
+    # replaced with the CocliTestimonialsStack Lambda Function URL, which
+    # writes to the S3 testimonials queue - see
+    # cdk_scraper_deployment/cdk_scraper_deployment/testimonials_stack.py.
+    assert "lambda-url.us-east-1.on.aws" in content, "script.js must dispatch to the Lambda delivery endpoint"
+    assert "formsubmit.co/ajax" not in content, "script.js must not POST to formsubmit.co"
     assert "rta_feedback_backups" in content, "script.js must cache backup in localStorage"
 
 

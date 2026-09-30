@@ -781,7 +781,15 @@ def get_company_activity(
                         preview=preview,
                         content=item.content,
                         file_path=note_file,
-                        metadata={"disposition": item.disposition, "phone": item.phone},
+                        metadata={
+                            "disposition": item.disposition,
+                            "phone": item.phone,
+                            "call_sid": item.call_sid,
+                            "recording_sid": item.recording_sid,
+                            "duration_seconds": item.duration_seconds,
+                            "recording_path": item.recording_path,
+                            "transcript_path": item.transcript_path,
+                        },
                         is_scheduled=False,
                     )
                 )

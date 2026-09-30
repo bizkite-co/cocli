@@ -36,6 +36,43 @@ def test_generate_copy_includes_name_and_utm() -> None:
     assert "utm_term=david" in body
 
 
+def test_generate_copy_uses_full_name_slug_when_no_person_slug() -> None:
+    """Regression: a bare first name in utm_term isn't a safe identifier -
+    this campaign already has two "kevin"s across different companies, and
+    it can't be resolved back to a specific contact later. When no
+    person_slug is available but a full name is, fall back to a
+    first+last slug instead of just the first name."""
+    service = PersonalizedOutreachService("roadmap")
+    _, body = service.generate_copy(
+        first_name="Dave",
+        company_name="Calibrate Wealth Partners",
+        company_slug="calibrate-wealth-partners-dave-halvorson",
+        full_name="Dave Halvorson",
+    )
+
+    assert "utm_term=dave-halvorson" in body
+
+
+def test_generate_copy_falls_back_to_bare_first_name_when_nothing_else_available(
+    caplog: Any,
+) -> None:
+    """No person_slug and no full_name at all: still send (better than
+    blocking outreach), but log it so under-identified sends are visible
+    rather than a silent, hard-to-trace data gap."""
+    import logging
+
+    service = PersonalizedOutreachService("roadmap")
+    with caplog.at_level(logging.WARNING):
+        _, body = service.generate_copy(
+            first_name="Dave",
+            company_name="Calibrate Wealth Partners",
+            company_slug="calibrate-wealth-partners-dave-halvorson",
+        )
+
+    assert "utm_term=dave" in body
+    assert any("bare first name" in r.message for r in caplog.records)
+
+
 def test_generate_copy_collapses_newlines_for_html_templates(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
