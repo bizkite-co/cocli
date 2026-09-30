@@ -9,23 +9,29 @@ from constructs import IConstruct
 
 from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploymentStack
 from cdk_scraper_deployment.email_stack import CocliEmailStack
-from cdk_scraper_deployment.testimonials_stack import CocliTestimonialsStack
+from cdk_scraper_deployment.testimonials_stack import FormIntakeStack, SIGNUP_FIELDS, TESTIMONIAL_FIELDS
+
+# Stack id prefixes that get the 14-day (not 3-day) log retention below -
+# both are FormIntakeStack instances that log raw captured submission data
+# on receipt as a secondary recovery path alongside the S3 queue item.
+_FORM_INTAKE_STACK_PREFIXES = ("CocliTestimonialsStack", "CocliSignupsStack")
 
 @jsii.implements(cdk.IAspect)
 class LogRetentionAspect:
     """3 days for the default high-volume scraper/worker log groups.
 
-    CocliTestimonialsStack is an intentional exception at 14 days: its
-    Lambda logs the raw captured submission data on receipt (see
-    testimonials_stack.py) as a secondary recovery path alongside the S3
-    queue item itself - Mark asked for 14 days there specifically, not
-    the standard 3, so a submission can still be recovered from
-    CloudWatch even if the primary S3 write path had a problem.
+    FormIntakeStack instances (testimonials, signups) are an intentional
+    exception at 14 days: their Lambda logs the raw captured submission
+    data on receipt (see testimonials_stack.py) as a secondary recovery
+    path alongside the S3 queue item itself - Mark asked for 14 days
+    there specifically, not the standard 3, so a submission can still be
+    recovered from CloudWatch even if the primary S3 write path had a
+    problem.
     """
 
     def visit(self, node: IConstruct) -> None:
         if isinstance(node, cdk.aws_logs.CfnLogGroup):
-            if "CocliTestimonialsStack" in node.node.path:
+            if any(prefix in node.node.path for prefix in _FORM_INTAKE_STACK_PREFIXES):
                 node.retention_in_days = 14
             else:
                 node.retention_in_days = 3
@@ -169,16 +175,39 @@ if from_address and "@" in from_address:
 
 outreach_domain = aws_config.get("outreach-hosted-zone-domain")
 if outreach_domain:
-    testimonials_env = cdk.Environment(
+    form_intake_env = cdk.Environment(
         account=str(account) if account else os.getenv("CDK_DEFAULT_ACCOUNT"), region=region
     )
-    CocliTestimonialsStack(
+    # Stack id kept identical to before the FormIntakeStack generalization
+    # (was CocliTestimonialsStack) - see testimonials_stack.py's module
+    # docstring for why the class rename alone is safe but this id must
+    # not change.
+    FormIntakeStack(
         app,
         f"CocliTestimonialsStack-{campaign_name}",
-        env=testimonials_env,
+        env=form_intake_env,
         campaign_name=campaign_name,
         data_bucket_name=data_bucket_name,
         allowed_origin=f"https://{outreach_domain}",
+        queue_name="testimonials",
+        fields=TESTIMONIAL_FIELDS,
+        event_prefix="testimonial_submission",
+    )
+    # General "haven't emailed them yet" signup/lead-capture form (Mark,
+    # 2026-09-30) - no password field, see SIGNUP_FIELDS. Notification
+    # routing (ntfy / Twilio SMS via the cross-account notification
+    # service) is deliberately deferred; this just gets every submission
+    # recorded + trackable first.
+    FormIntakeStack(
+        app,
+        f"CocliSignupsStack-{campaign_name}",
+        env=form_intake_env,
+        campaign_name=campaign_name,
+        data_bucket_name=data_bucket_name,
+        allowed_origin=f"https://{outreach_domain}",
+        queue_name="signups",
+        fields=SIGNUP_FIELDS,
+        event_prefix="signup_submission",
     )
 
 app.synth()

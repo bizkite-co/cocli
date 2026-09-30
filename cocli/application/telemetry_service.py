@@ -335,12 +335,49 @@ class GoogleTelemetryProvider:
         """
         Deploy GTM container manifest programmatically using Google Tag Manager REST API v2.
         Zero browser UI scraping required. Uses OAuth Bearer token or Service Account credentials.
+
+        2026-09-30 rewrite: the previous version hit
+        `https://tagmanager.googleapis.com/v2/...`, which 404s - the real
+        API path is `https://tagmanager.googleapis.com/tagmanager/v2/...`
+        (confirmed live: the old host+path returned Google's generic
+        frontend 404 page, not a GTM API error). It also only ever POSTed
+        tags, never triggers/variables/built-in-variables, so any tag
+        whose firingTriggerId or {{dlv - ...}} variable reference pointed
+        at something not already in the target workspace would silently
+        fail or misfire. This version creates triggers/variables/built-in
+        variables first, remaps each tag's firingTriggerId from this
+        manifest's own arbitrary exported IDs to the real IDs GTM assigns
+        on creation, then creates the tags, then creates AND separately
+        publishes a container version (create_version alone leaves it as
+        an unpublished draft).
         """
         import os
         import urllib.request
         import urllib.error
 
+        # An unscoped `print-access-token` returns whatever scopes the
+        # stored ADC/gcloud identity happens to already have - usually
+        # just cloud-platform, NOT tagmanager.edit.containers - and GTM
+        # then 403s with "insufficient authentication scopes" even though
+        # the identity has real GTM container access (confirmed live,
+        # 2026-09-30). `application-default print-access-token` (unlike
+        # plain `gcloud auth login`) DOES support --scopes, so request the
+        # scope explicitly rather than hoping the default token has it.
+        gtm_scopes = "https://www.googleapis.com/auth/tagmanager.edit.containers"
+
         token = access_token or os.environ.get("COCLI_GTM_ACCESS_TOKEN")
+        if not token:
+            try:
+                import subprocess
+                res = subprocess.run(
+                    ["gcloud", "auth", "application-default", "print-access-token", f"--scopes={gtm_scopes}"],
+                    capture_output=True, text=True, check=False,
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    token = res.stdout.strip()
+            except Exception as err:
+                logger.debug("Scoped ADC token query note: %s", err)
+
         if not token:
             try:
                 import subprocess
@@ -369,86 +406,127 @@ class GoogleTelemetryProvider:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
+        api_base = "https://tagmanager.googleapis.com/tagmanager/v2"
+
+        def _get(url: str) -> dict[str, Any]:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                result: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+                return result
+
+        def _post(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+            req = urllib.request.Request(
+                url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
+            )
+            with urllib.request.urlopen(req) as resp:
+                body = resp.read().decode("utf-8")
+                result: dict[str, Any] = json.loads(body) if body else {}
+                return result
+
+        def _resource_payload(resource: dict[str, Any], drop_keys: set[str]) -> dict[str, Any]:
+            # Strip export-only bookkeeping fields (accountId/containerId/
+            # the resource's own exported *Id/path/fingerprint) so the API
+            # assigns fresh real identifiers in the target workspace,
+            # rather than us pretending our arbitrary export IDs are real.
+            return {k: v for k, v in resource.items() if k not in drop_keys}
 
         try:
             # Step 1: List GTM Accounts
-            req = urllib.request.Request("https://tagmanager.googleapis.com/v2/accounts", headers=headers)
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                accounts = data.get("account", [])
-                if not accounts:
-                    return {"success": False, "error": "No Google Tag Manager accounts found for this access token."}
-                account_id = accounts[0].get("accountId")
-                logger.info("Found GTM Account ID %s", account_id)
+            data = _get(f"{api_base}/accounts")
+            accounts = data.get("account", [])
+            if not accounts:
+                return {"success": False, "error": "No Google Tag Manager accounts found for this access token."}
+            account_id = accounts[0].get("accountId")
+            logger.info("Found GTM Account ID %s", account_id)
 
             # Step 2: Find Target Container ID (e.g. GTM-53F6J2WX)
-            c_req = urllib.request.Request(f"https://tagmanager.googleapis.com/v2/accounts/{account_id}/containers", headers=headers)
+            c_data = _get(f"{api_base}/accounts/{account_id}/containers")
             target_container_path = ""
-            with urllib.request.urlopen(c_req) as resp:
-                c_data = json.loads(resp.read().decode("utf-8"))
-                for c in c_data.get("container", []):
-                    if c.get("publicId") == container_id or c.get("containerId") == container_id:
-                        target_container_path = c.get("path")
-                        break
+            for c in c_data.get("container", []):
+                if c.get("publicId") == container_id or c.get("containerId") == container_id:
+                    target_container_path = c.get("path")
+                    break
 
             if not target_container_path:
-                target_container_path = f"accounts/{account_id}/containers/{container_id}"
+                return {"success": False, "error": f"No GTM container found matching '{container_id}' for this account."}
 
-            # Step 3: Get Workspace ID
-            w_req = urllib.request.Request(f"https://tagmanager.googleapis.com/v2/{target_container_path}/workspaces", headers=headers)
-            workspace_path = ""
-            with urllib.request.urlopen(w_req) as resp:
-                w_data = json.loads(resp.read().decode("utf-8"))
-                workspaces = w_data.get("workspace", [])
-                if workspaces:
-                    workspace_path = workspaces[0].get("path")
-
+            # Step 3: Create a fresh workspace for this deployment (never
+            # reuse/overwrite whatever draft workspace happens to exist).
+            workspace = _post(
+                f"{api_base}/{target_container_path}/workspaces",
+                {"name": f"cocli deploy {container_id}"},
+            )
+            workspace_path = workspace.get("path")
             if not workspace_path:
-                return {"success": False, "error": f"No active workspace found for container {container_id}."}
+                return {"success": False, "error": "Google Tag Manager did not return a workspace path."}
 
-            # Step 4: Import Tags/Triggers/Variables from manifest
+            # Step 4: Import Triggers/Variables/Built-in Variables/Tags from manifest
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             version_data = manifest.get("containerVersion", {})
-            tags = version_data.get("tag", [])
+
+            trigger_id_map: dict[str, str] = {}
+            for trigger in version_data.get("trigger", []):
+                original_id = str(trigger.get("triggerId", ""))
+                created = _post(
+                    f"{api_base}/{workspace_path}/triggers",
+                    _resource_payload(trigger, {"accountId", "containerId", "workspaceId", "triggerId", "path", "fingerprint"}),
+                )
+                if original_id and created.get("triggerId"):
+                    trigger_id_map[original_id] = str(created["triggerId"])
+
+            for variable in version_data.get("variable", []):
+                _post(
+                    f"{api_base}/{workspace_path}/variables",
+                    _resource_payload(variable, {"accountId", "containerId", "workspaceId", "variableId", "path", "fingerprint"}),
+                )
+
+            for built_in in version_data.get("builtInVariable", []):
+                try:
+                    _post(
+                        f"{api_base}/{workspace_path}/built_in_variables",
+                        _resource_payload(built_in, {"accountId", "containerId", "workspaceId", "path", "fingerprint"}),
+                    )
+                except urllib.error.HTTPError as biv_err:
+                    # Built-in variables are frequently pre-enabled by
+                    # default in a fresh workspace - GTM returns an error
+                    # if you try to enable one that's already on. That's
+                    # not a real failure, so don't let it abort the deploy.
+                    logger.debug("Built-in variable note (%s): %s", built_in.get("name"), biv_err)
 
             deployed_tags = 0
-            for tag in tags:
-                tag_name = tag.get("name")
-                tag_payload = json.dumps(tag).encode("utf-8")
-                post_tag_req = urllib.request.Request(
-                    f"https://tagmanager.googleapis.com/v2/{workspace_path}/tags",
-                    data=tag_payload,
-                    headers=headers,
-                    method="POST",
-                )
-                try:
-                    with urllib.request.urlopen(post_tag_req):
-                        deployed_tags += 1
-                except Exception as t_err:
-                    logger.debug("Tag post note (%s): %s", tag_name, t_err)
+            for tag in version_data.get("tag", []):
+                payload = _resource_payload(tag, {"accountId", "containerId", "workspaceId", "tagId", "path", "fingerprint"})
+                payload["firingTriggerId"] = [
+                    trigger_id_map.get(str(trigger_id), str(trigger_id))
+                    for trigger_id in payload.get("firingTriggerId", [])
+                ]
+                _post(f"{api_base}/{workspace_path}/tags", payload)
+                deployed_tags += 1
 
-            # Step 5: Publish Version
-            publish_payload = json.dumps({"name": "v1 - GA4 Telemetry Launch"}).encode("utf-8")
-            pub_req = urllib.request.Request(
-                f"https://tagmanager.googleapis.com/v2/{workspace_path}/create_version",
-                data=publish_payload,
-                headers=headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(pub_req) as pub_resp:
-                pub_data = json.loads(pub_resp.read().decode("utf-8"))
-                logger.info("Published GTM Container Version via REST API v2: %s", pub_data)
+            # Step 5: Create AND publish the container version - create_version
+            # alone only produces an unpublished draft.
+            version_response = _post(f"{api_base}/{workspace_path}:create_version", {"name": "cocli telemetry deploy"})
+            version = version_response.get("containerVersion", version_response)
+            version_id = version.get("containerVersionId")
+            if not version_id:
+                return {"success": False, "error": "Google Tag Manager did not return a container version ID."}
 
-            v_name = pub_data.get("containerVersion", {}).get("name", "v1")
-            v_id = pub_data.get("containerVersion", {}).get("containerVersionId", "1")
+            _post(f"{api_base}/{target_container_path}/versions/{version_id}:publish", {})
+            logger.info("Published GTM Container Version %s (%s tags deployed)", version_id, deployed_tags)
+
             return {
                 "success": True,
-                "message": f"Successfully published container version {v_name} ({v_id})",
-                "version_id": v_id,
+                "message": f"Successfully published container version {version_id} ({deployed_tags} tags)",
+                "version_id": version_id,
             }
         except urllib.error.HTTPError as http_err:
-            logger.warning("Error calling GTM REST API v2: %s", http_err)
-            return {"success": False, "error": f"HTTP Error {http_err.code}: {http_err.reason}"}
+            body = ""
+            try:
+                body = http_err.read().decode("utf-8")
+            except Exception:
+                pass
+            logger.warning("Error calling GTM REST API v2: %s %s", http_err, body)
+            return {"success": False, "error": f"HTTP Error {http_err.code}: {http_err.reason} {body}"}
         except Exception as exc:
             logger.warning("Failed GTM API deployment: %s", exc)
             return {"success": False, "error": str(exc)}

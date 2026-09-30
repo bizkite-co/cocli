@@ -408,6 +408,32 @@ show-email-infra: ## Print the deployed SES identity's outputs (DKIM CNAMEs, bou
 	@EMAIL_REGION=$$(././.venv/bin/python3 -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$(CAMPAIGN)'); print((config.get('email') or {}).get('ses_region', 'us-east-1'))"); \
 	aws cloudformation describe-stacks --stack-name CocliEmailStack-$(CAMPAIGN) --region $$EMAIL_REGION --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
 
+.PHONY: diff-signups-infra
+diff-signups-infra: install ## Preview changes to the campaign's signup-form intake Lambda/S3 queue (Usage: make diff-signups-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Diffing CocliSignupsStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk diff CocliSignupsStack-$(CAMPAIGN) --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+
+.PHONY: deploy-signups-infra
+deploy-signups-infra: install ## Deploy the campaign's signup-form intake Lambda/S3 queue via CDK (Usage: make deploy-signups-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Deploying CocliSignupsStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy CocliSignupsStack-$(CAMPAIGN) --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	@aws cloudformation describe-stacks --stack-name CocliSignupsStack-$(CAMPAIGN) --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
+
+.PHONY: diff-testimonials-infra
+diff-testimonials-infra: install ## Preview changes to the campaign's testimonials-form intake Lambda/S3 queue (Usage: make diff-testimonials-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Diffing CocliTestimonialsStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk diff CocliTestimonialsStack-$(CAMPAIGN) --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+
+.PHONY: deploy-testimonials-infra
+deploy-testimonials-infra: install ## Deploy the campaign's testimonials-form intake Lambda/S3 queue via CDK (Usage: make deploy-testimonials-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Deploying CocliTestimonialsStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy CocliTestimonialsStack-$(CAMPAIGN) --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	@aws cloudformation describe-stacks --stack-name CocliTestimonialsStack-$(CAMPAIGN) --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
+
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh $(CAMPAIGN)
