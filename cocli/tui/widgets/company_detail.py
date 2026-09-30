@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import os
 import subprocess
 import time
 import re
@@ -27,7 +28,7 @@ from ...core.paths import paths
 from ...core.config import get_editor_command
 from .mark_prefix import MarkPrefixMixin
 from ..base import CocliPanel
-from ...utils.open_url import open_url
+from ...utils.open_url import open_local_path, open_url
 from .confirm_screen import ConfirmScreen
 from .company_local_time import CompanyLocalTime
 
@@ -38,6 +39,15 @@ logger = logging.getLogger(__name__)
 
 PREVIEW_WIDTH = 52
 PREVIEW_MAX_LINES = 3
+
+# Provisional (2026-09-28): auto-syncs Twilio call recordings in the
+# background whenever a company is opened, so newly-recorded calls show up
+# in Activity without an explicit 'S' press. Runs as a fire-and-forget
+# worker so it never delays the initial render. If this turns out to be too
+# slow/costly under real usage (one Twilio poll per company open), flip this
+# to False or delete the on_mount call - the 'S' keybinding covers the
+# explicit/manual case regardless.
+AUTO_SYNC_RECORDINGS_ON_OPEN = True
 
 
 def notes_newest_first(notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -140,15 +150,24 @@ def format_activity_preview(activity: Union[CompanyActivity, dict[str, Any]]) ->
         or "disposition" in meta
         or title.lower().startswith("call log:")
     ):
-        icon = "📞"
+        # Mark prefers the shape of the full-color phone emoji
+        # ("\U0001F4DE") over the monochrome "☎" dingbat, and only wants it
+        # NOT red (red is reserved for errors elsewhere in this list) - not
+        # necessarily green. Most terminal emoji fonts render this glyph as
+        # a fixed full-color image that a Rich foreground style can't
+        # override, so the stylize() below may have no visible effect in
+        # some terminals; it's applied anyway for terminals/fonts that do
+        # respect it. Recordings get a distinct cassette icon so they're
+        # not visually identical to a plain logged call in this list.
+        has_recording = bool(meta.get("recording_path"))
+        icon = "📼" if has_recording else "📞"
         disp = meta.get("disposition")
         prefix = f"[{disp}] " if disp else ""
-        return wrap_content(
-            f"{icon} {prefix}{clean_content}"
-            if clean_content
-            else f"{icon} {prefix}{title}",
-            max_lines=PREVIEW_MAX_LINES,
-        )
+        body = f"{prefix}{clean_content}" if clean_content else f"{prefix}{title}"
+        wrapped = wrap_content(f"{icon} {body}", max_lines=PREVIEW_MAX_LINES)
+        if not has_recording:
+            wrapped.stylize("green", 0, len(icon))
+        return wrapped
     elif (
         act_type == "email"
         or "direction" in meta
@@ -315,6 +334,11 @@ class ContactsTable(QuadrantTable):
 class ActivityTable(QuadrantTable):
     """Specific bindings for the unified Activity timeline."""
 
+    # DataTable's default cursor_type is "cell" - with only Date/Preview
+    # columns, that highlighted just the Date cell of the selected row and
+    # never the Preview cell next to it. "row" highlights both.
+    cursor_type = "row"
+
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_item", "Add Note"),
         Binding("i", "edit_item", "Edit Item"),
@@ -323,6 +347,8 @@ class ActivityTable(QuadrantTable):
         Binding("v", "view_item", "View"),
         Binding("P", "promote_item", "Promote"),
         Binding("r", "reply_email", "Reply"),
+        Binding("L", "play_recording", "Listen"),
+        Binding("T", "transcribe_recording", "Transcript"),
     ]
 
     def action_reply_email(self) -> None:
@@ -331,6 +357,20 @@ class ActivityTable(QuadrantTable):
         )
         if detail_view:
             detail_view.action_reply_email()
+
+    def action_play_recording(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_play_recording()
+
+    def action_transcribe_recording(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_transcribe_recording()
 
     def action_edit_item(self) -> None:
         detail_view = next(
@@ -442,6 +482,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
         Binding("D", "delete_company", "Delete Company"),
         Binding("U", "unsubscribe_company", "Unsubscribe"),
         Binding("C", "compose_email", "Compose email"),
+        Binding("S", "sync_recordings", "Sync Recordings"),
     ]
 
     def __init__(
@@ -523,6 +564,55 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
     def on_mount(self) -> None:
         self.panel_info.focus()
+        # Guard against pytest: credential resolution for a real, configured
+        # Twilio account happens (op:// lookups included) before the
+        # PYTEST_CURRENT_TEST short-circuit inside calling_provider's fetch_*
+        # methods - without this, every test mounting CompanyDetail on a dev
+        # machine with real Twilio config could trigger live API calls/1Password
+        # prompts. See feedback: never do unattended 1Password/credential calls
+        # in a loop from tests.
+        if AUTO_SYNC_RECORDINGS_ON_OPEN and not os.environ.get("PYTEST_CURRENT_TEST"):
+            self.app.run_worker(self._sync_recordings(notify=False))
+
+    def action_sync_recordings(self) -> None:
+        """Poll Twilio for new call recordings and refresh Activity."""
+        self.app.notify("Syncing call recordings...")
+        self.app.run_worker(self._sync_recordings(notify=True))
+
+    async def _sync_recordings(self, notify: bool) -> None:
+        import asyncio
+
+        from ...application.call_recording_service import sync_twilio_recordings
+        from ...core.config import get_campaign
+
+        campaign = get_campaign()
+        try:
+            result = await asyncio.to_thread(sync_twilio_recordings, None, campaign, 50)
+        except Exception as exc:
+            logger.error(f"Recording sync failed: {exc}")
+            if notify:
+                self.app.notify(f"Recording sync failed: {exc}", severity="error")
+            return
+
+        if result.errors:
+            logger.warning(f"Recording sync errors: {result.errors}")
+            if notify:
+                for err in result.errors:
+                    self.app.notify(err, severity="error")
+            return
+
+        if result.synced_count:
+            app = cast("CocliApp", self.app)
+            slug = self.company_data["company"].get("slug")
+            if slug:
+                new_data = app.services.get_company_details(slug)
+                if new_data:
+                    self.company_data = new_data
+                    self.refresh_activity_data()
+            if notify:
+                self.app.notify(f"Synced {result.synced_count} new recording(s)")
+        elif notify:
+            self.app.notify("No new recordings")
 
     def _screenshot_path(self) -> Optional[Path]:
         enrichment_path = self.company_data.get("enrichment_path")
@@ -1020,48 +1110,113 @@ class CompanyDetail(MarkPrefixMixin, Container):
         self.app.run_worker(run_toggle())
 
     def action_re_enqueue_scrape(self) -> None:
-        """Triggers a local detail scrape for the current company."""
+        """Triggers a local detail scrape for the current company.
+
+        If the company has no place_id, we first try to find one the same
+        way the 'g' (Google Maps) action does: searching Google Maps by
+        name + whatever address info is available. If a match is found,
+        the place_id is recorded on the company before scraping proceeds.
+        """
         slug = self.company_data["company"].get("slug")
         place_id = self.company_data["company"].get("place_id")
 
         if not place_id:
             self.app.notify(
-                "Error: No Place ID found for this company", severity="error"
+                f"No Place ID for {slug} — searching Google Maps for a match..."
             )
+            self.app.run_worker(self._find_place_id_then_scrape(slug))
             return
 
         self.app.notify(f"Starting local scrape for {slug or place_id}...")
+        self.app.run_worker(self._run_scrape(slug, place_id))
 
-        # We run this as a worker since it involves opening a browser
-        async def run_scrape() -> None:
-            app = cast("CocliApp", self.app)
-            result = await app.services.operation_service.execute(
-                "op_scrape_details", params={"place_id": place_id, "company_slug": slug}
+    async def _find_place_id_then_scrape(self, slug: Optional[str]) -> None:
+        import asyncio
+
+        from ...models.companies.company import Company
+        from ...scrapers.google.google_maps_finder import find_business_on_google_maps
+
+        company_data = self.company_data["company"]
+        name = company_data.get("name")
+        if not name:
+            self.app.notify(
+                "Error: Company has no name to search Google Maps with",
+                severity="error",
             )
+            return
 
-            if result.get("status") == "success":
-                inner = result.get("result") or {}
-                domain = inner.get("domain") if isinstance(inner, dict) else None
-                suffix = f" — {domain}" if domain else ""
-                self.app.notify(f"Scrape successful{suffix}! Refreshing view...")
-                if domain:
-                    self.app.notify(
-                        "Press E to enrich the website (emails + screenshot)",
-                        severity="information",
-                    )
-                # The view needs to be re-hydrated to show the new data
-                if slug:
-                    new_data = app.services.get_company_details(slug)
-                    if new_data:
-                        self.company_data = new_data
-                        self._refresh_info_table()
-                        await self._refresh_screenshot_widget()
-            else:
+        location_param: dict[str, str] = {}
+        full_address = company_data.get("full_address")
+        city = company_data.get("city")
+        state = company_data.get("state")
+        if full_address:
+            location_param["address"] = str(full_address)
+        elif city and state:
+            location_param["city"] = f"{city}, {state}"
+        elif city:
+            location_param["city"] = str(city)
+
+        result = await asyncio.to_thread(
+            find_business_on_google_maps, str(name), location_param
+        )
+        found_place_id = result.get("Place_ID") if result else None
+
+        if not found_place_id:
+            self.app.notify(
+                "No matching business found on Google Maps for this company",
+                severity="error",
+            )
+            return
+
+        company = Company.get(slug) if slug else None
+        if company is None:
+            self.app.notify(
+                "Error: Could not load company to save the found Place ID",
+                severity="error",
+            )
+            return
+
+        company.place_id = found_place_id
+        company.save()
+
+        app = cast("CocliApp", self.app)
+        if slug:
+            new_data = app.services.get_company_details(slug)
+            if new_data:
+                self.company_data = new_data
+                self._refresh_info_table()
+
+        self.app.notify("Found Place ID via Google Maps search — starting scrape...")
+        await self._run_scrape(slug, found_place_id)
+
+    async def _run_scrape(self, slug: Optional[str], place_id: str) -> None:
+        """Runs op_scrape_details and refreshes the view on success."""
+        app = cast("CocliApp", self.app)
+        result = await app.services.operation_service.execute(
+            "op_scrape_details", params={"place_id": place_id, "company_slug": slug}
+        )
+
+        if result.get("status") == "success":
+            inner = result.get("result") or {}
+            domain = inner.get("domain") if isinstance(inner, dict) else None
+            suffix = f" — {domain}" if domain else ""
+            self.app.notify(f"Scrape successful{suffix}! Refreshing view...")
+            if domain:
                 self.app.notify(
-                    f"Scrape failed: {result.get('message')}", severity="error"
+                    "Press E to enrich the website (emails + screenshot)",
+                    severity="information",
                 )
-
-        self.app.run_worker(run_scrape())
+            # The view needs to be re-hydrated to show the new data
+            if slug:
+                new_data = app.services.get_company_details(slug)
+                if new_data:
+                    self.company_data = new_data
+                    self._refresh_info_table()
+                    await self._refresh_screenshot_widget()
+        else:
+            self.app.notify(
+                f"Scrape failed: {result.get('message')}", severity="error"
+            )
 
     def action_re_enrich(self) -> None:
         """Triggers a local website enrichment for the current company."""
@@ -1401,6 +1556,147 @@ class CompanyDetail(MarkPrefixMixin, Container):
         if not item:
             return
         self._show_content_viewer(item.title, item.content)
+
+    def action_play_recording(self) -> None:
+        """Play the recording audio for the selected call activity item."""
+        item = self._get_current_activity()
+        if not item or item.activity_type != "call" or not item.metadata:
+            self.app.notify("No call recording selected", severity="warning")
+            return
+        recording_path = item.metadata.get("recording_path")
+        if not recording_path:
+            self.app.notify("This call has no recording", severity="warning")
+            return
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+
+        audio_path = paths.companies.entry(slug).path / str(recording_path)
+        if not audio_path.exists():
+            self.app.notify(f"Recording file not found: {audio_path}", severity="error")
+            return
+
+        if open_local_path(audio_path):
+            self.app.notify(f"Opening recording ({audio_path.name})...")
+        else:
+            self.app.notify("Could not launch a player for the recording", severity="error")
+
+    def action_transcribe_recording(self) -> None:
+        """Transcribe (or view an existing transcript for) the selected call recording."""
+        item = self._get_current_activity()
+        if not item or item.activity_type != "call" or not item.metadata:
+            self.app.notify("No call recording selected", severity="warning")
+            return
+        recording_path = item.metadata.get("recording_path")
+        if not recording_path:
+            self.app.notify("This call has no recording to transcribe", severity="warning")
+            return
+        slug = self.company_data["company"].get("slug")
+        note_file_path = item.file_path
+        if not slug or not note_file_path:
+            return
+
+        company_dir = paths.companies.entry(slug).path
+        transcript_path = item.metadata.get("transcript_path")
+        if transcript_path:
+            full_transcript_path = company_dir / str(transcript_path)
+            if full_transcript_path.exists():
+                self._show_content_viewer(
+                    f"{item.title} — Transcript",
+                    full_transcript_path.read_text(encoding="utf-8"),
+                )
+                return
+
+        audio_path = company_dir / str(recording_path)
+        if not audio_path.exists():
+            self.app.notify(f"Recording file not found: {audio_path}", severity="error")
+            return
+
+        self.app.notify("Transcribing recording (this may take a minute)...")
+        self.app.run_worker(
+            self._run_transcribe_recording(
+                Path(note_file_path),
+                audio_path,
+                company_dir,
+                item.title,
+                item.timestamp,
+                str(item.metadata.get("phone") or ""),
+            )
+        )
+
+    async def _run_transcribe_recording(
+        self,
+        note_file_path: Path,
+        audio_path: Path,
+        company_dir: Path,
+        item_title: str,
+        call_timestamp: datetime,
+        phone: str,
+    ) -> None:
+        import asyncio
+
+        from ...core.config import get_campaign
+
+        campaign = get_campaign() or "default"
+
+        try:
+            from ...core.video.transcriber import WhisperTranscriber
+
+            result = await asyncio.to_thread(
+                WhisperTranscriber().transcribe, audio_path, campaign
+            )
+        except Exception as exc:
+            logger.error(f"Transcription failed for {audio_path}: {exc}")
+            self.app.notify(f"Transcription failed: {exc}", severity="error")
+            return
+
+        transcript_text = result.get("whisper") or ""
+        if not transcript_text:
+            self.app.notify("Transcription produced no text", severity="warning")
+            return
+
+        rel_transcript_path = f"recordings/{audio_path.stem}.transcript.md"
+        (company_dir / rel_transcript_path).write_text(transcript_text, encoding="utf-8")
+        self._set_note_frontmatter_field(note_file_path, "transcript_path", rel_transcript_path)
+
+        from ...application.call_recording_service import save_transcript_activity_note
+
+        save_transcript_activity_note(
+            company_dir / "notes", call_timestamp, phone, transcript_text
+        )
+
+        self.app.notify("Transcription complete")
+        self.refresh_activity_data()
+        self._show_content_viewer(f"{item_title} — Transcript", transcript_text)
+
+    def _set_note_frontmatter_field(self, file_path: Path, key: str, value: Any) -> None:
+        """Set a single field in a note/meeting file's YAML frontmatter, in place."""
+        import yaml
+
+        if not file_path.exists():
+            return
+
+        content = file_path.read_text()
+        frontmatter_data: dict[str, Any] = {}
+        markdown_content = content
+
+        if content.startswith("---") and "---" in content[3:]:
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                frontmatter_str = parts[1]
+                markdown_content = parts[2]
+                try:
+                    frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                except yaml.YAMLError as e:
+                    logger.warning(f"Error parsing YAML frontmatter: {e}")
+
+        frontmatter_data[key] = value
+
+        frontmatter = yaml.dump(
+            frontmatter_data, sort_keys=False, default_flow_style=False, allow_unicode=True
+        )
+        new_content = f"---\n{frontmatter}---\n{markdown_content}"
+        file_path.write_text(new_content)
 
     def action_view_meeting(self) -> None:
         item = self._get_current_activity()

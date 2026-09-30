@@ -562,6 +562,241 @@ class TwilioBridgeCallingProvider:
             logger.warning(self.last_error)
             return []
 
+    def fetch_call(self, call_sid: str) -> Optional[dict[str, Any]]:
+        """Query Twilio REST API for a single call resource by SID."""
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return None
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated fetch_call in test mode"
+            )
+            return None
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls/{call_sid}.json"
+        try:
+            resp = requests.get(url, auth=(auth_user, auth_pass), timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data if isinstance(data, dict) else None
+            else:
+                self.last_error = f"Twilio Call API error {resp.status_code}: {resp.text}"
+                logger.warning(self.last_error)
+                return None
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio call {call_sid}: {exc}"
+            logger.warning(self.last_error)
+            return None
+
+    def fetch_calls(
+        self,
+        limit: int = 50,
+        parent_call_sid: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """Query Twilio REST API for call records.
+
+        If parent_call_sid is provided, filters to child legs of that call
+        (e.g. the leg to the prospect in a bridged call). Returns a list of
+        raw call dicts from Twilio API.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return []
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated fetch_calls in test mode"
+            )
+            return []
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls.json"
+        params: dict[str, Any] = {"PageSize": limit}
+        if parent_call_sid:
+            params["ParentCallSid"] = parent_call_sid
+
+        try:
+            resp = requests.get(
+                url, params=params, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_calls = data.get("calls", [])
+                return [c for c in raw_calls if isinstance(c, dict)]
+            else:
+                self.last_error = f"Twilio Calls API error {resp.status_code}: {resp.text}"
+                logger.warning(self.last_error)
+                return []
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio calls: {exc}"
+            logger.warning(self.last_error)
+            return []
+
+    def fetch_recordings(
+        self,
+        call_sid: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Query Twilio REST API for recordings.
+
+        If call_sid is provided, scopes to
+        /Calls/{call_sid}/Recordings.json; otherwise queries the
+        account-wide /Recordings.json (newest first). Returns a list of raw
+        recording dicts from Twilio API.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return []
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated fetch_recordings in test mode"
+            )
+            return []
+
+        if call_sid:
+            url = (
+                f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}"
+                f"/Calls/{call_sid}/Recordings.json"
+            )
+        else:
+            url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Recordings.json"
+        params: dict[str, Any] = {"PageSize": limit}
+
+        try:
+            resp = requests.get(
+                url, params=params, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_recordings = data.get("recordings", [])
+                return [r for r in raw_recordings if isinstance(r, dict)]
+            else:
+                self.last_error = (
+                    f"Twilio Recordings API error {resp.status_code}: {resp.text}"
+                )
+                logger.warning(self.last_error)
+                return []
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio recordings: {exc}"
+            logger.warning(self.last_error)
+            return []
+
+    def fetch_transcriptions(
+        self,
+        recording_sid: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Query the legacy Twilio Transcriptions REST API.
+
+        If recording_sid is provided, scopes to
+        /Recordings/{recording_sid}/Transcriptions.json; otherwise queries
+        the account-wide /Transcriptions.json. Note: this legacy API only
+        returns transcriptions for recordings made via the <Record> verb
+        with transcribe=true - recordings from <Dial record="..."> (the
+        bridge flow this provider uses) are NOT auto-transcribed here.
+        Returns a list of raw transcription dicts from Twilio API.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return []
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated fetch_transcriptions in test mode"
+            )
+            return []
+
+        if recording_sid:
+            url = (
+                f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}"
+                f"/Recordings/{recording_sid}/Transcriptions.json"
+            )
+        else:
+            url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Transcriptions.json"
+        params: dict[str, Any] = {"PageSize": limit}
+
+        try:
+            resp = requests.get(
+                url, params=params, auth=(auth_user, auth_pass), timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_transcriptions = data.get("transcriptions", [])
+                return [t for t in raw_transcriptions if isinstance(t, dict)]
+            else:
+                self.last_error = (
+                    f"Twilio Transcriptions API error {resp.status_code}: {resp.text}"
+                )
+                logger.warning(self.last_error)
+                return []
+        except Exception as exc:
+            self.last_error = f"Failed to fetch Twilio transcriptions: {exc}"
+            logger.warning(self.last_error)
+            return []
+
+    def download_recording(self, recording_sid: str, dest_path: Path) -> bool:
+        """Downloads a recording's audio (wav) to dest_path. Returns True on success.
+
+        Fetched as .wav rather than .mp3 - the underlying call audio is
+        narrowband G.711 either way, but .wav avoids Twilio's additional
+        lossy MP3 re-encoding on top of it. Twilio bills by recorded
+        minutes, not by which rendition you download, so this has no cost
+        impact - only a larger local file.
+
+        Twilio recording media requires the same HTTP Basic Auth as the REST
+        API - it can't be opened directly in a browser/media player without
+        credentials, so callers must download it first.
+        """
+        import requests
+
+        account_sid, auth_user, auth_pass = self._resolve_credentials()
+        if not account_sid or not auth_user or not auth_pass:
+            self.last_error = "Twilio credentials not configured or could not be resolved"
+            return False
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            logger.debug(
+                "TwilioBridgeCallingProvider: simulated download_recording in test mode"
+            )
+            return False
+
+        url = (
+            f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}"
+            f"/Recordings/{recording_sid}.wav"
+        )
+        try:
+            resp = requests.get(url, auth=(auth_user, auth_pass), timeout=30, stream=True)
+            if resp.status_code == 200:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(dest_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        if chunk:
+                            f.write(chunk)
+                return True
+            else:
+                self.last_error = (
+                    f"Twilio recording download error {resp.status_code}: {resp.text[:200]}"
+                )
+                logger.warning(self.last_error)
+                return False
+        except Exception as exc:
+            self.last_error = f"Failed to download Twilio recording {recording_sid}: {exc}"
+            logger.warning(self.last_error)
+            return False
+
     def get_account_info(self) -> Optional[dict[str, Any]]:
         """Query Twilio REST API for account details (status, type, friendly name).
 
@@ -773,7 +1008,11 @@ class TwilioBridgeCallingProvider:
         # Twilio dials the prospect with your business caller ID and starts recording.
         # If the destination fails (e.g. busy, blacklisted, unreachable), Twilio speaks
         # a clear prompt rather than hanging up abruptly in silence.
-        record_attr = ' record="record-from-answer"' if self.record else ""
+        # -dual keeps each leg (you / prospect) on its own channel instead of
+        # mixing down to mono - no fidelity increase per channel (still
+        # narrowband G.711), but avoids the downmix and transcribes more
+        # accurately (less crosstalk between speakers).
+        record_attr = ' record="record-from-answer-dual"' if self.record else ""
         twiml = (
             f"<Response>"
             f'<Dial callerId="{cleaned_caller_id}"{record_attr}>'

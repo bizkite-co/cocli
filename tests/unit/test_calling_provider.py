@@ -371,7 +371,7 @@ def test_twilio_bridge_calling_provider_initiates_api_call() -> None:
     assert data["From"] == "+19093232647"
     assert "<Number>+15551234567</Number>" in data["Twiml"]
     assert 'callerId="+19093232647"' in data["Twiml"]
-    assert 'record="record-from-answer"' in data["Twiml"]
+    assert 'record="record-from-answer-dual"' in data["Twiml"]
     assert data["RecordingStatusCallback"] == "https://example.com/webhook/recording"
 
 

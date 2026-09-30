@@ -101,6 +101,9 @@ cocli
     calling - Configure the phone-dialer provider.
         balance - Check the Twilio account balance and report whether it is low.
             --refresh/-r (boolean)
+        inspect-recordings - Read-only inspection: list recent Twilio calls, their recordings, and
+            --call-sid (text)
+            --limit/-l (integer)
         phone-status - Inspect Twilio incoming phone number configuration, capabilities, and active webhooks.
             --phone/-p (text)
         set-app-id - Save the Edge PWA app-id for the Google Voice provider.
@@ -121,6 +124,8 @@ cocli
             --low-balance-threshold (float)
         status - Show the resolved calling provider config and whether the Edge PWA
         sync-messages - Poll Twilio for incoming SMS replies and sync them into company Activity timelines.
+            --limit/-l (integer)
+        sync-recordings - Poll Twilio for call recordings and sync matched ones into company Activity timelines.
             --limit/-l (integer)
         test - Actually dial `phone` with the currently configured provider - use
             phone (text) [required]

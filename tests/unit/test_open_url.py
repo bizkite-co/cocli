@@ -1,10 +1,12 @@
 from __future__ import annotations
+from pathlib import Path
 from typing import Optional
 
 from cocli.utils.open_url import (
     _candidate_commands,
     _escape_for_cmd_exe,
     copy_to_windows_clipboard,
+    open_local_path,
     open_url,
     spawn_detached,
 )
@@ -196,3 +198,77 @@ def test_copy_to_windows_clipboard_returns_false_when_clip_exe_missing(monkeypat
     monkeypatch.setattr("cocli.utils.open_url.shutil.which", lambda name: None)
 
     assert copy_to_windows_clipboard("+15551234567") is False
+
+
+def test_open_local_path_tries_winamp_first_for_audio_on_wsl(monkeypatch) -> None:
+    """Mark: Winamp may launch faster than default-handler resolution via
+    explorer.exe, so it's worth trying first for audio - but not everyone
+    has it installed, so it must fall back cleanly."""
+    monkeypatch.setattr("cocli.utils.open_url.is_wsl", lambda: True)
+    monkeypatch.setattr(
+        "cocli.utils.open_url.shutil.which",
+        _which_map({"wslpath": "/usr/bin/wslpath", "explorer.exe": "/mnt/c/WINDOWS/explorer.exe"}),
+    )
+    monkeypatch.setattr(
+        "cocli.utils.open_url.subprocess.run",
+        lambda *a, **k: type("R", (), {"stdout": "C:\\data\\rec.wav\n"})(),
+    )
+    monkeypatch.setattr(
+        "cocli.utils.open_url._find_winamp_exe",
+        lambda: "/mnt/c/Program Files (x86)/Winamp/winamp.exe",
+    )
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        "cocli.utils.open_url.spawn_detached",
+        lambda command: spawned.append(command) or True,
+    )
+
+    assert open_local_path(Path("/home/u/data/rec.wav")) is True
+    assert spawned == [["/mnt/c/Program Files (x86)/Winamp/winamp.exe", "C:\\data\\rec.wav"]]
+
+
+def test_open_local_path_falls_back_to_explorer_when_winamp_missing(monkeypatch) -> None:
+    monkeypatch.setattr("cocli.utils.open_url.is_wsl", lambda: True)
+    monkeypatch.setattr(
+        "cocli.utils.open_url.shutil.which",
+        _which_map({"wslpath": "/usr/bin/wslpath", "explorer.exe": "/mnt/c/WINDOWS/explorer.exe"}),
+    )
+    monkeypatch.setattr(
+        "cocli.utils.open_url.subprocess.run",
+        lambda *a, **k: type("R", (), {"stdout": "C:\\data\\rec.wav\n"})(),
+    )
+    monkeypatch.setattr("cocli.utils.open_url._find_winamp_exe", lambda: None)
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        "cocli.utils.open_url.spawn_detached",
+        lambda command: spawned.append(command) or True,
+    )
+
+    assert open_local_path(Path("/home/u/data/rec.wav")) is True
+    assert spawned == [["/mnt/c/WINDOWS/explorer.exe", "C:\\data\\rec.wav"]]
+
+
+def test_open_local_path_skips_winamp_for_non_audio_files(monkeypatch) -> None:
+    monkeypatch.setattr("cocli.utils.open_url.is_wsl", lambda: True)
+    monkeypatch.setattr(
+        "cocli.utils.open_url.shutil.which",
+        _which_map({"wslpath": "/usr/bin/wslpath", "explorer.exe": "/mnt/c/WINDOWS/explorer.exe"}),
+    )
+    monkeypatch.setattr(
+        "cocli.utils.open_url.subprocess.run",
+        lambda *a, **k: type("R", (), {"stdout": "C:\\data\\note.pdf\n"})(),
+    )
+    winamp_checked = {"value": False}
+    monkeypatch.setattr(
+        "cocli.utils.open_url._find_winamp_exe",
+        lambda: winamp_checked.__setitem__("value", True),
+    )
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        "cocli.utils.open_url.spawn_detached",
+        lambda command: spawned.append(command) or True,
+    )
+
+    assert open_local_path(Path("/home/u/data/note.pdf")) is True
+    assert winamp_checked["value"] is False
+    assert spawned == [["/mnt/c/WINDOWS/explorer.exe", "C:\\data\\note.pdf"]]

@@ -126,6 +126,70 @@ def spawn_detached(command: Sequence[str]) -> bool:
     return True
 
 
+# Winamp isn't installed for every user, so this is a WSL mount-path probe
+# (not shutil.which - winamp.exe isn't a Linux PATH executable) tried before
+# falling back to the OS default handler. Mark asked to try it first for
+# audio specifically since it may launch faster than default-handler
+# resolution via explorer.exe.
+_WINAMP_CANDIDATES = (
+    "/mnt/c/Program Files (x86)/Winamp/winamp.exe",
+    "/mnt/c/Program Files/Winamp/winamp.exe",
+)
+_AUDIO_SUFFIXES = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".wma", ".aac"}
+
+
+def _find_winamp_exe() -> str | None:
+    for candidate in _WINAMP_CANDIDATES:
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
+def open_local_path(path: Path) -> bool:
+    """Open a local file with the OS's default handler (e.g. play an audio
+    recording, view a downloaded document). On WSL, converts to a Windows
+    path first since explorer.exe/cmd.exe can't resolve a Linux path."""
+    raw = str(path)
+
+    if is_wsl():
+        wslpath = shutil.which("wslpath")
+        win_path: str | None = None
+        if wslpath:
+            try:
+                result = subprocess.run(
+                    [wslpath, "-w", raw],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=True,
+                )
+                win_path = result.stdout.strip()
+            except (OSError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+                logger.debug("wslpath conversion failed for %s: %s", raw, exc)
+        if win_path:
+            if path.suffix.lower() in _AUDIO_SUFFIXES:
+                winamp = _find_winamp_exe()
+                if winamp and spawn_detached([winamp, win_path]):
+                    return True
+            explorer = shutil.which("explorer.exe")
+            if explorer and spawn_detached([explorer, win_path]):
+                return True
+            cmd_exe = shutil.which("cmd.exe")
+            if cmd_exe and spawn_detached(
+                [cmd_exe, "/c", "start", "", _escape_for_cmd_exe(win_path)]
+            ):
+                return True
+
+    xdg_open = shutil.which("xdg-open")
+    if xdg_open and spawn_detached([xdg_open, raw]):
+        return True
+    gio = shutil.which("gio")
+    if gio and spawn_detached([gio, "open", raw]):
+        return True
+
+    return _webbrowser_open(f"file://{raw}")
+
+
 def copy_to_windows_clipboard(text: str) -> bool:
     """Put `text` on the Windows clipboard via clip.exe (WSL2 only) - used
     where a real single-instance app launch (e.g. the Google Voice PWA)

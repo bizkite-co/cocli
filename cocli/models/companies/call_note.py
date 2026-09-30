@@ -21,6 +21,13 @@ class CallNote(BaseModel):
     disposition: str
     phone: str = ""
     content: str = ""
+    call_sid: Optional[str] = None
+    recording_sid: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    # Path to the downloaded recording audio, relative to the company dir
+    # (e.g. "recordings/RE....wav"), so it survives a campaign data move.
+    recording_path: Optional[str] = None
+    transcript_path: Optional[str] = None
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -46,6 +53,16 @@ class CallNote(BaseModel):
             "disposition": self.disposition,
             "phone": self.phone,
         }
+        if self.call_sid:
+            frontmatter_data["call_sid"] = self.call_sid
+        if self.recording_sid:
+            frontmatter_data["recording_sid"] = self.recording_sid
+        if self.duration_seconds is not None:
+            frontmatter_data["duration_seconds"] = self.duration_seconds
+        if self.recording_path:
+            frontmatter_data["recording_path"] = self.recording_path
+        if self.transcript_path:
+            frontmatter_data["transcript_path"] = self.transcript_path
 
         frontmatter = yaml.dump(
             frontmatter_data, sort_keys=False, default_flow_style=False, allow_unicode=True
@@ -89,6 +106,7 @@ class CallNote(BaseModel):
                 except ValueError:
                     timestamp = datetime.fromtimestamp(note_path.stat().st_mtime, tz=UTC)
 
+            duration_raw = frontmatter_data.get("duration_seconds")
             return cls(
                 timestamp=timestamp,
                 title=title,
@@ -96,6 +114,11 @@ class CallNote(BaseModel):
                 disposition=str(frontmatter_data.get("disposition") or ""),
                 phone=str(frontmatter_data.get("phone") or ""),
                 content=markdown_content.strip(),
+                call_sid=frontmatter_data.get("call_sid") or None,
+                recording_sid=frontmatter_data.get("recording_sid") or None,
+                duration_seconds=int(duration_raw) if duration_raw is not None else None,
+                recording_path=frontmatter_data.get("recording_path") or None,
+                transcript_path=frontmatter_data.get("transcript_path") or None,
             )
         except Exception as e:
             logger.error(f"Error loading CallNote from {note_path}: {e}")

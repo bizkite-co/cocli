@@ -235,6 +235,95 @@ async def test_right_column_shows_call_reference_files(
         assert modal.query_one("#followup_email_date") is not None
 
         assert "(555) 333-4444" in str(modal.query_one("#call_phone").content)
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_recent_calls_panel_shows_this_companys_calls_newest_first(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Recent calls for the company being logged sit at the top of the
+    right-hand reference column, newest first, and don't leak in another
+    company's call history."""
+    from datetime import UTC, datetime
+
+    from cocli.application.meeting_service import MeetingService
+    from cocli.core.paths import paths
+    from cocli.models.companies.meeting import CompanyCall
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Ref Co", slug="ref-co", domain="ref.test", phone="555-333-4444")
+    co.save()
+    other = Company(name="Other Co", slug="other-co", domain="other.test", phone="555-111-2222")
+    other.save()
+
+    service = MeetingService("roadmap")
+    older_call = CompanyCall(
+        datetime_utc=datetime(2026, 1, 1, tzinfo=UTC),
+        datetime_local=datetime(2026, 1, 1, tzinfo=UTC),
+        company_name="Ref Co",
+        company_slug="ref-co",
+        title="First call - left a voicemail",
+        content="",
+        file_path=tmp_path / "older.md",
+        direction="outbound",
+    )
+    newer_call = CompanyCall(
+        datetime_utc=datetime(2026, 2, 1, tzinfo=UTC),
+        datetime_local=datetime(2026, 2, 1, tzinfo=UTC),
+        company_name="Ref Co",
+        company_slug="ref-co",
+        title="Second call - discussed pricing",
+        content="",
+        file_path=tmp_path / "newer.md",
+        direction="inbound",
+    )
+    other_company_call = CompanyCall(
+        datetime_utc=datetime(2026, 2, 2, tzinfo=UTC),
+        datetime_local=datetime(2026, 2, 2, tzinfo=UTC),
+        company_name="Other Co",
+        company_slug="other-co",
+        title="Unrelated call",
+        content="",
+        file_path=tmp_path / "other.md",
+    )
+    service.record_call_in_cache(older_call)
+    service.record_call_in_cache(newer_call)
+    service.record_call_in_cache(other_company_call)
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="ref-co", phone="555-333-4444")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        recent_calls = str(modal.query_one("#call-recent-calls").content)
+        assert "Second call - discussed pricing" in recent_calls
+        assert "First call - left a voicemail" in recent_calls
+        assert "Unrelated call" not in recent_calls
+        # Newest first: the second call's line must appear before the first's.
+        assert recent_calls.index("Second call") < recent_calls.index("First call")
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_recent_calls_panel_shows_placeholder_when_no_calls_yet(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Fresh Co", slug="fresh-co", domain="fresh.test", phone="555-444-5555")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="fresh-co", phone="555-444-5555")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        recent_calls = str(modal.query_one("#call-recent-calls").content)
+        assert "No recent calls" in recent_calls
         local_time = str(modal.query_one("#company_local_time").content)
         assert "AM" in local_time or "PM" in local_time
 

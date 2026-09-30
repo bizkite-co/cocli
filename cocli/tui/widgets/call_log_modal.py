@@ -169,6 +169,8 @@ class CallLogModal(ModalScreen[bool]):
                     yield CocliInput(value=default_callback, id="followup_email_date")
 
                 with VerticalScroll(id="call-log-right"):
+                    yield Static(self._recent_calls_markup(), id="call-recent-calls")
+
                     # Missing files render as an empty Markdown widget
                     # (harmless) rather than erroring - see
                     # load_call_reference()'s per-file fallback.
@@ -188,6 +190,32 @@ class CallLogModal(ModalScreen[bool]):
             return "[dim]No known contacts on file[/dim]"
         body = "\n".join(f"  {line}" for line in lines)
         return f"[bold]Known contacts[/bold]\n{body}"
+
+    def _recent_calls_markup(self) -> str:
+        """Recent calls for this company, newest first - sits at the top
+        of the right-hand reference column so call history is visible
+        without leaving this modal."""
+        from cocli.application.meeting_service import MeetingService
+
+        campaign = get_campaign() or "default"
+        try:
+            calls = MeetingService(campaign).get_recent_calls()
+        except Exception as exc:
+            logger.warning(f"Could not load recent calls for {self.company_slug}: {exc}")
+            return "[bold]Recent calls[/bold]\n[dim]Unavailable[/dim]"
+
+        company_calls = [c for c in calls if c.company_slug == self.company_slug][:8]
+        if not company_calls:
+            return "[bold]Recent calls[/bold]\n[dim]No recent calls for this company[/dim]"
+
+        lines = []
+        for c in company_calls:
+            date_str = c.datetime_local.strftime("%Y-%m-%d %H:%M")
+            direction = f" ({c.direction})" if c.direction else ""
+            clean_title = c.title.replace("\n", " ").strip()
+            lines.append(f"  {c.icon} {date_str}{direction}: {clean_title}")
+        body = "\n".join(lines)
+        return f"[bold]Recent calls[/bold]\n{body}"
 
     def on_mount(self) -> None:
         self.set_interval(1.0, self._tick_local_time)

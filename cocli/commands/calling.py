@@ -192,6 +192,132 @@ def sync_messages(
             console.print("[dim]No incoming SMS messages found on Twilio.[/dim]")
 
 
+@app.command("sync-recordings")
+def sync_recordings(
+    limit: int = typer.Option(
+        50, "--limit", "-l", help="Max recent calls to scan on Twilio"
+    ),
+) -> None:
+    """Poll Twilio for call recordings and sync matched ones into company Activity timelines."""
+    from ..application.call_recording_service import sync_twilio_recordings
+
+    campaign = get_campaign()
+    console.print("[dim]Checking Twilio for new call recordings...[/dim]")
+    result = sync_twilio_recordings(campaign_name=campaign, limit=limit)
+
+    if result.errors:
+        for err in result.errors:
+            console.print(f"[bold red]{err}[/bold red]")
+
+    if result.synced_count > 0:
+        console.print(
+            f"[bold green]Synced {result.synced_count} recording(s) "
+            f"({result.matched_count} matched to companies).[/bold green]"
+        )
+        for note_path in result.notes_created:
+            console.print(f"  🎙️  [cyan]{note_path.name}[/cyan]")
+    elif not result.errors:
+        console.print("[dim]No new recordings to sync.[/dim]")
+
+    if result.unmatched_count:
+        console.print(
+            f"[yellow]{result.unmatched_count} recording(s) skipped - no company matched.[/yellow]"
+        )
+    if result.skipped_count:
+        console.print(f"[dim]{result.skipped_count} recording(s) already synced.[/dim]")
+
+
+@app.command("inspect-recordings")
+def inspect_recordings(
+    call_sid: Optional[str] = typer.Option(
+        None, "--call-sid", help="Inspect one call's legs/recordings instead of scanning recent ones"
+    ),
+    limit: int = typer.Option(
+        20, "--limit", "-l", help="Max calls/recordings to scan when --call-sid is not given"
+    ),
+) -> None:
+    """Read-only inspection: list recent Twilio calls, their recordings, and
+    whether transcriptions exist for those recordings.
+
+    This bridge provider dials your own phone first (the parent call), then
+    <Dial>s the prospect as a child leg - a recording's CallSid may belong
+    to either leg. This command reports ParentCallSid/To/From for every
+    call and recording it finds so we can tell which leg actually carries
+    the recording before wiring anything into the TUI.
+
+    Nothing is written or persisted - it only reads from the Twilio REST
+    API. Requires the 'twilio' calling provider to be configured.
+    """
+    campaign = get_campaign()
+    provider = get_calling_provider(campaign)
+    if not isinstance(provider, TwilioBridgeCallingProvider):
+        console.print(
+            "[yellow]inspect-recordings is only available when calling provider is set to 'twilio'.[/yellow]"
+        )
+        return
+    if not provider.is_configured():
+        console.print(
+            "[bold red]Twilio is not fully configured. Run 'cocli calling set-twilio' first.[/bold red]"
+        )
+        return
+
+    if call_sid:
+        root_call = provider.fetch_call(call_sid)
+        calls = [root_call] if root_call else [{"sid": call_sid, "parent_call_sid": None}]
+        calls.extend(provider.fetch_calls(parent_call_sid=call_sid))
+    else:
+        calls = provider.fetch_calls(limit=limit)
+
+    if not calls and provider.last_error:
+        console.print(f"[bold red]{provider.last_error}[/bold red]")
+        return
+
+    if not calls:
+        console.print("[dim]No calls found on this Twilio account.[/dim]")
+        return
+
+    console.print(f"[bold]Found {len(calls)} call(s):[/bold]")
+    for c in calls:
+        sid = c.get("sid")
+        parent = c.get("parent_call_sid")
+        leg = "child (prospect leg?)" if parent else "parent (bridge-to-you leg?)"
+        console.print(
+            f"  [cyan]{sid}[/cyan] {leg} — to={c.get('to')} from={c.get('from')} "
+            f"status={c.get('status')} duration={c.get('duration')}s"
+            + (f" parent={parent}" if parent else "")
+        )
+
+        recordings = provider.fetch_recordings(call_sid=sid)
+        if not recordings:
+            console.print("      [dim]no recordings for this call leg[/dim]")
+            continue
+
+        for r in recordings:
+            rsid = r.get("sid")
+            media_url = (
+                f"https://api.twilio.com/2010-04-01/Accounts/{r.get('account_sid')}"
+                f"/Recordings/{rsid}.wav"
+            )
+            console.print(
+                f"      🎙️  recording [green]{rsid}[/green] "
+                f"duration={r.get('duration')}s source={r.get('source')} "
+                f"track={r.get('track')}"
+            )
+            console.print(f"          media: {media_url} [dim](needs Basic Auth to fetch)[/dim]")
+
+            transcriptions = provider.fetch_transcriptions(recording_sid=rsid)
+            if transcriptions:
+                for t in transcriptions:
+                    console.print(
+                        f"          📝 transcription {t.get('sid')} status={t.get('status')}"
+                    )
+            else:
+                console.print("          [dim]no transcription for this recording[/dim]")
+
+    if provider.last_error:
+        console.print(f"[yellow]Note: last_error was set during scan: {provider.last_error}[/yellow]")
+
+
 @app.command("status")
 def status() -> None:
     """Show the resolved calling provider config and whether the Edge PWA
