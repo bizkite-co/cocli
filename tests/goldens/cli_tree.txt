@@ -781,6 +781,11 @@ cocli
             --json/-j (text)
             --file/-f (path)
             --campaign/-c (text)
+        pages - Per-page engagement breakdown for the landing page site: sessions,
+            --days/-d (integer)
+            --property-id/-p (text)
+            --campaign/-c (text)
+            --limit/-l (integer)
         ping - Send an initial telemetry hit to GA4 to warm up data ingestion and clear 48-hour missing traffic alerts.
             --measurement-id/-m (text)
             --domain/-d (text)

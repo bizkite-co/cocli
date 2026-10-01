@@ -289,3 +289,73 @@ def report_telemetry(
     console.print(table)
     console.print(f"\n[bold]{len(submissions)}[/bold] submission(s) in the last {window_days} day(s).")
 
+
+@app.command(name="pages")
+def pages_telemetry(
+    days: int = typer.Option(7, "--days", "-d", help="Number of past days to report on"),
+    property_id: Optional[str] = typer.Option(
+        None, "--property-id", "-p", help="GA4 numeric property ID (defaults to campaign config)"
+    ),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+    limit: int = typer.Option(50, "--limit", "-l", help="Maximum number of pages to show"),
+) -> None:
+    """Per-page engagement breakdown for the landing page site: sessions,
+    engagement rate, average time on page, pageviews, and event count -
+    one row per page path, via the GA4 Data API. No new tracking needed;
+    GA4 Enhanced Measurement already captures the underlying scroll/
+    outbound-click/form-interaction signals these metrics are built from."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from cocli.application.telemetry_service import GoogleTelemetryProvider
+    from cocli.core.config import load_campaign_config
+
+    camp = campaign or get_campaign() or "roadmap"
+    campaign_cfg = load_campaign_config(camp)
+    ga_cfg = campaign_cfg.get("google_analytics", {}) or {}
+    p_id = property_id or ga_cfg.get("ga4_property_id")
+    if not p_id:
+        typer.echo(
+            "Error: no GA4 property ID. Pass --property-id or set "
+            "google_analytics.ga4_property_id in this campaign's config.toml.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    provider = GoogleTelemetryProvider(camp)
+    try:
+        rows = provider.query_page_engagement(str(p_id), days=days, limit=limit)
+    except Exception as exc:
+        typer.echo(f"Error querying GA4 Data API: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    console = Console()
+    if not rows:
+        console.print(f"[yellow]No page traffic recorded in the last {days} day(s).[/yellow]")
+        return
+
+    table = Table(show_header=True)
+    table.add_column("Page Path")
+    table.add_column("Sessions", justify="right")
+    table.add_column("Engagement Rate", justify="right")
+    table.add_column("Avg. Session Duration", justify="right")
+    table.add_column("Pageviews", justify="right")
+    table.add_column("Events", justify="right")
+
+    for row in rows:
+        engagement_rate = float(row.get("engagementRate", "0") or 0)
+        avg_duration = float(row.get("averageSessionDuration", "0") or 0)
+        table.add_row(
+            row.get("pagePath", ""),
+            row.get("sessions", "0"),
+            f"{engagement_rate * 100:.1f}%",
+            f"{avg_duration:.0f}s",
+            row.get("screenPageViews", "0"),
+            row.get("eventCount", "0"),
+        )
+
+    console.print(table)
+    console.print(f"\n[bold]{len(rows)}[/bold] page(s) with traffic in the last {days} day(s).")
+

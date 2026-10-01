@@ -156,6 +156,80 @@ class GoogleTelemetryProvider:
             logger.warning("Initial telemetry ping note: %s", err)
             return {"success": False, "error": str(err)}
 
+    def query_page_engagement(
+        self, property_id: str, days: int = 7, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Per-page engagement breakdown via the GA4 Data API: sessions,
+        engagement rate, average session duration, pageviews, and event
+        count, one row per page path, sorted by sessions descending.
+
+        Answers "what's going on on every page" directly from GA4 (no new
+        tracking needed - Enhanced Measurement already captures scroll/
+        outbound-click/form-interaction signals that feed into these
+        aggregate metrics) rather than via `query_analytics`'s fixed
+        campaign/UTM-scoped shape, which isn't meant for this.
+        """
+        import os
+        import subprocess
+        import urllib.error
+        import urllib.request
+
+        scopes = "https://www.googleapis.com/auth/analytics.readonly"
+        token = os.environ.get("COCLI_GTM_ACCESS_TOKEN")
+        if not token:
+            res = subprocess.run(
+                ["gcloud", "auth", "application-default", "print-access-token", f"--scopes={scopes}"],
+                capture_output=True, text=True, check=False,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                token = res.stdout.strip()
+        if not token:
+            raise RuntimeError(
+                "No OAuth access token available for the GA4 Data API. "
+                "Run `gcloud auth application-default login` or set COCLI_GTM_ACCESS_TOKEN."
+            )
+
+        payload = {
+            "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
+            "dimensions": [{"name": "pagePath"}],
+            "metrics": [
+                {"name": "sessions"},
+                {"name": "engagementRate"},
+                {"name": "averageSessionDuration"},
+                {"name": "screenPageViews"},
+                {"name": "eventCount"},
+            ],
+            "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}],
+            "limit": str(limit),
+        }
+        req = urllib.request.Request(
+            f"https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                report: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as http_err:
+            body = ""
+            try:
+                body = http_err.read().decode("utf-8")
+            except Exception:
+                pass
+            raise RuntimeError(f"GA4 Data API request failed: HTTP {http_err.code} {body}") from http_err
+
+        dim_headers = [d.get("name", "") for d in report.get("dimensionHeaders", [])]
+        metric_headers = [m.get("name", "") for m in report.get("metricHeaders", [])]
+        rows: list[dict[str, Any]] = []
+        for row in report.get("rows", []):
+            d_vals = [v.get("value", "") for v in row.get("dimensionValues", [])]
+            m_vals = [v.get("value", "0") for v in row.get("metricValues", [])]
+            entry = dict(zip(dim_headers, d_vals))
+            entry.update(dict(zip(metric_headers, m_vals)))
+            rows.append(entry)
+        return rows
+
     def deploy_gtm_container_automated(
         self, manifest_path: Path, container_id: str = "GTM-53F6J2WX", headful: bool = True
     ) -> bool:
