@@ -11,8 +11,11 @@ treating Yazi as a supplemental UI over the same data.
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any, cast, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -240,13 +243,19 @@ class TrackingListItem(ListItem):
             icon_map = {
                 "link_click": "[bold green]click[/bold green]",
                 "feedback_submit": "[bold magenta]feedback[/bold magenta]",
+                "testimonial_submitted": "[bold magenta]testimonial[/bold magenta]",
+                "signup_submitted": "[bold magenta]signup[/bold magenta]",
                 "cta_click": "[bold cyan]cta_click[/bold cyan]",
                 "landing_page_view": "[bold yellow]page_view[/bold yellow]",
                 "demo_video_start": "[bold green]video_start[/bold green]",
                 "calculator_interactive_use": "[bold blue]calculator[/bold blue]",
             }
             badge = icon_map.get(self.entry.event_type, f"[bold]{self.entry.event_type}[/bold]")
-            ts_str = self.entry.timestamp.strftime("%m/%d %H:%M")
+            # Stored timestamps are UTC (EngagementEvent.timestamp defaults
+            # to datetime.now(UTC)) - astimezone() with no args converts to
+            # this machine's local timezone, which is what the cocli
+            # operator actually wants to read, not the storage timezone.
+            ts_str = self.entry.timestamp.astimezone().strftime("%m/%d %H:%M")
             co = self.entry.company_slug or self.entry.utm_content or "(web visitor)"
             person = f" [cyan]({self.entry.utm_term})[/cyan]" if getattr(self.entry, "utm_term", None) else ""
             source_tag = self.entry.utm_source or self.entry.source
@@ -297,7 +306,7 @@ class TrackingPreview(VerticalScroll):
                 f"[bold]UTM Campaign:[/] {entry.utm_campaign or 'N/A'}",
                 f"[bold]UTM Content:[/] {entry.utm_content or 'N/A'}",
                 f"[bold]UTM Term:[/] {entry.utm_term or 'N/A'}",
-                f"[bold]Timestamp:[/] {entry.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                f"[bold]Timestamp:[/] {entry.timestamp.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
             ])
             if getattr(entry, "details", None):
                 lines.append("")
@@ -325,7 +334,7 @@ class TrackingPreview(VerticalScroll):
             lines.extend([
                 f"[bold]Batch:[/bold] {entry.batch_id}",
                 f"[bold]Template:[/bold] {entry.template_id}",
-                f"[bold]Sent at:[/bold] {entry.sent_at}",
+                f"[bold]Sent at:[/bold] {entry.sent_at.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
             ])
             if getattr(entry, "message_id", None):
                 lines.append(f"[bold]Message ID:[/bold] {entry.message_id}")
@@ -397,10 +406,27 @@ class _TrackingPane(Horizontal):
         sent_clicked = sum(1 for e in entries if e.company_slug in clicked_slugs)
         ctr_str = f"{(sent_clicked / sent * 100):.1f}%" if sent > 0 else "0.0%"
 
-        self.stats_label.update(
+        stats_line = (
             f"Sent: {sent}   Failed: {failed}   Bounced: {bounced}   Complaints: {complaints}   "
             f"Web Signals: {len(web_events)}   CTR: {ctr_str} ({sent_clicked}/{sent})"
         )
+
+        # Unprocessed form submissions sit invisibly in the S3 queue until
+        # `cocli telemetry process-testimonials` is run - surfaced here so
+        # that gap (previously only visible via `cocli telemetry report`)
+        # doesn't require leaving the TUI to notice.
+        if self.initiative in ("testimonials", "signups"):
+            try:
+                pending_submissions = sum(
+                    1
+                    for s in eng_service.list_form_submissions(queue_names=(self.initiative,))
+                    if s.get("_status") == "pending"
+                )
+                stats_line += f"   Unprocessed Submissions: {pending_submissions}"
+            except Exception as exc:
+                logger.debug("Could not count pending %s submissions: %s", self.initiative, exc)
+
+        self.stats_label.update(stats_line)
 
         await self.entry_list.clear()
 

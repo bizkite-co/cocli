@@ -242,7 +242,7 @@ def report_telemetry(
     window, straight from S3 - both already-processed (completed/) and
     not-yet-processed (pending/) - so this always reflects reality even
     if `process-testimonials` hasn't been run yet."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     from rich.console import Console
     from rich.table import Table
 
@@ -269,8 +269,11 @@ def report_telemetry(
 
     for item in submissions:
         received_at = item.get("received_at")
+        # received_at is a UTC unix timestamp; fromtimestamp() with no tz=
+        # converts it to this machine's local timezone, which is what the
+        # cocli operator actually wants to read, not the storage timezone.
         when = (
-            datetime.fromtimestamp(received_at, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            datetime.fromtimestamp(received_at).astimezone().strftime("%Y-%m-%d %H:%M %Z")
             if received_at
             else "(unknown)"
         )
