@@ -225,3 +225,64 @@ def process_testimonials(
         match_status = evt.company_slug or "UNMATCHED"
         typer.echo(f"  - {name} -> {match_status}")
 
+
+@app.command(name="report")
+def report_telemetry(
+    days: int = typer.Option(
+        7, "--days", "-d", help="Only show submissions received in the last N days"
+    ),
+    today: bool = typer.Option(
+        False, "--today", help="Shorthand for --days 1"
+    ),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+) -> None:
+    """Show form submissions (testimonials + signups) received in a time
+    window, straight from S3 - both already-processed (completed/) and
+    not-yet-processed (pending/) - so this always reflects reality even
+    if `process-testimonials` hasn't been run yet."""
+    from datetime import datetime, timezone
+    from rich.console import Console
+    from rich.table import Table
+
+    camp = campaign or get_campaign() or "roadmap"
+    window_days = 1 if today else days
+    service = EngagementService(camp)
+    submissions = service.list_form_submissions(since_days=window_days)
+
+    console = Console()
+    if not submissions:
+        console.print(
+            f"[yellow]No form submissions (testimonials or signups) in the last "
+            f"{window_days} day(s).[/yellow]"
+        )
+        return
+
+    table = Table(show_header=True)
+    table.add_column("When", style="dim")
+    table.add_column("Form")
+    table.add_column("Status")
+    table.add_column("Name")
+    table.add_column("Email")
+    table.add_column("UTM Source")
+
+    for item in submissions:
+        received_at = item.get("received_at")
+        when = (
+            datetime.fromtimestamp(received_at, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            if received_at
+            else "(unknown)"
+        )
+        table.add_row(
+            when,
+            str(item.get("_queue", "?")),
+            str(item.get("_status", "?")),
+            str(item.get("name") or ""),
+            str(item.get("email") or ""),
+            str(item.get("utm_source") or ""),
+        )
+
+    console.print(table)
+    console.print(f"\n[bold]{len(submissions)}[/bold] submission(s) in the last {window_days} day(s).")
+

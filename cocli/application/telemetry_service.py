@@ -363,7 +363,19 @@ class GoogleTelemetryProvider:
         # 2026-09-30). `application-default print-access-token` (unlike
         # plain `gcloud auth login`) DOES support --scopes, so request the
         # scope explicitly rather than hoping the default token has it.
-        gtm_scopes = "https://www.googleapis.com/auth/tagmanager.edit.containers"
+        # All three scopes are required: edit.containers alone 403s on
+        # create_version/publish with "insufficient authentication
+        # scopes" even for an identity that genuinely has full container
+        # access (confirmed live, 2026-09-30) - GTM v2 gates
+        # CreateContainerVersion behind edit.containerversions
+        # specifically (not edit.containers, which only covers ordinary
+        # tag/trigger/variable CRUD) and gates the separate :publish
+        # call behind tagmanager.publish.
+        gtm_scopes = (
+            "https://www.googleapis.com/auth/tagmanager.edit.containers,"
+            "https://www.googleapis.com/auth/tagmanager.edit.containerversions,"
+            "https://www.googleapis.com/auth/tagmanager.publish"
+        )
 
         token = access_token or os.environ.get("COCLI_GTM_ACCESS_TOKEN")
         if not token:
@@ -450,51 +462,106 @@ class GoogleTelemetryProvider:
             if not target_container_path:
                 return {"success": False, "error": f"No GTM container found matching '{container_id}' for this account."}
 
-            # Step 3: Create a fresh workspace for this deployment (never
-            # reuse/overwrite whatever draft workspace happens to exist).
-            workspace = _post(
-                f"{api_base}/{target_container_path}/workspaces",
-                {"name": f"cocli deploy {container_id}"},
-            )
-            workspace_path = workspace.get("path")
+            # Step 3: Use the container's single existing workspace rather
+            # than creating a new one each deploy. Two real problems, both
+            # hit live on 2026-09-30: (a) blindly creating triggers/tags
+            # into a fresh workspace 400s with "Found entity with
+            # duplicate name" the instant the container already has ANY
+            # named entity in common with the manifest (true of every
+            # real container after the first deploy) - a fresh workspace
+            # still starts as a COPY of the live published state, it is
+            # not empty; (b) accumulating an extra workspace per deploy is
+            # exactly the "published from the wrong one, silently
+            # reverting a fix" trap that cost real time to diagnose (see
+            # gtw audit, built from this same incident). If more than one
+            # workspace already exists, refuse rather than guess which one
+            # is authoritative - ask the human to consolidate first
+            # (`gtw audit` flags this).
+            workspaces_data = _get(f"{api_base}/{target_container_path}/workspaces")
+            workspaces = workspaces_data.get("workspace", [])
+            if not workspaces:
+                return {"success": False, "error": f"Container {container_id} has no workspaces at all."}
+            if len(workspaces) > 1:
+                names = ", ".join(str(w.get("name", "?")) for w in workspaces)
+                return {
+                    "success": False,
+                    "error": (
+                        f"Container {container_id} has {len(workspaces)} workspaces "
+                        f"({names}) - refusing to guess which is authoritative. "
+                        f"Delete the unused draft(s) in the GTM UI first (run `gtw "
+                        f"audit` to confirm), then retry."
+                    ),
+                }
+            workspace_path = workspaces[0].get("path")
             if not workspace_path:
-                return {"success": False, "error": "Google Tag Manager did not return a workspace path."}
+                return {"success": False, "error": "Could not resolve the container's workspace path."}
 
-            # Step 4: Import Triggers/Variables/Built-in Variables/Tags from manifest
+            # Step 4: Import Triggers/Variables/Built-in Variables/Tags from
+            # manifest - idempotently. An entity already present BY NAME is
+            # reused (its real ID captured for firingTriggerId remapping),
+            # never recreated - GTM rejects a duplicate name outright, and
+            # even if it didn't, blindly re-creating would just pile up
+            # redundant copies of what's already correct.
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             version_data = manifest.get("containerVersion", {})
 
+            existing_triggers = _get(f"{api_base}/{workspace_path}/triggers").get("trigger", [])
+            existing_trigger_by_name = {t.get("name"): t for t in existing_triggers}
             trigger_id_map: dict[str, str] = {}
             for trigger in version_data.get("trigger", []):
                 original_id = str(trigger.get("triggerId", ""))
-                created = _post(
-                    f"{api_base}/{workspace_path}/triggers",
-                    _resource_payload(trigger, {"accountId", "containerId", "workspaceId", "triggerId", "path", "fingerprint"}),
-                )
-                if original_id and created.get("triggerId"):
-                    trigger_id_map[original_id] = str(created["triggerId"])
+                name = trigger.get("name")
+                existing = existing_trigger_by_name.get(name)
+                if existing:
+                    logger.info("Trigger '%s' already exists - reusing it.", name)
+                    real_id = existing.get("triggerId")
+                else:
+                    created = _post(
+                        f"{api_base}/{workspace_path}/triggers",
+                        _resource_payload(trigger, {"accountId", "containerId", "workspaceId", "triggerId", "path", "fingerprint"}),
+                    )
+                    real_id = created.get("triggerId")
+                if original_id and real_id:
+                    trigger_id_map[original_id] = str(real_id)
 
+            existing_variables = _get(f"{api_base}/{workspace_path}/variables").get("variable", [])
+            existing_variable_names = {v.get("name") for v in existing_variables}
             for variable in version_data.get("variable", []):
+                name = variable.get("name")
+                if name in existing_variable_names:
+                    logger.info("Variable '%s' already exists - reusing it.", name)
+                    continue
                 _post(
                     f"{api_base}/{workspace_path}/variables",
                     _resource_payload(variable, {"accountId", "containerId", "workspaceId", "variableId", "path", "fingerprint"}),
                 )
 
+            existing_built_ins = _get(f"{api_base}/{workspace_path}/built_in_variables").get("builtInVariable", [])
+            existing_built_in_types = {b.get("type") for b in existing_built_ins}
             for built_in in version_data.get("builtInVariable", []):
+                if built_in.get("type") in existing_built_in_types:
+                    continue
                 try:
                     _post(
                         f"{api_base}/{workspace_path}/built_in_variables",
                         _resource_payload(built_in, {"accountId", "containerId", "workspaceId", "path", "fingerprint"}),
                     )
                 except urllib.error.HTTPError as biv_err:
-                    # Built-in variables are frequently pre-enabled by
-                    # default in a fresh workspace - GTM returns an error
-                    # if you try to enable one that's already on. That's
-                    # not a real failure, so don't let it abort the deploy.
+                    # Belt-and-suspenders: even with the pre-check above,
+                    # GTM still errors on some already-on built-ins
+                    # depending on account defaults. Not a real failure.
                     logger.debug("Built-in variable note (%s): %s", built_in.get("name"), biv_err)
 
+            existing_tags = _get(f"{api_base}/{workspace_path}/tags").get("tag", [])
+            existing_tag_names = {t.get("name") for t in existing_tags}
             deployed_tags = 0
+            skipped_tags = 0
             for tag in version_data.get("tag", []):
+                name = tag.get("name")
+                if name in existing_tag_names:
+                    logger.info("Tag '%s' already exists - leaving it as-is.", name)
+                    skipped_tags += 1
+                    continue
                 payload = _resource_payload(tag, {"accountId", "containerId", "workspaceId", "tagId", "path", "fingerprint"})
                 payload["firingTriggerId"] = [
                     trigger_id_map.get(str(trigger_id), str(trigger_id))
@@ -505,6 +572,32 @@ class GoogleTelemetryProvider:
 
             # Step 5: Create AND publish the container version - create_version
             # alone only produces an unpublished draft.
+            # Whether to publish is NOT the same question as whether we
+            # had to create anything just now: an entity can already
+            # exist (so nothing new was created) while still never having
+            # been part of a PUBLISHED version - exactly what happened
+            # here, from an earlier deploy attempt that created
+            # feedback_submit/signup_submit's trigger+tag before dying
+            # partway through on an unrelated duplicate-name error. Those
+            # orphaned-but-real entities sat unpublished indefinitely.
+            # The only reliable check is the live version's own tag
+            # names, fetched fresh, not "did this run need to create
+            # something."
+            live_tag_names = {
+                t.get("name") for t in _get(f"{api_base}/{target_container_path}/versions:live").get("tag", [])
+            }
+            manifest_tag_names = {t.get("name") for t in version_data.get("tag", [])}
+            if manifest_tag_names <= live_tag_names:
+                return {
+                    "success": True,
+                    "message": (
+                        f"Nothing to deploy - all {len(manifest_tag_names)} manifest tag(s) "
+                        f"are already in the live published version. Not publishing a no-op "
+                        f"version."
+                    ),
+                    "version_id": None,
+                }
+
             version_response = _post(f"{api_base}/{workspace_path}:create_version", {"name": "cocli telemetry deploy"})
             version = version_response.get("containerVersion", version_response)
             version_id = version.get("containerVersionId")
@@ -512,11 +605,17 @@ class GoogleTelemetryProvider:
                 return {"success": False, "error": "Google Tag Manager did not return a container version ID."}
 
             _post(f"{api_base}/{target_container_path}/versions/{version_id}:publish", {})
-            logger.info("Published GTM Container Version %s (%s tags deployed)", version_id, deployed_tags)
+            logger.info(
+                "Published GTM Container Version %s (%s new tags, %s already present)",
+                version_id, deployed_tags, skipped_tags,
+            )
 
             return {
                 "success": True,
-                "message": f"Successfully published container version {version_id} ({deployed_tags} tags)",
+                "message": (
+                    f"Successfully published container version {version_id} "
+                    f"({deployed_tags} new tag(s), {skipped_tags} already present)"
+                ),
                 "version_id": version_id,
             }
         except urllib.error.HTTPError as http_err:

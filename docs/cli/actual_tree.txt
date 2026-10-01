@@ -798,6 +798,10 @@ cocli
             --path (text)
             --days/-d (integer)
             --realtime/-r (boolean)
+        report - Show form submissions (testimonials + signups) received in a time
+            --days/-d (integer)
+            --today (boolean)
+            --campaign/-c (text)
         sync - Resolve/create GA4 Measurement ID and compile declarative GTM IaC container spec.
             --measurement-id/-m (text)
             --campaign/-c (text)

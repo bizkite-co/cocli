@@ -487,3 +487,86 @@ class EngagementService:
 
         return new_events
 
+    def list_form_submissions(
+        self, queue_names: tuple[str, ...] = ("testimonials", "signups"), since_days: Optional[int] = None
+    ) -> list[dict[str, Any]]:
+        """List raw form submissions across one or more S3-backed intake
+        queues (see cdk_scraper_deployment/testimonials_stack.py's
+        FormIntakeStack), both pending/ (not yet processed by e.g.
+        `process-testimonials`) and completed/ (already processed) -
+        reading straight from S3 so this reflects reality even if
+        `cocli smart-sync` hasn't been run locally. Read-only: never
+        moves, deletes, or processes anything.
+
+        Each result dict is the submission's own JSON plus "_queue"
+        ("testimonials"/"signups") and "_status" ("pending"/"completed").
+        Sorted newest first. `since_days=None` returns everything.
+        """
+        import json as jsonlib
+        import time
+
+        cutoff = time.time() - (since_days * 86400) if since_days is not None else None
+        results: list[dict[str, Any]] = []
+
+        s3_client = None
+        bucket_name = None
+        try:
+            from cocli.core.config import load_campaign_config
+            from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+            config = load_campaign_config(self.campaign_name)
+            bucket_name = get_data_bucket_name(config, self.campaign_name)
+            s3_client = get_s3_client(session=get_boto3_session(config))
+        except Exception as exc:
+            logger.debug("S3 access unavailable for list_form_submissions (local-only campaign?): %s", exc)
+
+        for queue_name in queue_names:
+            for status in ("pending", "completed"):
+                if status == "pending":
+                    prefix = paths.s3.campaign(self.campaign_name).queue(queue_name).pending()
+                else:
+                    prefix = f"campaigns/{self.campaign_name}/queues/{queue_name}/completed/"
+                if s3_client and bucket_name:
+                    try:
+                        paginator = s3_client.get_paginator("list_objects_v2")
+                        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+                            for obj in page.get("Contents", []):
+                                key = obj["Key"]
+                                if not key.endswith(".json"):
+                                    continue
+                                try:
+                                    body = s3_client.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                                    item = jsonlib.loads(body)
+                                except Exception as exc:
+                                    logger.warning("Could not read/parse %s: %s", key, exc)
+                                    continue
+                                received_at = item.get("received_at")
+                                if cutoff is not None and (received_at is None or received_at < cutoff):
+                                    continue
+                                item["_queue"] = queue_name
+                                item["_status"] = status
+                                results.append(item)
+                    except Exception as exc:
+                        logger.warning("Could not list S3 queue %s/%s: %s", queue_name, status, exc)
+                else:
+                    # Local-only fallback (no S3 access this session) -
+                    # reads whatever's already synced to the local mirror.
+                    local_dir = paths.campaign(self.campaign_name).path / "queues" / queue_name / status
+                    if not local_dir.is_dir():
+                        continue
+                    for task_file in local_dir.glob("*.json"):
+                        try:
+                            item = jsonlib.loads(task_file.read_text(encoding="utf-8"))
+                        except Exception as exc:
+                            logger.warning("Could not parse %s: %s", task_file, exc)
+                            continue
+                        received_at = item.get("received_at")
+                        if cutoff is not None and (received_at is None or received_at < cutoff):
+                            continue
+                        item["_queue"] = queue_name
+                        item["_status"] = status
+                        results.append(item)
+
+        results.sort(key=lambda item: item.get("received_at") or 0, reverse=True)
+        return results
+
