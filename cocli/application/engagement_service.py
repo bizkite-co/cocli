@@ -323,6 +323,82 @@ class EngagementService:
 
         return new_events
 
+    def pull_cta_clicks(
+        self, property_id: Optional[str] = None, initiative: Optional[str] = None, days: int = 7
+    ) -> list[EngagementEvent]:
+        """Pull event-level GA4 data for the cta_click custom event: which
+        specific button was clicked, on which page - the granularity
+        pull_from_ga4()'s session-level pull can't see, since that only
+        knows a session happened, not which button within it was
+        pressed. Requires the `button_label` event-scoped custom
+        dimension to already be registered on the GA4 property (see
+        GoogleTelemetryProvider.register_event_custom_dimension) -
+        registration doesn't backfill past events, only ones recorded
+        after it existed.
+        """
+        from cocli.application.telemetry_service import GoogleTelemetryProvider
+        from cocli.core.config import load_campaign_config
+
+        campaign_cfg = load_campaign_config(self.campaign_name)
+        ga_cfg = campaign_cfg.get("google_analytics", {}) or {}
+        p_id = property_id or ga_cfg.get("ga4_property_id")
+        if not p_id:
+            raise RuntimeError(
+                "Missing GA4 numeric property ID. Pass property_id, or set "
+                "google_analytics.ga4_property_id in this campaign's config.toml."
+            )
+
+        provider = GoogleTelemetryProvider(self.campaign_name)
+        rows = provider.query_cta_clicks(str(p_id), days=days)
+
+        existing_events = self.list_events(initiative=initiative)
+        seen_keys = {
+            (e.company_slug, (e.details or {}).get("button_label"), (e.details or {}).get("page_path"), e.utm_term)
+            for e in existing_events
+            if e.event_type == "cta_click"
+        }
+
+        new_events: list[EngagementEvent] = []
+        for row in rows:
+            page_path = row.get("pagePath")
+            button_label = row.get("customEvent:button_label") or ""
+            ad_content = row.get("sessionManualAdContent")
+            if ad_content == "(not set)":
+                ad_content = None
+            term = row.get("sessionManualTerm")
+            if term == "(not set)":
+                term = None
+            event_count = int(row.get("eventCount", "0") or 0)
+
+            co_slug: Optional[str] = ad_content if ad_content and Company.get(ad_content) else None
+            if not co_slug and term and initiative:
+                candidates = self._match_initiative_recipients_by_first_name(initiative, term)
+                if len(candidates) == 1:
+                    co_slug = candidates[0]
+
+            fingerprint = (co_slug, button_label, page_path, term)
+            if fingerprint in seen_keys:
+                continue
+
+            event = EngagementEvent(
+                campaign_name=initiative or self.campaign_name,
+                company_slug=co_slug,
+                event_type="cta_click",
+                source="ga4",
+                utm_content=ad_content,
+                utm_term=term,
+                details={
+                    "button_label": button_label,
+                    "page_path": page_path,
+                    "event_count": event_count,
+                },
+            )
+            self.record_event(event)
+            seen_keys.add(fingerprint)
+            new_events.append(event)
+
+        return new_events
+
     def _find_company_by_email(self, email: str) -> Optional[str]:
         """Look up a company slug by email via the compact company_cache.usv
         index (slug|name|type|domain|email|...), not a per-company

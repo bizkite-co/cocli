@@ -797,12 +797,23 @@ cocli
             --campaign/-c (text)
             --initiative/-i (text)
             --days/-d (integer)
+        pull-clicks - Pull event-level GA4 data for cta_click: which specific button
+            --property-id/-p (text)
+            --campaign/-c (text)
+            --initiative/-i (text)
+            --days/-d (integer)
         query - Query Google Analytics 4 traffic and UTM campaign attribution.
             --property-id/-p (text)
             --campaign/-c (text)
             --path (text)
             --days/-d (integer)
             --realtime/-r (boolean)
+        register-dimension - Register an event-scoped GA4 custom dimension - a one-time,
+            parameter_name (text) [required]
+            --display-name (text) [required]
+            --property-id/-p (text)
+            --campaign/-c (text)
+            --description (text)
         report - Show form submissions (testimonials + signups) received in a time
             --days/-d (integer)
             --today (boolean)

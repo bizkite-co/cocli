@@ -156,19 +156,11 @@ class GoogleTelemetryProvider:
             logger.warning("Initial telemetry ping note: %s", err)
             return {"success": False, "error": str(err)}
 
-    def query_page_engagement(
-        self, property_id: str, days: int = 7, limit: int = 50
-    ) -> list[dict[str, Any]]:
-        """Per-page engagement breakdown via the GA4 Data API: sessions,
-        engagement rate, average session duration, pageviews, and event
-        count, one row per page path, sorted by sessions descending.
-
-        Answers "what's going on on every page" directly from GA4 (no new
-        tracking needed - Enhanced Measurement already captures scroll/
-        outbound-click/form-interaction signals that feed into these
-        aggregate metrics) rather than via `query_analytics`'s fixed
-        campaign/UTM-scoped shape, which isn't meant for this.
-        """
+    @staticmethod
+    def _run_ga4_report(property_id: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        """Shared GA4 Data API runReport call + row-shape flattening,
+        behind the read-only analytics.readonly scope. Returns one dict
+        per row with dimension and metric values merged by name."""
         import os
         import subprocess
         import urllib.error
@@ -189,19 +181,6 @@ class GoogleTelemetryProvider:
                 "Run `gcloud auth application-default login` or set COCLI_GTM_ACCESS_TOKEN."
             )
 
-        payload = {
-            "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
-            "dimensions": [{"name": "pagePath"}],
-            "metrics": [
-                {"name": "sessions"},
-                {"name": "engagementRate"},
-                {"name": "averageSessionDuration"},
-                {"name": "screenPageViews"},
-                {"name": "eventCount"},
-            ],
-            "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}],
-            "limit": str(limit),
-        }
         req = urllib.request.Request(
             f"https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport",
             data=json.dumps(payload).encode("utf-8"),
@@ -229,6 +208,133 @@ class GoogleTelemetryProvider:
             entry.update(dict(zip(metric_headers, m_vals)))
             rows.append(entry)
         return rows
+
+    def query_page_engagement(
+        self, property_id: str, days: int = 7, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Per-page engagement breakdown via the GA4 Data API: sessions,
+        engagement rate, average session duration, pageviews, and event
+        count, one row per page path, sorted by sessions descending.
+
+        Answers "what's going on on every page" directly from GA4 (no new
+        tracking needed - Enhanced Measurement already captures scroll/
+        outbound-click/form-interaction signals that feed into these
+        aggregate metrics) rather than via `query_analytics`'s fixed
+        campaign/UTM-scoped shape, which isn't meant for this.
+        """
+        payload = {
+            "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
+            "dimensions": [{"name": "pagePath"}],
+            "metrics": [
+                {"name": "sessions"},
+                {"name": "engagementRate"},
+                {"name": "averageSessionDuration"},
+                {"name": "screenPageViews"},
+                {"name": "eventCount"},
+            ],
+            "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}],
+            "limit": str(limit),
+        }
+        return self._run_ga4_report(property_id, payload)
+
+    def query_cta_clicks(
+        self, property_id: str, days: int = 7, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Event-level GA4 Data API query for the cta_click custom event:
+        which specific button/CTA was clicked (button_label), on which
+        page, with which outreach UTM attribution - granularity the
+        session-level pulls (`query_page_engagement`, `pull_from_ga4`)
+        can't see, since those only know a session happened, not which
+        button within it was pressed.
+
+        Requires `button_label` to already be registered as an
+        event-scoped custom dimension on this GA4 property (one-time
+        Admin API/UI step - see `register_event_custom_dimension` -
+        registration does not backfill past events, only ones recorded
+        after it was created).
+        """
+        payload = {
+            "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
+            "dimensions": [
+                {"name": "pagePath"},
+                {"name": "customEvent:button_label"},
+                {"name": "sessionManualAdContent"},
+                {"name": "sessionManualTerm"},
+            ],
+            "metrics": [{"name": "eventCount"}],
+            "dimensionFilter": {
+                "filter": {
+                    "fieldName": "eventName",
+                    "stringFilter": {"matchType": "EXACT", "value": "cta_click"},
+                }
+            },
+            "limit": str(limit),
+        }
+        return self._run_ga4_report(property_id, payload)
+
+    def register_event_custom_dimension(
+        self, property_id: str, parameter_name: str, display_name: str, description: str = ""
+    ) -> dict[str, Any]:
+        """Idempotently register an event-scoped GA4 custom dimension -
+        required before an event parameter sent by a GTM tag (e.g.
+        button_label on the cta_click tag) becomes queryable via the Data
+        API at all. Returns the existing registration if one with this
+        parameter_name already exists, rather than erroring on a
+        duplicate (GA4's API 400s on a duplicate parameterName)."""
+        import os
+        import subprocess
+        import urllib.error
+        import urllib.request
+
+        scopes = "https://www.googleapis.com/auth/analytics.edit"
+        token = os.environ.get("COCLI_GTM_ACCESS_TOKEN")
+        if not token:
+            res = subprocess.run(
+                ["gcloud", "auth", "application-default", "print-access-token", f"--scopes={scopes}"],
+                capture_output=True, text=True, check=False,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                token = res.stdout.strip()
+        if not token:
+            raise RuntimeError(
+                "No OAuth access token available for the GA4 Admin API. "
+                "Run `gcloud auth application-default login` or set COCLI_GTM_ACCESS_TOKEN."
+            )
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        list_req = urllib.request.Request(
+            f"https://analyticsadmin.googleapis.com/v1alpha/properties/{property_id}/customDimensions",
+            headers=headers,
+        )
+        with urllib.request.urlopen(list_req, timeout=30) as resp:
+            existing = json.loads(resp.read().decode("utf-8"))
+        for dim in existing.get("customDimensions", []):
+            if dim.get("parameterName") == parameter_name:
+                return dict(dim)
+
+        create_payload = {
+            "parameterName": parameter_name,
+            "displayName": display_name,
+            "description": description,
+            "scope": "EVENT",
+        }
+        create_req = urllib.request.Request(
+            f"https://analyticsadmin.googleapis.com/v1alpha/properties/{property_id}/customDimensions",
+            data=json.dumps(create_payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(create_req, timeout=30) as resp:
+                result: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+                return result
+        except urllib.error.HTTPError as http_err:
+            body = ""
+            try:
+                body = http_err.read().decode("utf-8")
+            except Exception:
+                pass
+            raise RuntimeError(f"GA4 Admin API request failed: HTTP {http_err.code} {body}") from http_err
 
     def deploy_gtm_container_automated(
         self, manifest_path: Path, container_id: str = "GTM-53F6J2WX", headful: bool = True

@@ -212,3 +212,83 @@ def test_pull_from_ga4_includes_configuration_error_solution_hint(
         with pytest.raises(RuntimeError, match="set `ga4_property_id` in telemetry.toml"):
             service.pull_from_ga4(initiative="testimonials")
 
+
+def test_pull_cta_clicks_requires_a_property_id(tmp_path: Any, monkeypatch: Any) -> None:
+    """Built from the 2026-10-01 incident where the first successful
+    cta_click pull required manually passing --property-id each time -
+    without a configured ga4_property_id, this must fail with an
+    actionable message rather than call the Data API with None."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    service = EngagementService("roadmap")
+    with pytest.raises(RuntimeError, match="Missing GA4 numeric property ID"):
+        service.pull_cta_clicks()
+
+
+def test_pull_cta_clicks_captures_button_label_in_event_details(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The actual point of this feature: a cta_click row from GA4 (with
+    the button_label event-scoped custom dimension populated) must
+    become an EngagementEvent whose details carry that label - the
+    session-level pull (pull_from_ga4) can only ever say a page was
+    visited, never which button was pressed."""
+    from cocli.core.paths import paths
+    from cocli.application.telemetry_service import GoogleTelemetryProvider
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    fake_rows = [
+        {
+            "pagePath": "/signup/",
+            "customEvent:button_label": "Request a Callback",
+            "sessionManualAdContent": "(not set)",
+            "sessionManualTerm": "(not set)",
+            "eventCount": "3",
+        }
+    ]
+    with patch.object(GoogleTelemetryProvider, "query_cta_clicks", return_value=fake_rows):
+        service = EngagementService("roadmap")
+        new_events = service.pull_cta_clicks(property_id="510155544")
+
+    assert len(new_events) == 1
+    event = new_events[0]
+    assert event.event_type == "cta_click"
+    assert event.source == "ga4"
+    assert event.details["button_label"] == "Request a Callback"
+    assert event.details["page_path"] == "/signup/"
+    assert event.details["event_count"] == 3
+    assert event.company_slug is None  # (not set) ad_content/term - no attribution possible
+
+
+def test_pull_cta_clicks_deduplicates_against_already_recorded_events(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Re-running the pull (e.g. a scheduled poll) must not duplicate an
+    already-recorded click with the same company/button/page/term
+    fingerprint - matches the dedup behavior pull_from_ga4 already has
+    for link_click."""
+    from cocli.core.paths import paths
+    from cocli.application.telemetry_service import GoogleTelemetryProvider
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    fake_rows = [
+        {
+            "pagePath": "/signup/",
+            "customEvent:button_label": "Request a Callback",
+            "sessionManualAdContent": "(not set)",
+            "sessionManualTerm": "(not set)",
+            "eventCount": "1",
+        }
+    ]
+    with patch.object(GoogleTelemetryProvider, "query_cta_clicks", return_value=fake_rows):
+        service = EngagementService("roadmap")
+        first_pull = service.pull_cta_clicks(property_id="510155544")
+        assert len(first_pull) == 1
+
+        second_pull = service.pull_cta_clicks(property_id="510155544")
+        assert len(second_pull) == 0
+

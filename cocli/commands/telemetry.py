@@ -200,6 +200,88 @@ def pull_telemetry(
         typer.echo(f"  - [{evt.event_type}] {evt.company_slug}{person_info} -> {evt.details.get('page_path')}")
 
 
+@app.command(name="pull-clicks")
+def pull_clicks_telemetry(
+    property_id: Optional[str] = typer.Option(
+        None, "--property-id", "-p", help="GA4 numeric property ID (defaults to campaign config)"
+    ),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+    initiative: Optional[str] = typer.Option(
+        None, "--initiative", "-i", help="Specific initiative to filter (e.g. testimonials, rta)"
+    ),
+    days: int = typer.Option(7, "--days", "-d", help="Days of history to query"),
+) -> None:
+    """Pull event-level GA4 data for cta_click: which specific button
+    was clicked, on which page - the granularity `pull` (session-level)
+    can't see. Requires button_label to already be registered as an
+    event-scoped custom dimension (see `register-dimension`); clicks
+    recorded before that registration are not retroactively queryable."""
+    camp = campaign or get_campaign() or "roadmap"
+    service = EngagementService(camp)
+    typer.echo(f"Pulling GA4 cta_click event data for campaign '{camp}' (past {days} days)...")
+    try:
+        new_events = service.pull_cta_clicks(property_id=property_id, initiative=initiative, days=days)
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if not new_events:
+        typer.echo("No new cta_click events found in GA4.")
+        return
+
+    typer.echo(f"Successfully pulled {len(new_events)} new cta_click event(s):")
+    for evt in new_events:
+        person_info = f" ({evt.utm_term})" if evt.utm_term else ""
+        button = evt.details.get("button_label") or "(unlabeled)"
+        typer.echo(f"  - {evt.company_slug or '(unmatched)'}{person_info} clicked '{button}' on {evt.details.get('page_path')}")
+
+
+@app.command(name="register-dimension")
+def register_dimension_telemetry(
+    parameter_name: str = typer.Argument(..., help="Event parameter name as sent by the GTM tag (e.g. button_label)"),
+    display_name: str = typer.Option(..., "--display-name", help="Human-readable name shown in the GA4 UI"),
+    property_id: Optional[str] = typer.Option(
+        None, "--property-id", "-p", help="GA4 numeric property ID (defaults to campaign config)"
+    ),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+    description: str = typer.Option("", "--description", help="Optional description"),
+) -> None:
+    """Register an event-scoped GA4 custom dimension - a one-time,
+    idempotent step required before an event parameter sent by a GTM tag
+    becomes queryable via the Data API at all. Does not backfill past
+    events; only events recorded after registration are affected."""
+    from cocli.application.telemetry_service import GoogleTelemetryProvider
+    from cocli.core.config import load_campaign_config
+
+    camp = campaign or get_campaign() or "roadmap"
+    campaign_cfg = load_campaign_config(camp)
+    ga_cfg = campaign_cfg.get("google_analytics", {}) or {}
+    p_id = property_id or ga_cfg.get("ga4_property_id")
+    if not p_id:
+        typer.echo(
+            "Error: no GA4 property ID. Pass --property-id or set "
+            "google_analytics.ga4_property_id in this campaign's config.toml.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    provider = GoogleTelemetryProvider(camp)
+    try:
+        result = provider.register_event_custom_dimension(
+            str(p_id), parameter_name, display_name, description
+        )
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"Registered: {result.get('name')}")
+    typer.echo(f"  parameterName: {result.get('parameterName')}")
+    typer.echo(f"  scope: {result.get('scope')}")
+
+
 @app.command(name="process-testimonials")
 def process_testimonials(
     campaign: Optional[str] = typer.Option(
