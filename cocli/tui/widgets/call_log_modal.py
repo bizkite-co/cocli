@@ -60,6 +60,7 @@ class CallLogModal(ModalScreen[bool]):
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save_call", "Save & Close"),
+        Binding("ctrl+enter", "save_call", "Save & Close", show=False),
         # priority=True so these fire even while call_notes (a TextArea)
         # has focus and would otherwise consume plain "j"/"k" as typed
         # text. Bound to both key-id spellings ("J" vs "shift+j") since
@@ -100,6 +101,19 @@ class CallLogModal(ModalScreen[bool]):
         self.local_time_widget = CompanyLocalTime(company=company, slug=company_slug, id="company_local_time")
         self._place: CompanyPlace = self.local_time_widget._place
         self._contacts = list_known_contacts(company_slug)
+
+        # Fetched once here (not per-markup-method) so recent emails and
+        # notes don't each re-parse every file under notes/ and meetings/
+        # a second/third time - get_company_activity() already returns
+        # the unified, deduped, newest-first feed company_detail.py's
+        # Activity tab uses.
+        try:
+            from cocli.application.company_service import get_company_activity
+
+            self._activities = get_company_activity(company_slug, include_scheduled=False)
+        except Exception as exc:
+            logger.warning(f"Could not load activity history for {company_slug}: {exc}")
+            self._activities = []
 
     @staticmethod
     def _resolve_place(company: Optional[Company]) -> CompanyPlace:
@@ -170,6 +184,8 @@ class CallLogModal(ModalScreen[bool]):
 
                 with VerticalScroll(id="call-log-right"):
                     yield Static(self._recent_calls_markup(), id="call-recent-calls")
+                    yield Static(self._recent_emails_markup(), id="call-recent-emails")
+                    yield Static(self._recent_notes_markup(), id="call-recent-notes")
 
                     # Missing files render as an empty Markdown widget
                     # (harmless) rather than erroring - see
@@ -179,7 +195,7 @@ class CallLogModal(ModalScreen[bool]):
                     yield Markdown(reference["product-comparison.md"], id="call-comparison-panel")
 
             yield Static(
-                "[bold reverse] CTRL+S: SAVE [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
+                "[bold reverse] CTRL+S / CTRL+ENTER: SAVE [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
                 id="modal_help",
             )
 
@@ -217,6 +233,38 @@ class CallLogModal(ModalScreen[bool]):
         body = "\n".join(lines)
         return f"[bold]Recent calls[/bold]\n{body}"
 
+    def _recent_emails_markup(self) -> str:
+        """Recent emails for this company, newest first - same spot as
+        recent calls, so the rep can see what's already been sent/
+        received without leaving this modal."""
+        emails = [a for a in self._activities if a.activity_type == "email"][:8]
+        if not emails:
+            return "[bold]Recent emails[/bold]\n[dim]No recent emails for this company[/dim]"
+
+        lines = []
+        for a in emails:
+            date_str = a.timestamp.astimezone().strftime("%Y-%m-%d %H:%M")
+            clean_title = a.title.replace("\n", " ").strip()
+            lines.append(f"  {a.icon} {date_str}: {clean_title}")
+        body = "\n".join(lines)
+        return f"[bold]Recent emails[/bold]\n{body}"
+
+    def _recent_notes_markup(self) -> str:
+        """Recent plain notes for this company, newest first - excludes
+        call/email/sms notes, which already have their own dedicated
+        panels (recent calls) or aren't relevant here."""
+        notes = [a for a in self._activities if a.activity_type == "note"][:8]
+        if not notes:
+            return "[bold]Recent notes[/bold]\n[dim]No recent notes for this company[/dim]"
+
+        lines = []
+        for a in notes:
+            date_str = a.timestamp.astimezone().strftime("%Y-%m-%d %H:%M")
+            clean_preview = a.preview.replace("\n", " ").strip()
+            lines.append(f"  {a.icon} {date_str}: {clean_preview}")
+        body = "\n".join(lines)
+        return f"[bold]Recent notes[/bold]\n{body}"
+
     def on_mount(self) -> None:
         self.set_interval(1.0, self._tick_local_time)
         self.query_one("#call_notes", TextArea).focus()
@@ -232,7 +280,7 @@ class CallLogModal(ModalScreen[bool]):
 
     @on(events.Key)
     def handle_keys(self, event: events.Key) -> None:
-        if event.key == "ctrl+s":
+        if event.key in ("ctrl+s", "ctrl+enter"):
             self.save_call()
 
     def action_cancel(self) -> None:

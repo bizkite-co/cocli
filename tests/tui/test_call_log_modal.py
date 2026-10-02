@@ -440,7 +440,12 @@ async def test_natural_language_follow_up_dates(
         app.push_screen(modal)
         await driver.pause()
 
-        modal.query_one("#callback_date").value = "monday"
+        # "monday 13:00" (a date plus a time-of-day) alongside the
+        # original bare "monday" case - confirmed 2026-10-02 this already
+        # parses correctly via dateparser, both as a raw parse_follow_up_when()
+        # call and through this exact interactive path; locked in here so
+        # a future regression would actually be caught.
+        modal.query_one("#callback_date").value = "monday 13:00"
         modal.query_one("#followup_template").value = "email_02_screenshots.md"
         modal.query_one("#followup_email_date").value = "next week"
         await driver.press("ctrl+s")
@@ -451,6 +456,15 @@ async def test_natural_language_follow_up_dates(
     assert company.callback_at is not None
     assert company.callback_at.weekday() == 0
     assert company.callback_at > datetime.now(UTC) - timedelta(seconds=5)
+
+    # The time-of-day must actually have been parsed, not silently
+    # dropped - compare against the bare "monday" (midnight local)
+    # result rather than hardcoding a UTC hour, since that depends on
+    # whatever timezone happens to run this test.
+    from cocli.utils.when import parse_follow_up_when
+
+    bare_monday_hour = parse_follow_up_when("monday").hour
+    assert company.callback_at.hour != bare_monday_hour
 
     follow_ups = FollowUpService("roadmap").list_pending(company_slug="when-co")
     assert len(follow_ups) == 1
@@ -717,3 +731,88 @@ async def test_call_log_modal_displays_call_error_banner(
         await driver.pause()
 
         assert not modal_no_err.query("#call_error_banner")
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_recent_emails_and_notes_panels_show_this_companys_history(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The right-hand column only ever showed recent calls - emails and
+    plain notes were invisible here even though both already exist on
+    disk for the company, forcing a rep to leave the modal to check
+    them. Must show both, scoped to this company only."""
+    from datetime import UTC, datetime
+
+    from cocli.core.paths import paths
+    from cocli.models.companies.email_note import EmailNote
+    from cocli.models.companies.note import Note
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="History Co", slug="history-co", domain="history.test", phone="555-777-8888")
+    co.save()
+    other = Company(name="Other Co", slug="other-history-co", domain="other.test", phone="555-111-2222")
+    other.save()
+
+    notes_dir = paths.companies.entry("history-co").path / "notes"
+    EmailNote(
+        timestamp=datetime(2026, 2, 5, tzinfo=UTC),
+        title="Re: Pricing question",
+        direction="sent",
+        content="Sent over the pricing sheet as discussed.",
+    ).to_file(notes_dir)
+    Note(
+        timestamp=datetime(2026, 2, 6, tzinfo=UTC),
+        title="Internal note",
+        content="Prefers afternoon calls, mentioned budget approval pending.",
+    ).to_file(notes_dir)
+
+    other_notes_dir = paths.companies.entry("other-history-co").path / "notes"
+    EmailNote(
+        timestamp=datetime(2026, 2, 7, tzinfo=UTC),
+        title="Unrelated email",
+        direction="sent",
+        content="Should not show up for History Co.",
+    ).to_file(other_notes_dir)
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="history-co", phone="555-777-8888")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        recent_emails = str(modal.query_one("#call-recent-emails").content)
+        assert "Pricing question" in recent_emails
+        assert "Unrelated email" not in recent_emails
+
+        recent_notes = str(modal.query_one("#call-recent-notes").content)
+        assert "budget approval pending" in recent_notes
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_ctrl_enter_saves_the_call_same_as_ctrl_s(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark (2026-10-02): wants ctrl+enter as an alternative to ctrl+s -
+    terminals disagree on how plain Enter vs Ctrl+Enter get reported, but
+    Textual's own "ctrl+enter" key id is what this binds to."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Enter Co", slug="enter-co", domain="enter.test", phone="555-666-7777")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="enter-co", phone="555-666-7777")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        modal.query_one("#call_notes").text = "Saved via ctrl+enter"
+        await pilot.press("ctrl+enter")
+        await pilot.pause(0.2)
+
+        meetings_dir = paths.companies.entry("enter-co").path / "meetings"
+        assert meetings_dir.exists()
+        assert any(meetings_dir.iterdir())
