@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from types import ModuleType
 from typing import Any
@@ -291,4 +292,95 @@ def test_pull_cta_clicks_deduplicates_against_already_recorded_events(
 
         second_pull = service.pull_cta_clicks(property_id="510155544")
         assert len(second_pull) == 0
+
+
+def test_process_testimonial_submissions_reads_directly_from_s3(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The actual 2026-10-02 bug this replaces: `cocli smart-sync queues`
+    never covered the testimonials queue (only map-tile/gm-list/
+    gm-details/enrichment are in its loop), so a local pending/ file
+    never existed unless someone manually `aws s3 cp`'d it down first -
+    undocumented, and the method silently returned [] regardless of what
+    was actually sitting in S3. This must process directly from S3, with
+    no local pending/ file ever required."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    submission = {
+        "id": "abc123",
+        "name": "Jane Advisor",
+        "email": "jane@example.com",
+        "message": "Great tool, saved us hours.",
+        "utm_campaign": "testimonials",
+    }
+
+    fake_body = MagicMock()
+    fake_body.read.return_value = json.dumps(submission).encode("utf-8")
+
+    fake_paginator = MagicMock()
+    fake_paginator.paginate.return_value = [
+        {"Contents": [{"Key": "campaigns/roadmap/queues/testimonials/pending/abc123.json"}]}
+    ]
+
+    fake_s3_client = MagicMock()
+    fake_s3_client.get_paginator.return_value = fake_paginator
+    fake_s3_client.get_object.return_value = {"Body": fake_body}
+
+    with patch(
+        "cocli.core.config.load_campaign_config", return_value={}
+    ), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="fake-bucket"
+    ), patch(
+        "cocli.core.reporting.get_boto3_session", return_value=MagicMock()
+    ), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_s3_client
+    ):
+        service = EngagementService("roadmap")
+        # No local pending/ directory is ever created - proving the S3
+        # path doesn't depend on one existing.
+        new_events = service.process_testimonial_submissions()
+
+    assert len(new_events) == 1
+    assert new_events[0].details["message"] == "Great tool, saved us hours."
+
+    fake_s3_client.delete_object.assert_called_once_with(
+        Bucket="fake-bucket",
+        Key="campaigns/roadmap/queues/testimonials/pending/abc123.json",
+    )
+
+    completed_witness = (
+        paths.campaign("roadmap").path / "queues" / "testimonials" / "completed" / "abc123.json"
+    )
+    assert completed_witness.exists()
+
+
+def test_process_testimonial_submissions_falls_back_to_local_pending_dir(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """When S3 access genuinely isn't configured (a local-only/dev
+    campaign), fall back to draining whatever's already sitting in the
+    local pending/ mirror, rather than silently doing nothing."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    queue_dir = paths.campaign("roadmap").path / "queues" / "testimonials" / "pending"
+    queue_dir.mkdir(parents=True)
+    (queue_dir / "local1.json").write_text(
+        json.dumps({"name": "Local Only", "email": "local@example.com", "message": "Local fallback works"}),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "cocli.core.config.load_campaign_config", side_effect=Exception("no AWS config")
+    ):
+        service = EngagementService("roadmap")
+        new_events = service.process_testimonial_submissions()
+
+    assert len(new_events) == 1
+    assert new_events[0].details["message"] == "Local fallback works"
+    assert not (queue_dir / "local1.json").exists()
+    assert (paths.campaign("roadmap").path / "queues" / "testimonials" / "completed" / "local1.json").exists()
 

@@ -37,6 +37,7 @@ _CATEGORY_LABELS = {
     "email-sequences": "Email Sequences",
     "rendered-outreach": "Rendered Outreach",
     "tracking": "Tracking",
+    "responses": "Responses",
 }
 
 
@@ -525,6 +526,164 @@ class _TrackingPane(Horizontal):
         )
 
 
+class ResponseListItem(ListItem):
+    """One raw form submission (testimonial or signup), read straight
+    from the S3-backed intake queue - pending (not yet processed into
+    the engagement log/a company note) or completed (already
+    processed). Unlike TrackingListItem's engagement events, these
+    don't carry a resolved company_slug - that resolution only happens
+    during `cocli telemetry process-testimonials`."""
+
+    def __init__(self, submission: dict[str, Any]) -> None:
+        super().__init__()
+        self.submission = submission
+
+    def compose(self) -> Any:
+        import datetime as _dt
+
+        status = self.submission.get("_status", "?")
+        badge = (
+            "[bold yellow]pending[/bold yellow]"
+            if status == "pending"
+            else "[bold green]completed[/bold green]"
+        )
+        received_at = self.submission.get("received_at")
+        when = (
+            _dt.datetime.fromtimestamp(received_at).astimezone().strftime("%m/%d %H:%M")
+            if received_at
+            else "(unknown)"
+        )
+        name = self.submission.get("name") or self.submission.get("email") or "(anonymous)"
+        yield Label(f"{badge}  {name}  [dim]({when})[/dim]")
+
+
+class ResponsePreview(VerticalScroll):
+    def compose(self) -> Any:
+        yield Label("Select a response to see details", id="response-preview-empty")
+        yield Static("", id="response-preview-body")
+
+    def update_preview(self, submission: dict[str, Any] | None) -> None:
+        empty = self.query_one("#response-preview-empty", Label)
+        body = self.query_one("#response-preview-body", Static)
+        if submission is None:
+            empty.display = True
+            body.update("")
+            return
+        empty.display = False
+
+        import datetime as _dt
+
+        received_at = submission.get("received_at")
+        when = (
+            _dt.datetime.fromtimestamp(received_at).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+            if received_at
+            else "(unknown)"
+        )
+        lines = [
+            f"[bold]Status:[/] {submission.get('_status', '?')}",
+            f"[bold]Name:[/] {submission.get('name') or '(not given)'}",
+            f"[bold]Firm:[/] {submission.get('firm') or 'N/A'}",
+            f"[bold]Email:[/] {submission.get('email') or '(not given)'}",
+            f"[bold]Permission to quote:[/] {submission.get('permission_to_quote') or 'N/A'}",
+            f"[bold]UTM Source:[/] {submission.get('utm_source') or 'N/A'}",
+            f"[bold]UTM Campaign:[/] {submission.get('utm_campaign') or 'N/A'}",
+            f"[bold]Received:[/] {when}",
+        ]
+        message = submission.get("message")
+        if message:
+            lines.append("")
+            lines.append(f"[bold green]Message:[/]\n{message}")
+        body.update("\n".join(lines))
+
+
+class _ResponsesPane(Horizontal):
+    """This initiative's raw form submissions (pending + completed),
+    read directly from S3 - the actual testimonial/signup content,
+    separate from Tracking's mixed send-log/engagement-event view.
+    Right below Tracking in the category list since it's the other half
+    of the same data: Tracking shows that a submission happened,
+    Responses shows what was actually said."""
+
+    BINDINGS = [
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("h", "navigate_back", "Back", show=False),
+        Binding("r", "refresh_responses", "Refresh", show=True),
+    ]
+
+    def __init__(self, initiative: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.initiative = initiative
+        self.stats_label = Label("", id="response-stats")
+        self.entry_list = ListView(id="response_entry_list")
+        self.preview = ResponsePreview(id="response_preview")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="response-list-pane"):
+            yield self.stats_label
+            yield self.entry_list
+        yield self.preview
+
+    async def on_mount(self) -> None:
+        await self.refresh_responses()
+
+    async def refresh_responses(self) -> None:
+        from cocli.application.engagement_service import EngagementService
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        eng_service = EngagementService(campaign)
+
+        try:
+            submissions = await asyncio.to_thread(
+                eng_service.list_form_submissions, queue_names=(self.initiative,)
+            )
+        except Exception as exc:
+            logger.warning("Could not list %s responses: %s", self.initiative, exc)
+            submissions = []
+
+        pending = sum(1 for s in submissions if s.get("_status") == "pending")
+        completed = sum(1 for s in submissions if s.get("_status") == "completed")
+        self.stats_label.update(f"Pending: {pending}   Completed: {completed}   Total: {len(submissions)}")
+
+        await self.entry_list.clear()
+        for submission in submissions:
+            await self.entry_list.append(ResponseListItem(submission))
+
+        if not submissions:
+            self.preview.update_preview(None)
+        else:
+            self.entry_list.index = 0
+            first_child = self.entry_list.children[0]
+            if isinstance(first_child, ResponseListItem):
+                self.preview.update_preview(first_child.submission)
+        self.entry_list.focus()
+
+    def action_refresh_responses(self) -> None:
+        self.run_worker(self.refresh_responses(), exclusive=True)
+
+    def action_cursor_down(self) -> None:
+        self.entry_list.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.entry_list.action_cursor_up()
+
+    def action_navigate_back(self) -> None:
+        self.app.query_one("#categories_list", ListView).focus()
+
+    @on(ListView.Selected)
+    def on_response_selected(self, message: ListView.Selected) -> None:
+        if not isinstance(message.item, ResponseListItem):
+            return
+        self.preview.update_preview(message.item.submission)
+
+    @on(ListView.Highlighted)
+    def on_response_highlighted(self, message: ListView.Highlighted) -> None:
+        if not isinstance(message.item, ResponseListItem):
+            return
+        self.preview.update_preview(message.item.submission)
+
+
 class InitiativesView(Container):
     """Master: initiatives list (top) + categories list (second, stacked
     below it in the same left column) - mirrors application_view.py's
@@ -613,6 +772,8 @@ class InitiativesView(Container):
             pane = _EmailSequencesPane(initiative)
         elif category == "tracking":
             pane = _TrackingPane(initiative)
+        elif category == "responses":
+            pane = _ResponsesPane(initiative)
         else:
             pane = _FileBrowserPane(initiative, category)
         await self.content_container.mount(pane)

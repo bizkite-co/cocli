@@ -789,7 +789,7 @@ cocli
         ping - Send an initial telemetry hit to GA4 to warm up data ingestion and clear 48-hour missing traffic alerts.
             --measurement-id/-m (text)
             --domain/-d (text)
-        process-testimonials - Process pending testimonial-form submissions (run `cocli smart-sync`
+        process-testimonials - Process pending testimonial-form submissions - reads directly from
             --campaign/-c (text)
             --initiative/-i (text)
         pull - Poll GA4 Data API for recent campaign hits with company/person attribution and append to local engagement log.

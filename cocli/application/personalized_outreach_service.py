@@ -353,7 +353,7 @@ class PersonalizedOutreachService:
                 choices.append((f"[{init}] {tpl}", tpl, init))
         return choices
 
-    _INITIATIVE_CATEGORIES = ("email-sequences", "rendered-outreach", "tracking")
+    _INITIATIVE_CATEGORIES = ("email-sequences", "rendered-outreach", "tracking", "responses")
 
     def _initiatives_dir(self) -> Path:
         return paths.campaigns / self.campaign_name / "initiatives"
@@ -369,10 +369,12 @@ class PersonalizedOutreachService:
         return sorted(p.name for p in root.iterdir() if p.is_dir())
 
     def list_initiative_categories(self, initiative: str) -> list[str]:
-        """Whichever of email-sequences/rendered-outreach/tracking actually
-        exist for this initiative, in that fixed preferred order - not
-        every initiative has all three (e.g. wealth-manager-products has
-        none yet), so this must not hardcode all three as always present."""
+        """Whichever of email-sequences/rendered-outreach/tracking/
+        responses actually exist for this initiative, in that fixed
+        preferred order - not every initiative has all of them (e.g.
+        wealth-manager-products has none yet, and "responses" only
+        exists for initiatives that collect form submissions, like
+        testimonials), so this must not hardcode them as always present."""
         base = self._initiatives_dir() / initiative
         return [c for c in self._INITIATIVE_CATEGORIES if (base / c).is_dir()]
 

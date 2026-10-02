@@ -16,6 +16,7 @@ from cocli.tui.widgets.initiatives_view import (
     InitiativesView,
     _EmailSequencesPane,
     _FileBrowserPane,
+    _ResponsesPane,
     _TrackingPane,
 )
 
@@ -652,3 +653,61 @@ async def test_tracking_pane_p_key_pulls_ga4_telemetry(mock_cocli_env, mocker) -
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_responses_pane_shows_raw_form_submissions_with_message(mock_cocli_env, mocker) -> None:
+    """Responses is the other half of Tracking's data: Tracking shows that
+    a submission happened, Responses shows what was actually said - read
+    straight from S3 via list_form_submissions, pending and completed
+    both, not gated on process-testimonials having been run."""
+    from cocli.application.engagement_service import EngagementService
+
+    _make_initiative(CAMPAIGN, "testimonials", {"tracking": {".keep": "x"}, "responses": {".keep": "x"}})
+
+    fake_submissions = [
+        {
+            "_queue": "testimonials",
+            "_status": "pending",
+            "name": "Jake Dukart",
+            "email": "jake@higginbotham.example",
+            "message": "Loved the 30-year spend-down tables!",
+            "firm": "Higginbotham",
+            "received_at": 1790731192,
+        }
+    ]
+    mocker.patch.object(EngagementService, "list_form_submissions", return_value=fake_submissions)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        # Order is fixed (email-sequences, rendered-outreach, tracking,
+        # responses) filtered to what exists - here that's [tracking,
+        # responses], so responses is index 1, right below tracking.
+        categories_list.index = 1
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_ResponsesPane)
+        entry_list = pane.query_one("#response_entry_list", ListView)
+        assert len(entry_list.children) == 1
+        assert "Pending: 1" in str(pane.stats_label.content)
+        assert "Completed: 0" in str(pane.stats_label.content)
+
+        preview_body = pane.preview.query_one("#response-preview-body")
+        text = str(preview_body.content)
+        assert "Jake Dukart" in text
+        assert "Loved the 30-year spend-down tables!" in text
+        assert "Higginbotham" in text

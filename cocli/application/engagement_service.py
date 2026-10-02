@@ -443,34 +443,94 @@ class EngagementService:
             logger.warning("Could not read company cache for email lookup: %s", exc)
         return None
 
+    def _process_one_testimonial(
+        self, data: dict[str, Any], initiative: Optional[str]
+    ) -> EngagementEvent:
+        """Shared business logic for one testimonial submission's raw
+        JSON: resolve a company, record the engagement event, and write
+        a company note carrying the full text - used by both the S3-
+        direct and local-fallback paths in process_testimonial_submissions
+        below, so they can't silently drift apart."""
+        email = str(data.get("email") or "").strip()
+        name = str(data.get("name") or "").strip()
+        message = str(data.get("message") or "")
+        utm_term = str(data.get("utm_term") or "").strip()
+        camp = str(data.get("utm_campaign") or self.campaign_name)
+
+        co_slug = self._find_company_by_email(email) if email else None
+        if not co_slug and utm_term and initiative:
+            candidates = self._match_initiative_recipients_by_first_name(initiative, utm_term)
+            if len(candidates) == 1:
+                co_slug = candidates[0]
+
+        event = EngagementEvent(
+            campaign_name=camp,
+            company_slug=co_slug,
+            event_type="testimonial_submitted",
+            source="webhook",
+            utm_source=str(data.get("utm_source") or ""),
+            utm_medium=str(data.get("utm_medium") or ""),
+            utm_campaign=camp,
+            utm_content=str(data.get("utm_content") or ""),
+            utm_term=utm_term,
+            details={
+                "name": name,
+                "firm": data.get("firm"),
+                "email": email,
+                "message": message,
+                "permission_to_quote": data.get("permission_to_quote"),
+                "page_url": data.get("page_url"),
+            },
+        )
+        self.record_event(event)
+
+        if co_slug:
+            try:
+                notes_dir = paths.companies.entry(co_slug).path / "notes"
+                if notes_dir.parent.exists():
+                    note_content = (
+                        f"Firm: {data.get('firm') or ''}\n"
+                        f"Email: {email}\n"
+                        f"Permission to quote: {data.get('permission_to_quote') or ''}\n\n"
+                        f"{message}"
+                    )
+                    note = Note(
+                        title=f"Testimonial Submitted: {name or email or 'Unknown'}",
+                        content=note_content,
+                    )
+                    note.to_file(notes_dir)
+            except Exception as note_err:
+                logger.warning("Could not record testimonial note for %s: %s", co_slug, note_err)
+        else:
+            logger.info(
+                "Testimonial submission could not be matched to a company (email=%s, term=%s)",
+                email, utm_term,
+            )
+        return event
+
     def process_testimonial_submissions(self, initiative: Optional[str] = None) -> list[EngagementEvent]:
-        """Process pending testimonial-form submissions (JSON files synced
-        down from S3 via `cocli smart-sync` - see
-        cdk_scraper_deployment/testimonials_stack.py, which replaced
-        formsubmit.co after it was confirmed to silently drop every
-        submission) into the engagement log plus a company note carrying
-        the full testimonial text, then move each to completed/ as a
-        witness receipt - the same pending/completed lifecycle gm-details
-        tasks already use (see docs/data-management/directory-data-structure.md).
+        """Process pending testimonial-form submissions into the
+        engagement log plus a company note carrying the full testimonial
+        text, then mark each completed - the same pending/completed
+        lifecycle gm-details tasks already use (see
+        docs/data-management/directory-data-structure.md).
+
+        Reads straight from S3 (same approach as list_form_submissions) -
+        NOT from a local pending/ mirror. `cocli smart-sync queues` never
+        actually covered this queue (only map-tile/gm-list/gm-details/
+        enrichment are in its loop), so this previously required someone
+        to manually `aws s3 cp` files down first, undocumented and easy
+        to think was automatic when it never was (confirmed 2026-10-02:
+        pending testimonials sat uncollected with no working path at
+        all). Falls back to a local pending/ directory scan only when S3
+        access isn't configured (a local-only/dev campaign).
         """
         import json as jsonlib
 
         queue_dir = paths.campaign(self.campaign_name).path / "queues" / "testimonials"
-        pending_dir = queue_dir / "pending"
         completed_dir = queue_dir / "completed"
-
-        if not pending_dir.is_dir():
-            return []
         completed_dir.mkdir(parents=True, exist_ok=True)
 
-        # Moving pending -> completed only updates the LOCAL mirror. A
-        # generic `aws s3 sync` (unlike `cocli smart-sync`, which tracks
-        # .smart_sync_state.json) doesn't know a pending/ object was
-        # already consumed and will re-download it on the next run,
-        # causing it to be reprocessed - confirmed empirically (a
-        # already-processed test submission came back and got a second,
-        # duplicate engagement log entry). Delete the S3 source object
-        # once local processing succeeds so it can never come back.
         s3_client = None
         bucket_name = None
         try:
@@ -481,9 +541,63 @@ class EngagementService:
             bucket_name = get_data_bucket_name(config, self.campaign_name)
             s3_client = get_s3_client(session=get_boto3_session(config))
         except Exception as exc:
-            logger.debug("S3 cleanup unavailable (local-only campaign?): %s", exc)
+            logger.debug("S3 access unavailable (local-only campaign?): %s", exc)
 
         new_events: list[EngagementEvent] = []
+
+        if s3_client and bucket_name:
+            prefix = paths.s3.campaign(self.campaign_name).queue("testimonials").pending()
+            try:
+                paginator = s3_client.get_paginator("list_objects_v2")
+                keys = [
+                    obj["Key"]
+                    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+                    for obj in page.get("Contents", [])
+                    if obj["Key"].endswith(".json")
+                ]
+            except Exception as exc:
+                logger.warning("Could not list S3 testimonials queue: %s", exc)
+                keys = []
+
+            for key in sorted(keys):
+                task_name = key.rsplit("/", 1)[-1]
+                try:
+                    body = s3_client.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                    data = jsonlib.loads(body)
+                except Exception as exc:
+                    logger.warning("Could not read/parse %s: %s", key, exc)
+                    continue
+
+                event = self._process_one_testimonial(data, initiative)
+                new_events.append(event)
+
+                # Witness receipt in the local completed/ mirror, same
+                # convention as every other queue, even though this item
+                # was never locally mirrored into pending/ first.
+                try:
+                    (completed_dir / task_name).write_text(
+                        jsonlib.dumps(data), encoding="utf-8"
+                    )
+                except OSError as exc:
+                    logger.warning("Could not write local completed/ witness for %s: %s", task_name, exc)
+
+                try:
+                    s3_client.delete_object(Bucket=bucket_name, Key=key)
+                except Exception as exc:
+                    logger.warning(
+                        "Processed %s but could not delete its S3 source (%s) - "
+                        "it will be reprocessed as a duplicate on the next run: %s",
+                        task_name, key, exc,
+                    )
+            return new_events
+
+        # Local-only fallback: no S3 access this session, so just drain
+        # whatever's already sitting in the local pending/ mirror (e.g.
+        # placed there by hand, or by a test fixture).
+        pending_dir = queue_dir / "pending"
+        if not pending_dir.is_dir():
+            return []
+
         for task_file in sorted(pending_dir.glob("*.json")):
             try:
                 data = jsonlib.loads(task_file.read_text(encoding="utf-8"))
@@ -491,75 +605,9 @@ class EngagementService:
                 logger.warning("Could not parse testimonial task %s: %s", task_file, exc)
                 continue
 
-            email = str(data.get("email") or "").strip()
-            name = str(data.get("name") or "").strip()
-            message = str(data.get("message") or "")
-            utm_term = str(data.get("utm_term") or "").strip()
-            camp = str(data.get("utm_campaign") or self.campaign_name)
-
-            co_slug = self._find_company_by_email(email) if email else None
-            if not co_slug and utm_term and initiative:
-                candidates = self._match_initiative_recipients_by_first_name(initiative, utm_term)
-                if len(candidates) == 1:
-                    co_slug = candidates[0]
-
-            event = EngagementEvent(
-                campaign_name=camp,
-                company_slug=co_slug,
-                event_type="testimonial_submitted",
-                source="webhook",
-                utm_source=str(data.get("utm_source") or ""),
-                utm_medium=str(data.get("utm_medium") or ""),
-                utm_campaign=camp,
-                utm_content=str(data.get("utm_content") or ""),
-                utm_term=utm_term,
-                details={
-                    "name": name,
-                    "firm": data.get("firm"),
-                    "email": email,
-                    "message": message,
-                    "permission_to_quote": data.get("permission_to_quote"),
-                    "page_url": data.get("page_url"),
-                },
-            )
-            self.record_event(event)
+            event = self._process_one_testimonial(data, initiative)
             new_events.append(event)
-
-            if co_slug:
-                try:
-                    notes_dir = paths.companies.entry(co_slug).path / "notes"
-                    if notes_dir.parent.exists():
-                        note_content = (
-                            f"Firm: {data.get('firm') or ''}\n"
-                            f"Email: {email}\n"
-                            f"Permission to quote: {data.get('permission_to_quote') or ''}\n\n"
-                            f"{message}"
-                        )
-                        note = Note(
-                            title=f"Testimonial Submitted: {name or email or 'Unknown'}",
-                            content=note_content,
-                        )
-                        note.to_file(notes_dir)
-                except Exception as note_err:
-                    logger.warning("Could not record testimonial note for %s: %s", co_slug, note_err)
-            else:
-                logger.info(
-                    "Testimonial submission %s could not be matched to a company (email=%s, term=%s)",
-                    task_file.name, email, utm_term,
-                )
-
             task_file.replace(completed_dir / task_file.name)
-
-            if s3_client and bucket_name:
-                s3_key = f"{paths.s3.campaign(self.campaign_name).queue('testimonials').pending()}{task_file.name}"
-                try:
-                    s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
-                except Exception as exc:
-                    logger.warning(
-                        "Processed %s locally but could not delete its S3 source (%s) - "
-                        "it will be re-downloaded and reprocessed on the next sync: %s",
-                        task_file.name, s3_key, exc,
-                    )
 
         return new_events
 

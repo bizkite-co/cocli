@@ -291,9 +291,9 @@ def process_testimonials(
         "testimonials", "--initiative", "-i", help="Initiative to fall back to for first-name matching"
     ),
 ) -> None:
-    """Process pending testimonial-form submissions (run `cocli smart-sync`
-    first to pull queues/testimonials/pending/ down from S3) into the
-    engagement log and a company note, then mark each completed."""
+    """Process pending testimonial-form submissions - reads directly from
+    S3, no prior sync step needed - into the engagement log and a
+    company note, then mark each completed."""
     camp = campaign or get_campaign() or "roadmap"
     service = EngagementService(camp)
     new_events = service.process_testimonial_submissions(initiative=initiative)
