@@ -798,6 +798,8 @@ cocli
         process-testimonials - Process pending testimonial-form submissions - reads directly from
             --campaign/-c (text)
             --initiative/-i (text)
+        process-unsubscribes - Process pending web-unsubscribe requests - reads directly from
+            --campaign/-c (text)
         pull - Poll GA4 Data API for recent campaign hits with company/person attribution and append to local engagement log.
             --property-id/-p (text)
             --campaign/-c (text)

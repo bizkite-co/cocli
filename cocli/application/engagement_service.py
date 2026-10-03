@@ -611,6 +611,117 @@ class EngagementService:
 
         return new_events
 
+    def process_unsubscribe_requests(self) -> list[str]:
+        """Process pending web-unsubscribe requests - each one is just a
+        `guid` (the per-send token every outbound email's links now
+        carry, see models/send_record.py), never a plaintext email
+        address; the Lambda that wrote it never saw one either. Resolves
+        guid -> SendRecord -> real recipient_email, marks that
+        SendRecord unsubscribed, and applies the actual suppression via
+        the same ExclusionManager path `cocli email unsubscribe` already
+        uses. Returns the list of email addresses unsubscribed.
+
+        Reads straight from S3 (same approach as
+        process_testimonial_submissions) - no prior sync step needed.
+        """
+        import json as jsonlib
+
+        from cocli.core.exclusions import ExclusionManager
+        from cocli.models.send_record import SendRecord
+
+        queue_dir = paths.campaign(self.campaign_name).path / "queues" / "unsubscribes"
+        completed_dir = queue_dir / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+
+        s3_client = None
+        bucket_name = None
+        try:
+            from cocli.core.config import load_campaign_config
+            from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+            config = load_campaign_config(self.campaign_name)
+            bucket_name = get_data_bucket_name(config, self.campaign_name)
+            s3_client = get_s3_client(session=get_boto3_session(config))
+        except Exception as exc:
+            logger.debug("S3 access unavailable (local-only campaign?): %s", exc)
+
+        exclusion_mgr = ExclusionManager(self.campaign_name)
+        unsubscribed_emails: list[str] = []
+
+        def _apply(data: dict[str, Any], task_name: str) -> None:
+            guid = str(data.get("guid") or "").strip()
+            reason = str(data.get("reason") or "").strip()
+            if not guid:
+                logger.warning("Unsubscribe request %s has no guid - skipping", task_name)
+                return
+            record = SendRecord.get(self.campaign_name, guid)
+            if not record:
+                logger.warning(
+                    "Unsubscribe request %s: no SendRecord found for guid %s - "
+                    "cannot resolve to a real email address",
+                    task_name, guid,
+                )
+                return
+            record.mark_unsubscribed(reason)
+            record.save()
+            exclusion_mgr.add_exclusion(domain=record.recipient_email, reason="unsubscribe:web_guid")
+            unsubscribed_emails.append(record.recipient_email)
+
+        if s3_client and bucket_name:
+            prefix = paths.s3.campaign(self.campaign_name).queue("unsubscribes").pending()
+            try:
+                paginator = s3_client.get_paginator("list_objects_v2")
+                keys = [
+                    obj["Key"]
+                    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+                    for obj in page.get("Contents", [])
+                    if obj["Key"].endswith(".json")
+                ]
+            except Exception as exc:
+                logger.warning("Could not list S3 unsubscribes queue: %s", exc)
+                keys = []
+
+            for key in sorted(keys):
+                task_name = key.rsplit("/", 1)[-1]
+                try:
+                    body = s3_client.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                    data = jsonlib.loads(body)
+                except Exception as exc:
+                    logger.warning("Could not read/parse %s: %s", key, exc)
+                    continue
+
+                _apply(data, task_name)
+
+                try:
+                    (completed_dir / task_name).write_text(jsonlib.dumps(data), encoding="utf-8")
+                except OSError as exc:
+                    logger.warning("Could not write local completed/ witness for %s: %s", task_name, exc)
+                try:
+                    s3_client.delete_object(Bucket=bucket_name, Key=key)
+                except Exception as exc:
+                    logger.warning(
+                        "Processed %s but could not delete its S3 source (%s) - "
+                        "it will be reprocessed as a duplicate on the next run: %s",
+                        task_name, key, exc,
+                    )
+            return unsubscribed_emails
+
+        pending_dir = queue_dir / "pending"
+        if not pending_dir.is_dir():
+            return []
+
+        for task_file in sorted(pending_dir.glob("*.json")):
+            try:
+                data = jsonlib.loads(task_file.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("Could not parse unsubscribe request %s: %s", task_file, exc)
+                continue
+
+            _apply(data, task_file.name)
+            task_file.replace(completed_dir / task_file.name)
+
+        return unsubscribed_emails
+
     def list_form_submissions(
         self, queue_names: tuple[str, ...] = ("testimonials", "signups"), since_days: Optional[int] = None
     ) -> list[dict[str, Any]]:

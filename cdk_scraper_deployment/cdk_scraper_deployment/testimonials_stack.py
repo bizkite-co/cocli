@@ -199,3 +199,14 @@ SIGNUP_FIELDS = (
     "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
     "page_url",
 )
+
+# "guid" is the per-send token every outbound link now carries (see
+# cocli/models/send_record.py / cocli/utils/send_tracking.py) - this
+# Lambda only ever records "this guid asked to unsubscribe"; resolving
+# it to a real email/company and actually applying the exclusion happens
+# locally via `cocli telemetry process-unsubscribes`, which already has
+# (and never uploads) the SendRecord that maps guid -> recipient. The
+# Lambda deliberately never sees a plaintext email address at all.
+UNSUBSCRIBE_FIELDS = (
+    "guid", "reason", "page_url",
+)

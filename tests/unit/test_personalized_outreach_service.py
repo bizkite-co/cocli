@@ -391,6 +391,55 @@ def test_send_batch_with_layout_template_renders_markdown_to_html(
     assert "Check out our product" in sent.body
 
 
+def test_send_batch_injects_a_send_guid_and_saves_a_send_record(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The actual point of today's build (Mark, 2026-10-03): every real
+    send gets its own unique, persistent identifier - embedded in its
+    outbound links (so a click or an unsubscribe can be traced back to
+    exactly this send, not a possibly-ambiguous first name) and saved as
+    its own immutable record (so a later send of the same template
+    doesn't erase this one's history, unlike rendered-outreach/<company>/
+    <template> which does)."""
+    from cocli.core.paths import paths
+    from cocli.models.send_record import SendRecord
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    match = _match("acme-co", "bob@acme.test", subject="Hi Bob")
+    match.body = (
+        "Hi Bob,\n\nVisit https://getretirementtaxanalyzer.com/testimonials/?utm_source=email "
+        "or unsubscribe at https://getretirementtaxanalyzer.com/unsubscribe"
+    )
+    fake_email_service = _FakeEmailService()
+
+    service = PersonalizedOutreachService("roadmap")
+    result = service.send_batch(
+        [match], template_id="email_02_product_overview.md", email_service=fake_email_service
+    )
+
+    assert result.sent == 1
+    sent = fake_email_service.sent_requests[0]
+    assert sent.html_body is not None
+
+    # The same guid shows up in every link, in both the HTML and the
+    # plain-text fallback.
+    import re
+
+    html_guids = set(re.findall(r"t=([0-9a-f]{32})", sent.html_body))
+    text_guids = set(re.findall(r"t=([0-9a-f]{32})", sent.body))
+    assert len(html_guids) == 1
+    assert html_guids == text_guids
+
+    guid = next(iter(html_guids))
+    record = SendRecord.get("roadmap", guid)
+    assert record is not None
+    assert record.company_slug == "acme-co"
+    assert record.recipient_email == "bob@acme.test"
+    assert record.template_id == "email_02_product_overview.md"
+
+
 def test_entry_to_match_prefers_hand_edited_rendered_outreach_file(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
@@ -970,6 +1019,9 @@ def test_send_batch_stamps_rendered_outreach_file_with_sent_receipt(
     content = rendered_path.read_text(encoding="utf-8")
     assert "sent_at:" in content
     assert "message_id: msg-bob@acme.test" in content
+    # A pointer to this send's own immutable SendRecord (2026-10-03) -
+    # this file itself still only ever holds the latest send's receipt.
+    assert "send_guid:" in content
     # The body itself must survive untouched.
     assert "Original body" in content
 

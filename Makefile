@@ -434,6 +434,19 @@ deploy-testimonials-infra: install ## Deploy the campaign's testimonials-form in
 	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy CocliTestimonialsStack-$(CAMPAIGN) --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
 	@aws cloudformation describe-stacks --stack-name CocliTestimonialsStack-$(CAMPAIGN) --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
 
+.PHONY: diff-unsubscribes-infra
+diff-unsubscribes-infra: install ## Preview changes to the campaign's unsubscribe intake Lambda/S3 queue (Usage: make diff-unsubscribes-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Diffing CocliUnsubscribesStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk diff CocliUnsubscribesStack-$(CAMPAIGN) --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+
+.PHONY: deploy-unsubscribes-infra
+deploy-unsubscribes-infra: install ## Deploy the campaign's unsubscribe intake Lambda/S3 queue via CDK (Usage: make deploy-unsubscribes-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Deploying CocliUnsubscribesStack-$(CAMPAIGN) (profile: $(AWS_PROFILE))"
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy CocliUnsubscribesStack-$(CAMPAIGN) --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	@aws cloudformation describe-stacks --stack-name CocliUnsubscribesStack-$(CAMPAIGN) --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
+
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh $(CAMPAIGN)

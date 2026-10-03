@@ -767,6 +767,8 @@ class PersonalizedOutreachService:
 
         from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
         from cocli.models.mail import SendMailRequest
+        from cocli.models.send_record import SendRecord
+        from cocli.utils.send_tracking import inject_send_guid
 
         # Microsecond precision: two send_batch() calls in quick succession
         # (e.g. back-to-back CLI runs, or two tests in the same process)
@@ -787,14 +789,25 @@ class PersonalizedOutreachService:
         # derived automatically for the multipart/alternative part.
         layout_name = self._layout_for_template(template_id, initiative)
         is_legacy_html_template = template_id.endswith(".html")
+        landing_domain = self._landing_url()
         for match in matches:
             try:
+                # Minted here, not at render time: one GUID = one actual
+                # outbound email, matching SendLogEntry's own granularity -
+                # a draft can be previewed/re-rendered any number of times
+                # before this point without burning through identifiers.
+                send_guid = SendRecord.new_guid()
+
                 if layout_name:
                     from cocli.utils.html_to_text import html_to_text
 
                     html_body = self.render_markdown_email(
-                        match.body, layout_name, initiative, template_id=Path(template_id).stem
+                        inject_send_guid(match.body, send_guid, landing_domain),
+                        layout_name,
+                        initiative,
+                        template_id=Path(template_id).stem,
                     )
+                    html_body = inject_send_guid(html_body, send_guid, landing_domain)
                     mail_request = SendMailRequest(
                         to_address=match.recipient_email,
                         subject=match.subject,
@@ -807,11 +820,12 @@ class PersonalizedOutreachService:
                 elif is_legacy_html_template:
                     from cocli.utils.html_to_text import html_to_text
 
+                    tracked_body = inject_send_guid(match.body, send_guid, landing_domain)
                     mail_request = SendMailRequest(
                         to_address=match.recipient_email,
                         subject=match.subject,
-                        body=html_to_text(match.body),
-                        html_body=match.body,
+                        body=html_to_text(tracked_body),
+                        html_body=tracked_body,
                         company_slug=match.company_slug,
                         cc_addresses=cc_addresses or [],
                         bcc_addresses=bcc_addresses or [],
@@ -820,7 +834,7 @@ class PersonalizedOutreachService:
                     mail_request = SendMailRequest(
                         to_address=match.recipient_email,
                         subject=match.subject,
-                        body=match.body,
+                        body=inject_send_guid(match.body, send_guid, landing_domain),
                         company_slug=match.company_slug,
                         cc_addresses=cc_addresses or [],
                         bcc_addresses=bcc_addresses or [],
@@ -838,8 +852,20 @@ class PersonalizedOutreachService:
                         initiative=initiative,
                     )
                 )
+                SendRecord(
+                    guid=send_guid,
+                    campaign_name=self.campaign_name,
+                    initiative=initiative,
+                    company_slug=match.company_slug,
+                    template_id=template_id,
+                    recipient_email=match.recipient_email,
+                    subject=match.subject,
+                    batch_id=batch_id,
+                    message_id=send_result.message_id,
+                    sent_at=datetime.now(UTC),
+                ).save()
                 self._stamp_rendered_outreach_sent(
-                    initiative, match.company_slug, template_id, send_result.message_id
+                    initiative, match.company_slug, template_id, send_result.message_id, send_guid
                 )
                 result.sent += 1
             except Exception as exc:
@@ -1089,17 +1115,23 @@ class PersonalizedOutreachService:
         path.write_text(f"---\n{new_frontmatter}\n---\n\n{body}", encoding="utf-8")
 
     def _stamp_rendered_outreach_sent(
-        self, initiative: str, company_slug: str, template_id: str, message_id: str
+        self, initiative: str, company_slug: str, template_id: str, message_id: str, send_guid: Optional[str] = None
     ) -> None:
-        """Add sent_at/message_id to a rendered-outreach file's frontmatter
-        right after a successful send - the file stays at its usual
-        stable path (send_batch/entry_to_match/ensure_rendered_outreach_draft
-        all assume that), but now visibly answers "was this actually sent"
-        without cross-referencing the send log (Mark, 2026-09-17: "should
-        we put a receipt next to every sent one"). A no-op if this send
-        never went through a rendered-outreach file (e.g. a bulk
-        send-batch call with no prior prepare-batch/FollowUpService
-        draft)."""
+        """Add sent_at/message_id/send_guid to a rendered-outreach file's
+        frontmatter right after a successful send - the file stays at
+        its usual stable path (send_batch/entry_to_match/
+        ensure_rendered_outreach_draft all assume that), but now visibly
+        answers "was this actually sent" without cross-referencing the
+        send log (Mark, 2026-09-17: "should we put a receipt next to
+        every sent one"). A no-op if this send never went through a
+        rendered-outreach file (e.g. a bulk send-batch call with no
+        prior prepare-batch/FollowUpService draft).
+
+        send_guid is just a pointer to this send's own immutable record
+        (models/send_record.py) - this file itself still only ever holds
+        the MOST RECENT send's receipt, since a later send of the same
+        template overwrites it (that's the gap the per-GUID store exists
+        to cover, not something this stamp can fix on its own)."""
         from datetime import UTC, datetime
 
         path = self._rendered_outreach_path(initiative, company_slug, template_id)
@@ -1119,6 +1151,8 @@ class PersonalizedOutreachService:
         meta = yaml.safe_load(parts[1]) or {}
         meta["sent_at"] = datetime.now(UTC).isoformat()
         meta["message_id"] = message_id
+        if send_guid:
+            meta["send_guid"] = send_guid
         new_frontmatter = yaml.safe_dump(meta, sort_keys=False).strip()
         path.write_text(f"---\n{new_frontmatter}\n---\n\n{parts[2].strip()}", encoding="utf-8")
 

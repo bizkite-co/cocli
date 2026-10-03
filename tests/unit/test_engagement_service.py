@@ -384,3 +384,77 @@ def test_process_testimonial_submissions_falls_back_to_local_pending_dir(
     assert not (queue_dir / "local1.json").exists()
     assert (paths.campaign("roadmap").path / "queues" / "testimonials" / "completed" / "local1.json").exists()
 
+
+def test_process_unsubscribe_requests_resolves_guid_to_the_real_recipient_and_excludes_them(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The actual point of today's build (Mark, 2026-10-03): the Lambda
+    this request came from never saw a plaintext email address, only a
+    guid - resolving it to the real recipient (via the SendRecord that
+    guid's own send already created) and applying the suppression both
+    happen here, locally."""
+    from cocli.core.paths import paths
+    from cocli.core.exclusions import ExclusionManager
+    from cocli.models.send_record import SendRecord
+    from datetime import datetime, UTC
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    SendRecord(
+        guid="guid-abc",
+        campaign_name="roadmap",
+        initiative="rta",
+        company_slug="acme-co",
+        template_id="email_02_product_overview.md",
+        recipient_email="bob@acme.test",
+        subject="Hi Bob",
+        sent_at=datetime(2026, 10, 1, tzinfo=UTC),
+    ).save()
+
+    queue_dir = paths.campaign("roadmap").path / "queues" / "unsubscribes" / "pending"
+    queue_dir.mkdir(parents=True)
+    (queue_dir / "req1.json").write_text(
+        json.dumps({"guid": "guid-abc", "reason": "too many emails"}), encoding="utf-8"
+    )
+
+    with patch("cocli.core.config.load_campaign_config", side_effect=Exception("no AWS config")):
+        service = EngagementService("roadmap")
+        unsubscribed = service.process_unsubscribe_requests()
+
+    assert unsubscribed == ["bob@acme.test"]
+
+    record = SendRecord.get("roadmap", "guid-abc")
+    assert record is not None
+    assert record.unsubscribed_at is not None
+    assert record.unsubscribe_reason == "too many emails"
+
+    exclusions = ExclusionManager("roadmap").list_exclusions()
+    assert any(e.domain == "bob@acme.test" for e in exclusions)
+
+    assert not (queue_dir / "req1.json").exists()
+    assert (paths.campaign("roadmap").path / "queues" / "unsubscribes" / "completed" / "req1.json").exists()
+
+
+def test_process_unsubscribe_requests_skips_unknown_guid_without_crashing(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A guid with no matching SendRecord (e.g. pre-dates this feature,
+    or was tampered with) must not crash the whole batch - just logged
+    and skipped, matching testimonials' unmatched-entry handling."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    queue_dir = paths.campaign("roadmap").path / "queues" / "unsubscribes" / "pending"
+    queue_dir.mkdir(parents=True)
+    (queue_dir / "req1.json").write_text(json.dumps({"guid": "no-such-guid"}), encoding="utf-8")
+
+    with patch("cocli.core.config.load_campaign_config", side_effect=Exception("no AWS config")):
+        service = EngagementService("roadmap")
+        unsubscribed = service.process_unsubscribe_requests()
+
+    assert unsubscribed == []
+    # Still marked completed - an unresolvable request shouldn't be
+    # retried forever.
+    assert (paths.campaign("roadmap").path / "queues" / "unsubscribes" / "completed" / "req1.json").exists()
+

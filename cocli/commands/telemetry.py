@@ -308,6 +308,28 @@ def process_testimonials(
         typer.echo(f"  - {name} -> {match_status}")
 
 
+@app.command(name="process-unsubscribes")
+def process_unsubscribes(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name override"
+    ),
+) -> None:
+    """Process pending web-unsubscribe requests - reads directly from
+    S3, no prior sync step needed. Each request is just a per-send
+    guid; resolves it to the real recipient via the SendRecord that
+    guid's own send created, then applies the actual suppression."""
+    camp = campaign or get_campaign() or "roadmap"
+    service = EngagementService(camp)
+    unsubscribed = service.process_unsubscribe_requests()
+    if not unsubscribed:
+        typer.echo("No pending unsubscribe requests to process.")
+        return
+
+    typer.echo(f"Processed {len(unsubscribed)} unsubscribe request(s):")
+    for email in unsubscribed:
+        typer.echo(f"  - {email}")
+
+
 @app.command(name="report")
 def report_telemetry(
     days: int = typer.Option(

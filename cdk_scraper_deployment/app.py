@@ -9,12 +9,17 @@ from constructs import IConstruct
 
 from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploymentStack
 from cdk_scraper_deployment.email_stack import CocliEmailStack
-from cdk_scraper_deployment.testimonials_stack import FormIntakeStack, SIGNUP_FIELDS, TESTIMONIAL_FIELDS
+from cdk_scraper_deployment.testimonials_stack import (
+    FormIntakeStack,
+    SIGNUP_FIELDS,
+    TESTIMONIAL_FIELDS,
+    UNSUBSCRIBE_FIELDS,
+)
 
 # Stack id prefixes that get the 14-day (not 3-day) log retention below -
 # both are FormIntakeStack instances that log raw captured submission data
 # on receipt as a secondary recovery path alongside the S3 queue item.
-_FORM_INTAKE_STACK_PREFIXES = ("CocliTestimonialsStack", "CocliSignupsStack")
+_FORM_INTAKE_STACK_PREFIXES = ("CocliTestimonialsStack", "CocliSignupsStack", "CocliUnsubscribesStack")
 
 @jsii.implements(cdk.IAspect)
 class LogRetentionAspect:
@@ -208,6 +213,23 @@ if outreach_domain:
         queue_name="signups",
         fields=SIGNUP_FIELDS,
         event_prefix="signup_submission",
+    )
+    # Real /unsubscribe page intake (Mark, 2026-10-03: the previous link
+    # was a bare URL with zero identifying info and no backing page at
+    # all - a flat 404). One click, no re-typing an email that might not
+    # match what we have on file - the guid every outbound link now
+    # carries (see cocli/models/send_record.py) is the only thing this
+    # Lambda ever receives; it never sees a plaintext email address.
+    FormIntakeStack(
+        app,
+        f"CocliUnsubscribesStack-{campaign_name}",
+        env=form_intake_env,
+        campaign_name=campaign_name,
+        data_bucket_name=data_bucket_name,
+        allowed_origin=f"https://{outreach_domain}",
+        queue_name="unsubscribes",
+        fields=UNSUBSCRIBE_FIELDS,
+        event_prefix="unsubscribe_request",
     )
 
 app.synth()
