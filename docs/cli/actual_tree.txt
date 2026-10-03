@@ -459,6 +459,12 @@ cocli
         list - Lists every phone number on the shared do-not-call list.
         remove - Removes a phone number from the shared do-not-call list.
             phone (text) [required]
+    domains - Domain-wide records shared across every company on that domain.
+        set-employee-directory - Record where to find this domain's employee directory - not
+            domain (text) [required]
+            url (text) [required]
+        show - Show the domain-wide record for a domain, if one exists.
+            domain (text) [required]
     email - Send via SES and poll a configured IMAP inbox into company notes. Not a mail client.
         authorize - Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
         enqueue-followups - Batch-enqueue email follow-ups for all companies matching a tag.

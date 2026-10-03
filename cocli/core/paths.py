@@ -445,6 +445,18 @@ class DataPaths:
         return CollectionPaths(lambda: self.root / "people")
 
     @property
+    def domains(self) -> CollectionPaths:
+        """One entry per domain (higginbotham.com, not higginbotham-com)
+        - shared facts/artifacts for a domain that multiple company
+        records (branches, brokers) can point to instead of each
+        duplicating them. Always slug the domain with slugdotify()
+        (core/text_utils.py), never the dash-only slugify() - that's
+        what DomainRecord.get()/save() (models/domain_record.py) already
+        do; call through those rather than paths.domains.entry() directly
+        so nothing has to remember which slugger to use."""
+        return CollectionPaths(lambda: self.root / "domains")
+
+    @property
     def do_not_call(self) -> Path:
         """Shared, campaign-independent do-not-call registry (keyed by
         phone - a person's DNC status follows them, not a campaign)."""

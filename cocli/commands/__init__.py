@@ -11,6 +11,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import context
     from . import deduplicate
     from . import dev
+    from . import domains
     from . import enrich_customers
     from . import enrich_shopify_data
     from . import exclude
@@ -80,6 +81,7 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(do_not_call.app, name="do-not-call")
     app.add_typer(email.app, name="email")
     app.add_typer(deduplicate.app, name="deduplicate")
+    app.add_typer(domains.app, name="domains")
     app.add_typer(render.app, name="render")
     app.add_typer(smart_sync.app, name="smart-sync")
     app.add_typer(worker.app, name="worker")
