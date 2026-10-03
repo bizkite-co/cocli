@@ -309,7 +309,7 @@ def _write_layout_template(paths: Any, campaign: str = "roadmap") -> None:
         encoding="utf-8",
     )
     (templates_dir / "email_02_product_overview.njk").write_text(
-        "<html><body>{{ content | safe }}"
+        "<html><!-- Content template: {{ template_id }} --><body>{{ content | safe }}"
         '<p><a href="{{ landing_url }}/unsubscribe">unsubscribe</a></p></body></html>',
         encoding="utf-8",
     )
@@ -341,6 +341,26 @@ def test_render_markdown_email_wraps_content_in_layout(tmp_path: Any, monkeypatc
     assert "<p>Hi Bob,</p>" in html
     assert "<strong>bold</strong>" in html
     assert "unsubscribe" in html
+
+
+def test_render_markdown_email_passes_template_id_into_layout_context(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark (2026-10-03): the rendered HTML told him which Python method
+    produced it, never which content template - a layout can be shared
+    by more than one template, so this has to be a real render-time
+    variable, not a hardcoded string in the .njk file."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+
+    service = PersonalizedOutreachService("roadmap")
+    html = service.render_markdown_email(
+        "Hi Bob,", "email_02_product_overview.njk", template_id="email_02_product_overview"
+    )
+
+    assert "Content template: email_02_product_overview" in html
 
 
 def test_send_batch_with_layout_template_renders_markdown_to_html(

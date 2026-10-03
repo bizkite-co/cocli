@@ -464,7 +464,7 @@ class PersonalizedOutreachService:
         return str(layout) if layout else None
 
     def render_markdown_email(
-        self, markdown_body: str, layout_name: str, initiative: str = "rta"
+        self, markdown_body: str, layout_name: str, initiative: str = "rta", template_id: Optional[str] = None
     ) -> str:
         """Render a personalized markdown body into full HTML via its
         .njk layout - markdown-it-py for the content (raw inline HTML,
@@ -472,14 +472,24 @@ class PersonalizedOutreachService:
         layout (syntax-compatible with the website's actual Nunjucks -
         cocli is a Python backend, so this is Jinja2 under the hood, not
         the JS Nunjucks engine Eleventy uses; anything using Nunjucks-only
-        features wouldn't render the same way here)."""
+        features wouldn't render the same way here).
+
+        `template_id` is passed into the render context (as
+        `{{ template_id }}`) specifically so a layout's own documentation
+        comment can say which content template actually produced this
+        HTML, rather than hardcoding one template's name - a layout can
+        be shared by more than one template (Mark, 2026-10-03: the HTML
+        only told him which Python method rendered it, never which
+        template)."""
         from jinja2 import Template
         from markdown_it import MarkdownIt
 
         layout_path = self._template_path(layout_name, initiative)
         layout_source = layout_path.read_text(encoding="utf-8")
         content_html = MarkdownIt("commonmark", {"html": True}).render(markdown_body)
-        return Template(layout_source).render(content=content_html, landing_url=DEFAULT_LANDING_URL)
+        return Template(layout_source).render(
+            content=content_html, landing_url=DEFAULT_LANDING_URL, template_id=template_id or ""
+        )
 
     def _rendered_outreach_path(self, initiative: str, company_slug: str, template_id: str) -> Path:
         stem = Path(template_id).stem
@@ -723,7 +733,7 @@ class PersonalizedOutreachService:
             html_path.unlink(missing_ok=True)
             return None
 
-        html = self.render_markdown_email(body, layout, initiative)
+        html = self.render_markdown_email(body, layout, initiative, template_id=Path(template_id).stem)
         html_path.write_text(html, encoding="utf-8")
         return html_path
 
@@ -782,7 +792,9 @@ class PersonalizedOutreachService:
                 if layout_name:
                     from cocli.utils.html_to_text import html_to_text
 
-                    html_body = self.render_markdown_email(match.body, layout_name, initiative)
+                    html_body = self.render_markdown_email(
+                        match.body, layout_name, initiative, template_id=Path(template_id).stem
+                    )
                     mail_request = SendMailRequest(
                         to_address=match.recipient_email,
                         subject=match.subject,
