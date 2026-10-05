@@ -197,27 +197,32 @@ def test_to_call_task_path_resolution(to_call_integration_env):
     )
 
 
-def test_a_future_scheduled_task_is_visible_but_sorted_after_due_items(to_call_integration_env):
+def test_a_future_scheduled_task_is_visible_and_sorted_before_never_scheduled(
+    to_call_integration_env,
+):
     """Changed 2026-09-17 (Mark): a pending task with a future callback_at
     is a scheduled follow-up, not something to hide from the to-call view
     entirely. Superseded 2026-09-01 regression test's premise - searching
     the to-call filter for a specific company scheduled a few days out
-    found nothing under the old "not due yet = invisible" rule, which
-    turned out worse than an unsorted-but-visible list (confirmed via
-    the Jimmy Jean Insurance case). Both due-now and future-scheduled
-    entries are visible now, due-now sorted first; to_call_callback_at
-    carries the schedule so the TUI can sort/color the not-yet-due ones."""
+    found nothing under the old "not due yet = invisible" rule (confirmed
+    via the Jimmy Jean Insurance case).
+
+    Changed again 2026-10-05 (Mark): a never-scheduled entry (callback_at
+    None) is a fresh lead that was never promised a callback - it is not
+    "due now" in the sense that matters for calling priority. An actual
+    scheduled callback (future or, especially, overdue) represents a real
+    commitment and must outrank a never-scheduled fresh lead."""
     from datetime import datetime, timedelta, UTC
 
     campaign, _ = to_call_integration_env
 
-    due_now = ToCallTask(
+    never_scheduled = ToCallTask(
         company_slug="company-with-rating-1",
         domain="high.example.com",
         campaign_name=campaign,
         ack_token=None,
     )
-    due_now.save()
+    never_scheduled.save()
 
     not_due_yet = ToCallTask(
         company_slug="company-with-rating-2",
@@ -242,6 +247,97 @@ def test_a_future_scheduled_task_is_visible_but_sorted_after_due_items(to_call_i
     assert by_slug["company-with-rating-2"].to_call_callback_at is not None
 
     slugs_in_order = [r.slug for r in to_call_results]
-    assert slugs_in_order.index("company-with-rating-1") < slugs_in_order.index(
-        "company-with-rating-2"
+    assert slugs_in_order.index("company-with-rating-2") < slugs_in_order.index(
+        "company-with-rating-1"
     )
+
+
+def test_an_overdue_callback_sorts_above_both_future_and_never_scheduled(
+    to_call_integration_env,
+):
+    """Mark, 2026-10-05: "the most expired, the most late, should be at
+    the top of the list. They are the first ones that should be called."
+    An overdue (expired) callback_at must sort ahead of both a
+    future-scheduled callback and a never-scheduled fresh lead."""
+    from datetime import datetime, timedelta, UTC
+
+    campaign, _ = to_call_integration_env
+
+    never_scheduled = ToCallTask(
+        company_slug="company-with-rating-1",
+        domain="high.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+    )
+    never_scheduled.save()
+
+    not_due_yet = ToCallTask(
+        company_slug="company-with-rating-2",
+        domain="good.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+        callback_at=datetime.now(UTC) + timedelta(days=30),
+    )
+    not_due_yet.save()
+
+    overdue = ToCallTask(
+        company_slug="company-no-contact",
+        domain="no-contact.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+        callback_at=datetime.now(UTC) - timedelta(days=10),
+    )
+    overdue.save()
+
+    to_call_results = get_fuzzy_search_results(
+        "",
+        filters={"to_call": True},
+        campaign_name=campaign,
+        force_rebuild_cache=True,
+    )
+    slugs_in_order = [r.slug for r in to_call_results]
+
+    expected_order = [
+        "company-no-contact",       # overdue - most late, called first
+        "company-with-rating-2",    # future-scheduled
+        "company-with-rating-1",    # never scheduled
+    ]
+    assert [s for s in slugs_in_order if s in expected_order] == expected_order
+
+
+def test_among_overdue_callbacks_the_oldest_sorts_first(to_call_integration_env):
+    """Mark, 2026-10-05: among several overdue/expired entries, the most
+    late one (oldest callback_at) must be at the very top - it's been
+    waiting longest."""
+    from datetime import datetime, timedelta, UTC
+
+    campaign, _ = to_call_integration_env
+
+    mildly_overdue = ToCallTask(
+        company_slug="company-with-rating-1",
+        domain="high.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+        callback_at=datetime.now(UTC) - timedelta(days=2),
+    )
+    mildly_overdue.save()
+
+    very_overdue = ToCallTask(
+        company_slug="company-with-rating-2",
+        domain="good.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+        callback_at=datetime.now(UTC) - timedelta(days=30),
+    )
+    very_overdue.save()
+
+    to_call_results = get_fuzzy_search_results(
+        "",
+        filters={"to_call": True},
+        campaign_name=campaign,
+        force_rebuild_cache=True,
+    )
+    slugs_in_order = [r.slug for r in to_call_results]
+
+    expected_order = ["company-with-rating-2", "company-with-rating-1"]
+    assert [s for s in slugs_in_order if s in expected_order] == expected_order

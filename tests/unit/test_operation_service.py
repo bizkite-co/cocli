@@ -5,8 +5,17 @@ flag - gated behind the full (slower) compact+identify+repopulate
 workflow, with no standalone way to just clear the queue. Extracted into
 OperationService._purge_to_call_pending_files(), shared by both the
 inline step and this new standalone operation.
+
+2026-10-05: purge used to delete every pending file unconditionally,
+including ones with a real callback_at already scheduled - a purge+
+recompile could silently wipe out someone's scheduled (including
+overdue/expired) callback if they didn't rank in the fresh top-N
+candidate list the recompile repopulates from. Scheduled entries must
+now survive a purge; only never-scheduled (callback_at=None) entries are
+cleared.
 """
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +23,7 @@ import pytest
 
 from cocli.application.operation_service import OperationService
 from cocli.core.paths import paths
+from cocli.models.campaigns.queues.to_call import ToCallTask
 from cocli.models.search import SearchResult
 
 
@@ -23,6 +33,15 @@ def pending_to_call_dir(tmp_path: Path):
         pending = paths.campaign("test-campaign").path / "queues" / "to-call" / "pending"
         pending.mkdir(parents=True)
         yield pending
+
+
+def _save_to_call_task(slug: str, callback_at: datetime | None = None) -> None:
+    ToCallTask(
+        company_slug=slug,
+        domain=f"{slug}.example.com",
+        campaign_name="test-campaign",
+        callback_at=callback_at,
+    ).save()
 
 
 def test_op_purge_to_call_is_registered() -> None:
@@ -35,9 +54,11 @@ def test_op_purge_to_call_is_registered() -> None:
 
 
 @pytest.mark.asyncio
-async def test_op_purge_to_call_deletes_pending_files(pending_to_call_dir: Path) -> None:
-    (pending_to_call_dir / "a.usv").write_text("x")
-    (pending_to_call_dir / "b.usv").write_text("x")
+async def test_op_purge_to_call_deletes_never_scheduled_pending_files(
+    pending_to_call_dir: Path,
+) -> None:
+    _save_to_call_task("a")
+    _save_to_call_task("b")
 
     service = OperationService(campaign_name="test-campaign")
     result = await service.execute("op_purge_to_call")
@@ -45,6 +66,42 @@ async def test_op_purge_to_call_deletes_pending_files(pending_to_call_dir: Path)
     assert result["status"] == "success"
     assert result["result"]["purged"] == 2
     assert list(pending_to_call_dir.glob("*.usv")) == []
+
+
+@pytest.mark.asyncio
+async def test_op_purge_to_call_preserves_scheduled_and_overdue_callbacks(
+    pending_to_call_dir: Path,
+) -> None:
+    """The actual bug Mark hit: an expired/overdue callback_at must never
+    be dropped by a purge+recompile - it stays pending until someone
+    actually calls/dispositions it."""
+    overdue = datetime.now(timezone.utc) - timedelta(days=10)
+    future = datetime.now(timezone.utc) + timedelta(days=3)
+    _save_to_call_task("overdue-callback", callback_at=overdue)
+    _save_to_call_task("future-callback", callback_at=future)
+    _save_to_call_task("never-scheduled")
+
+    service = OperationService(campaign_name="test-campaign")
+    result = await service.execute("op_purge_to_call")
+
+    assert result["result"]["purged"] == 1
+    remaining = {p.stem for p in pending_to_call_dir.glob("*.usv")}
+    assert remaining == {"overdue-callback", "future-callback"}
+
+
+@pytest.mark.asyncio
+async def test_op_purge_to_call_leaves_unparseable_files_alone(
+    pending_to_call_dir: Path,
+) -> None:
+    """Malformed files are left in place rather than guessed at - same
+    defensive stance search_service.py takes when loading this queue."""
+    (pending_to_call_dir / "garbage.usv").write_text("not valid usv content")
+
+    service = OperationService(campaign_name="test-campaign")
+    result = await service.execute("op_purge_to_call")
+
+    assert result["result"]["purged"] == 0
+    assert (pending_to_call_dir / "garbage.usv").exists()
 
 
 @pytest.mark.asyncio
@@ -65,7 +122,7 @@ async def test_op_purge_to_call_only_deletes_to_call_files(
     """Regression guard: the shared helper is scoped to
     queues/to-call/pending/ specifically - it must never reach into a
     sibling queue (gm-list, gm-details, enrichment)."""
-    (pending_to_call_dir / "a.usv").write_text("x")
+    _save_to_call_task("a")
     # pending_to_call_dir = .../queues/to-call/pending, so parents[1] is
     # .../queues - the sibling gm-list queue lives at .../queues/gm-list.
     gm_list_pending = pending_to_call_dir.parents[1] / "gm-list" / "pending"

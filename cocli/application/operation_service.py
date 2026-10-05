@@ -305,11 +305,23 @@ class OperationService:
         return list(self.operations.values())
 
     def _purge_to_call_pending_files(self) -> int:
-        """Deletes every pending to-call task file. Shared by
-        op_compile_to_call's optional inline purge step and the standalone
-        op_purge_to_call operation, so there's one place that knows what
-        "purge the to-call queue" actually means on disk."""
+        """Deletes pending to-call task files that have never been
+        scheduled (callback_at is None). Shared by op_compile_to_call's
+        optional inline purge step and the standalone op_purge_to_call
+        operation, so there's one place that knows what "purge the to-call
+        queue" actually means on disk.
+
+        Mark, 2026-10-05: previously this deleted every file unconditionally,
+        including ones with a real callback_at already set - a purge+
+        recompile could silently wipe out someone's scheduled (including
+        overdue) callback if they didn't rank in the fresh top-N candidate
+        list the recompile repopulates from. Scheduled entries (callback_at
+        set, expired or not) must stay in pending/ until they're actually
+        called/dispositioned - only the "never scheduled" fresh-lead
+        entries this operation itself generates are safe to clear and
+        re-rank."""
         from cocli.core.paths import paths as _paths
+        from cocli.models.campaigns.queues.to_call import ToCallTask
 
         pending_dir = (
             _paths.campaign(self.campaign_name).path / "queues" / "to-call" / "pending"
@@ -317,6 +329,13 @@ class OperationService:
         purged = 0
         if pending_dir.exists():
             for f in pending_dir.glob("*.usv"):
+                try:
+                    task = ToCallTask.from_usv(f.read_text(encoding="utf-8"))
+                except Exception:
+                    # Malformed file - leave it alone rather than guess.
+                    continue
+                if task.callback_at is not None:
+                    continue
                 f.unlink()
                 purged += 1
         return purged

@@ -822,12 +822,15 @@ def get_fuzzy_search_results(
             elif filters and filters.get("to_call") and not search_query:
                 # Testimonial targets prioritized first (in order of priority/rank),
                 # followed by cold prospects.
-                # Within each tier: never-called/due-now (NULL or past callback_at) first,
-                # then future-scheduled callbacks soonest-first, then alphabetical by name.
+                # Within each tier: scheduled callbacks first, most overdue
+                # (oldest callback_at) at the very top - these are broken
+                # promises and should be called first - then future-scheduled
+                # callbacks soonest-first, then never-scheduled/fresh leads
+                # (NULL callback_at) last, then alphabetical by name.
                 sql += """ ORDER BY
                     CASE WHEN list_contains(tags, 'testimonial-target') THEN 0 ELSE 1 END ASC,
                     to_call_priority ASC NULLS LAST,
-                    to_call_callback_at ASC NULLS FIRST,
+                    to_call_callback_at ASC NULLS LAST,
                     name ASC"""
             elif not search_query:
                 sql += " ORDER BY name ASC"
