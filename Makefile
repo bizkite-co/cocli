@@ -447,6 +447,19 @@ deploy-unsubscribes-infra: install ## Deploy the campaign's unsubscribe intake L
 	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy CocliUnsubscribesStack-$(CAMPAIGN) --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
 	@aws cloudformation describe-stacks --stack-name CocliUnsubscribesStack-$(CAMPAIGN) --profile $(AWS_PROFILE) --query 'Stacks[0].Outputs' --output table
 
+.PHONY: bootstrap-infra
+bootstrap-infra: install ## (Re)create/repair the CDK toolkit stack (CDKToolkit) for this campaign's AWS account/region - needed once per account, and again if that stack's SSM parameter/IAM roles are ever lost (Usage: make bootstrap-infra CAMPAIGN=roadmap)
+	$(call validate_campaign)
+	@echo "Bootstrapping CDK toolkit stack (profile: $(AWS_PROFILE), region: $(REGION))"
+	# --force: a plain bootstrap no-ops ("bootstrapped (no changes)") if
+	# CloudFormation's own template-version bookkeeping already matches,
+	# even when a resource inside the stack (e.g. the
+	# /cdk-bootstrap/<qualifier>/version SSM parameter) was separately
+	# lost - exactly the repair scenario this target exists for
+	# (confirmed live, 2026-10-05: a plain bootstrap reported "no
+	# changes" while that parameter was still missing immediately after).
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk bootstrap --force --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh $(CAMPAIGN)

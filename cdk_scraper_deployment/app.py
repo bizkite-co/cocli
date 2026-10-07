@@ -115,6 +115,16 @@ if account:
 else:
     env = cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=region)
 
+# Only needed when this account/region's CDKToolkit bootstrap stack was
+# created (or, as happened to westmonroe-support's us-east-1 on 2026-10-01,
+# overwritten by an unrelated app's bootstrap) with a non-default qualifier.
+# CDK bakes the qualifier into synthesized asset bucket/role names at synth
+# time, so a mismatch here shows up as deploy-time errors ("SSM parameter
+# /cdk-bootstrap/<default qualifier>/version not found") even though the
+# bootstrap stack itself is healthy. Leave unset to use CDK's own default.
+bootstrap_qualifier = aws_config.get("bootstrap_qualifier")
+main_synthesizer = cdk.DefaultStackSynthesizer(qualifier=bootstrap_qualifier) if bootstrap_qualifier else None
+
 # Determine the RPi user name (defaulting to the profile name used)
 rpi_user_name = aws_config.get("rpi_user_name") or aws_config.get("profile") or aws_config.get("aws_profile") or "bizkite-support"
 data_bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
@@ -138,6 +148,7 @@ is_uat = "uat" in (aws_config.get("profile") or aws_config.get("aws_profile") or
 
 CdkScraperDeploymentStack(app, stack_name,
     env=env,
+    synthesizer=main_synthesizer,
     campaign_config={
         "name": campaign_name,
         "domain": domain,
@@ -191,6 +202,7 @@ if outreach_domain:
         app,
         f"CocliTestimonialsStack-{campaign_name}",
         env=form_intake_env,
+        synthesizer=main_synthesizer,
         campaign_name=campaign_name,
         data_bucket_name=data_bucket_name,
         allowed_origin=f"https://{outreach_domain}",
@@ -207,6 +219,7 @@ if outreach_domain:
         app,
         f"CocliSignupsStack-{campaign_name}",
         env=form_intake_env,
+        synthesizer=main_synthesizer,
         campaign_name=campaign_name,
         data_bucket_name=data_bucket_name,
         allowed_origin=f"https://{outreach_domain}",
@@ -224,6 +237,7 @@ if outreach_domain:
         app,
         f"CocliUnsubscribesStack-{campaign_name}",
         env=form_intake_env,
+        synthesizer=main_synthesizer,
         campaign_name=campaign_name,
         data_bucket_name=data_bucket_name,
         allowed_origin=f"https://{outreach_domain}",
