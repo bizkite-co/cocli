@@ -224,8 +224,8 @@ async def test_email_sequences_pane_renders_selected_template(mock_cocli_env, mo
 
         subject_label = pane.preview.query_one("#template-preview-subject")
         body_static = pane.preview.query_one("#template-preview-body")
-        assert "Hi Sample" in str(subject_label.content)
-        assert "Body for Sample Co" in str(body_static.content)
+        assert "Hi Test" in str(subject_label.content)
+        assert "Body for Test Company" in str(body_static.content)
 
 
 @pytest.mark.asyncio
@@ -355,13 +355,39 @@ async def test_t_sends_a_test_copy_of_the_selected_template(mock_cocli_env, mock
     """Mark, 2026-10-07: "send myself a copy of any item I am viewing" -
     renders the selected template with the same sample data as the
     preview and sends it to a configurable test address, defaulting to
-    test@bizkite.net, prefixed [TEST]."""
+    test@bizkite.net, prefixed [TEST].
+
+    Uses a layout + outreach-domain link, the exact shape that caught
+    the real bug: an earlier version of this action called generate_copy()
+    and sent via EmailService directly, bypassing inject_send_guid()
+    entirely - a test copy showed no tracking token at all even after
+    send_batch()'s own injection logic was fixed, because this path
+    never went through it. Also confirms no SendLogEntry/SendRecord gets
+    written for a test send - it must look like a real send without
+    becoming one (no Recent Sends/Tracking pollution, no SendRecord that
+    a later real unsubscribe click could mis-resolve)."""
     from cocli.application.email_service import EmailService
+    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.core.paths import paths
 
     _make_initiative(
         CAMPAIGN,
         "rta",
-        {"email-sequences": {"hook.md": '---\nsubject: "Hi {first_name}"\n---\n\nBody for {company_name}'}},
+        {
+            "email-sequences": {
+                "hook.md": (
+                    '---\nsubject: "Hi {first_name}"\nlayout: hook.njk\n---\n\n'
+                    "Body for {company_name}. See [testimonials](https://getretirementtaxanalyzer.com/testimonials/)."
+                ),
+                "hook.njk": '<html><body>{{ content | safe }}</body></html>',
+            }
+        },
+    )
+    config_path = paths.campaigns / CAMPAIGN / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        '[aws]\noutreach-hosted-zone-domain = "getretirementtaxanalyzer.com"\n',
+        encoding="utf-8",
     )
 
     sent_requests: list = []
@@ -402,7 +428,8 @@ async def test_t_sends_a_test_copy_of_the_selected_template(mock_cocli_env, mock
         pane = widget.query_one(_EmailSequencesPane)
         file_list = pane.query_one("#email_sequences_file_list", ListView)
         file_list.focus()
-        file_list.index = 0
+        names = [i.template_name for i in file_list.children]
+        file_list.index = names.index("hook.md")
         await pilot.pause(0.1)
 
         await pilot.press("t")
@@ -411,8 +438,15 @@ async def test_t_sends_a_test_copy_of_the_selected_template(mock_cocli_env, mock
     assert len(sent_requests) == 1
     request = sent_requests[0]
     assert request.to_address == "test@bizkite.net"
-    assert request.subject == "[TEST] Hi Sample"
-    assert "Body for Sample Co" in request.body
+    assert request.subject == "[TEST] Hi Test"
+    assert request.company_slug is None
+    assert request.html_body is not None
+    assert "Body for Test Company" in request.html_body
+    assert "getretirementtaxanalyzer.com/testimonials/?" in request.html_body
+    assert "&amp;t=" in request.html_body
+
+    # No log/record pollution from a test send.
+    assert PersonalizedOutreachService(CAMPAIGN).list_send_log() == []
 
 
 @pytest.mark.asyncio

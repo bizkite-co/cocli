@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
     from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
     from cocli.models.campaigns.indexes.ses_event_log import SesEventLogEntry
+    from cocli.models.mail import SendMailRequest
 
 logger = logging.getLogger(__name__)
 
@@ -760,6 +761,84 @@ class PersonalizedOutreachService:
         html_path.write_text(html, encoding="utf-8")
         return html_path
 
+    def build_tracked_mail_request(
+        self,
+        match: ProspectContactMatch,
+        *,
+        template_id: str,
+        initiative: str,
+        send_guid: str,
+        cc_addresses: Optional[list[str]] = None,
+        bcc_addresses: Optional[list[str]] = None,
+    ) -> "SendMailRequest":
+        """Render `match` into a SendMailRequest with the send-time GUID
+        tracking token appended to every outbound link - the one place
+        both send_batch() and a test-copy send build the actual mail
+        content, so the two can never drift apart on what "tracked"
+        means. (Mark, 2026-10-07: _EmailSequencesPane's "send test copy"
+        action used to hand-roll this separately and shipped with zero
+        GUID tracking at all - confirmed live, even after send_batch()'s
+        own injection bug was fixed, because this code path never went
+        through send_batch() to begin with.)"""
+        from cocli.models.mail import SendMailRequest
+        from cocli.utils.send_tracking import inject_send_guid
+
+        layout_name = self._layout_for_template(template_id, initiative)
+        is_legacy_html_template = template_id.endswith(".html")
+        landing_domain = self._landing_url()
+
+        if layout_name:
+            from cocli.utils.html_to_text import html_to_text
+
+            # Injecting into match.body *before* rendering (as this used
+            # to do) corrupted the output two ways, confirmed live against
+            # request_testimonial.md: a markdown-syntax link's URL sits
+            # inside parens, which aren't a regex stop character, so the
+            # token landed *after* the closing paren - outside the link
+            # entirely - leaking "...page).&t=<guid>" as visible body
+            # text, while a raw HTML <a href="..."> link already in the
+            # markdown source got the token twice (once here, once from
+            # the second pass below, both matching the same quote-
+            # delimited href). Injecting only once, after both markdown-it
+            # and the Jinja2 layout have rendered everything into real
+            # <a href="..."> tags, is correct uniformly - including
+            # unsubscribe links that come from the layout itself and
+            # don't exist until this point.
+            html_body = self.render_markdown_email(
+                match.body, layout_name, initiative, template_id=Path(template_id).stem
+            )
+            html_body = inject_send_guid(html_body, send_guid, landing_domain)
+            return SendMailRequest(
+                to_address=match.recipient_email,
+                subject=match.subject,
+                body=html_to_text(html_body),
+                html_body=html_body,
+                company_slug=match.company_slug,
+                cc_addresses=cc_addresses or [],
+                bcc_addresses=bcc_addresses or [],
+            )
+        elif is_legacy_html_template:
+            from cocli.utils.html_to_text import html_to_text
+
+            tracked_body = inject_send_guid(match.body, send_guid, landing_domain)
+            return SendMailRequest(
+                to_address=match.recipient_email,
+                subject=match.subject,
+                body=html_to_text(tracked_body),
+                html_body=tracked_body,
+                company_slug=match.company_slug,
+                cc_addresses=cc_addresses or [],
+                bcc_addresses=bcc_addresses or [],
+            )
+        return SendMailRequest(
+            to_address=match.recipient_email,
+            subject=match.subject,
+            body=inject_send_guid(match.body, send_guid, landing_domain),
+            company_slug=match.company_slug,
+            cc_addresses=cc_addresses or [],
+            bcc_addresses=bcc_addresses or [],
+        )
+
     def send_batch(
         self,
         matches: list[ProspectContactMatch],
@@ -789,9 +868,7 @@ class PersonalizedOutreachService:
         from datetime import datetime, UTC
 
         from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
-        from cocli.models.mail import SendMailRequest
         from cocli.models.send_record import SendRecord
-        from cocli.utils.send_tracking import inject_send_guid
 
         # Microsecond precision: two send_batch() calls in quick succession
         # (e.g. back-to-back CLI runs, or two tests in the same process)
@@ -803,16 +880,6 @@ class PersonalizedOutreachService:
 
         result = SendBatchResult(batch_id=batch_id)
         entries: list[SendLogEntry] = []
-        # A template with a `layout:` frontmatter key is markdown meant to
-        # become an HTML email - render it through that .njk layout here,
-        # once per batch (the layout is a property of the template, not
-        # of the recipient). A .html-suffixed template_id (legacy - the
-        # body IS already HTML, no markdown/layout step) is still
-        # supported directly. Either way, a plain-text fallback is
-        # derived automatically for the multipart/alternative part.
-        layout_name = self._layout_for_template(template_id, initiative)
-        is_legacy_html_template = template_id.endswith(".html")
-        landing_domain = self._landing_url()
         for match in matches:
             try:
                 # Minted here, not at render time: one GUID = one actual
@@ -820,63 +887,14 @@ class PersonalizedOutreachService:
                 # a draft can be previewed/re-rendered any number of times
                 # before this point without burning through identifiers.
                 send_guid = SendRecord.new_guid()
-
-                if layout_name:
-                    from cocli.utils.html_to_text import html_to_text
-
-                    # Mark, 2026-10-07: injecting into match.body *before*
-                    # rendering (as this used to do) corrupted the output
-                    # two ways, confirmed live against request_testimonial.md:
-                    # a markdown-syntax link's URL sits inside parens, which
-                    # aren't a regex stop character, so the token landed
-                    # *after* the closing paren - outside the link entirely -
-                    # leaking "...page).&t=<guid>" as visible body text,
-                    # while a raw HTML <a href="..."> link already in the
-                    # markdown source got the token twice (once here, once
-                    # from the second pass below, both matching the same
-                    # quote-delimited href). Injecting only once, after both
-                    # markdown-it and the Jinja2 layout have rendered
-                    # everything into real <a href="..."> tags, is correct
-                    # uniformly - including unsubscribe links that come from
-                    # the layout itself and don't exist until this point.
-                    html_body = self.render_markdown_email(
-                        match.body,
-                        layout_name,
-                        initiative,
-                        template_id=Path(template_id).stem,
-                    )
-                    html_body = inject_send_guid(html_body, send_guid, landing_domain)
-                    mail_request = SendMailRequest(
-                        to_address=match.recipient_email,
-                        subject=match.subject,
-                        body=html_to_text(html_body),
-                        html_body=html_body,
-                        company_slug=match.company_slug,
-                        cc_addresses=cc_addresses or [],
-                        bcc_addresses=bcc_addresses or [],
-                    )
-                elif is_legacy_html_template:
-                    from cocli.utils.html_to_text import html_to_text
-
-                    tracked_body = inject_send_guid(match.body, send_guid, landing_domain)
-                    mail_request = SendMailRequest(
-                        to_address=match.recipient_email,
-                        subject=match.subject,
-                        body=html_to_text(tracked_body),
-                        html_body=tracked_body,
-                        company_slug=match.company_slug,
-                        cc_addresses=cc_addresses or [],
-                        bcc_addresses=bcc_addresses or [],
-                    )
-                else:
-                    mail_request = SendMailRequest(
-                        to_address=match.recipient_email,
-                        subject=match.subject,
-                        body=inject_send_guid(match.body, send_guid, landing_domain),
-                        company_slug=match.company_slug,
-                        cc_addresses=cc_addresses or [],
-                        bcc_addresses=bcc_addresses or [],
-                    )
+                mail_request = self.build_tracked_mail_request(
+                    match,
+                    template_id=template_id,
+                    initiative=initiative,
+                    send_guid=send_guid,
+                    cc_addresses=cc_addresses,
+                    bcc_addresses=bcc_addresses,
+                )
                 send_result = email_service.send(mail_request)
                 entries.append(
                     SendLogEntry(

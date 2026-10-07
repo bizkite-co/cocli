@@ -166,9 +166,10 @@ class _EmailSequencesPane(Horizontal):
         service = PersonalizedOutreachService(campaign)
         try:
             subject, body = service.generate_copy(
-                first_name="Sample",
-                company_name="Sample Co",
-                company_slug="sample-co",
+                first_name="Test",
+                full_name="Test User",
+                company_name="Test Company",
+                company_slug="test-company",
                 template_name=message.item.template_name,
                 initiative=self.initiative,
             )
@@ -215,8 +216,24 @@ class _EmailSequencesPane(Horizontal):
         - renders the selected template with the same sample placeholder
         data as the on-screen preview and sends it to a configurable test
         address (EmailSettings.test_send_address, default test@bizkite.net),
-        prefixed "[TEST]" so it's never confused with a real send (same
-        convention as scripts/send_test_testimonial_email.py)."""
+        prefixed "[TEST]" so it's never confused with a real send.
+
+        Uses PersonalizedOutreachService.build_tracked_mail_request() -
+        the exact same render+inject_send_guid logic send_batch() uses
+        per recipient - rather than hand-rolling render+send here. An
+        earlier version called generate_copy() + render_markdown_email()
+        directly and sent via EmailService itself, which meant it never
+        called inject_send_guid() at all: confirmed live, 2026-10-07 - a
+        test copy showed no tracking token even after the GUID-injection
+        bug in send_batch() was fixed, because this code path never went
+        through that logic to begin with.
+
+        Deliberately does NOT call send_batch() itself: that also writes
+        a permanent SendLogEntry (would pollute Recent Sends/Tracking
+        stats with every test send) and a SendRecord (would let a test
+        email's unsubscribe link later exclude the real test address).
+        A test copy should look exactly like a real send without
+        actually becoming one."""
         item = self.file_list.highlighted_child
         if not isinstance(item, TemplateListItem):
             self.app.notify("Select a template first", severity="warning")
@@ -232,29 +249,23 @@ class _EmailSequencesPane(Horizontal):
 
         def _render_and_send() -> str:
             from cocli.application.email_service import EmailService
-            from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+            from cocli.application.personalized_outreach_service import (
+                PersonalizedOutreachService,
+                ProspectContactMatch,
+            )
             from cocli.core.config import load_campaign_config
-            from cocli.models.mail import EmailSettings, SendMailRequest
-            from cocli.utils.html_to_text import html_to_text
+            from cocli.models.mail import EmailSettings
+            from cocli.models.send_record import SendRecord
 
             service = PersonalizedOutreachService(campaign)
             subject, body = service.generate_copy(
-                first_name="Sample",
-                company_name="Sample Co",
-                company_slug="sample-co",
+                first_name="Test",
+                full_name="Test User",
+                company_name="Test Company",
+                company_slug="test-company",
                 template_name=template_name,
                 initiative=initiative,
             )
-
-            layout = service._layout_for_template(template_name, initiative)
-            if layout:
-                html_body = service.render_markdown_email(
-                    body, layout, initiative, template_id=Path(template_name).stem
-                )
-                plain_body = html_to_text(html_body)
-            else:
-                html_body = None
-                plain_body = body
 
             raw = load_campaign_config(campaign) or {}
             email_raw = raw.get("email") or {}
@@ -262,16 +273,29 @@ class _EmailSequencesPane(Horizontal):
             aws = raw.get("aws") or {}
             profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
             email_service = EmailService(campaign, settings, aws_profile=profile)
-
             test_address = settings.test_send_address or "test@bizkite.net"
-            email_service.send(
-                SendMailRequest(
-                    to_address=test_address,
-                    subject=f"[TEST] {subject}",
-                    body=plain_body,
-                    html_body=html_body,
-                )
+
+            match = ProspectContactMatch(
+                company_slug="test-company",
+                company_name="Test Company",
+                recipient_email=test_address,
+                contact_name="Test User",
+                first_name="Test",
+                role=None,
+                subject=f"[TEST] {subject}",
+                body=body,
             )
+            mail_request = service.build_tracked_mail_request(
+                match,
+                template_id=template_name,
+                initiative=initiative,
+                send_guid=SendRecord.new_guid(),
+            )
+            # No company really named "test-company" exists - don't let
+            # EmailService.send() try to write a company note/directory
+            # for it.
+            mail_request.company_slug = None
+            email_service.send(mail_request)
             return test_address
 
         try:

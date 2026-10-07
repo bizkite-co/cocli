@@ -57,3 +57,26 @@ def test_leaves_unrelated_domains_untouched() -> None:
     assert "https://example.com/page" in result
     assert "t=abc123guid" not in result.split("and")[0]
     assert "getretirementtaxanalyzer.com/signup/?t=abc123guid" in result
+
+
+def test_bare_url_in_parens_gets_the_token_inside_not_after() -> None:
+    """email_01_pas_hook.md: "We built RTA ({landing_url})" - a bare URL
+    wrapped in parens with no markdown link syntax around it. ")" isn't
+    a markdown delimiter here, just plain punctuation - the token must
+    land inside the URL, not leak out after the closing paren as visible
+    text ("...RTA (https://...)?t=guid")."""
+    text = "We built RTA (https://getretirementtaxanalyzer.com)."
+
+    result = inject_send_guid(text, "abc123guid", DOMAIN)
+
+    assert result == "We built RTA (https://getretirementtaxanalyzer.com?t=abc123guid)."
+
+
+def test_bare_url_followed_by_sentence_punctuation_keeps_punctuation_outside() -> None:
+    text = "Visit https://getretirementtaxanalyzer.com/testimonials/, thanks!"
+
+    result = inject_send_guid(text, "abc123guid", DOMAIN)
+
+    assert result == (
+        "Visit https://getretirementtaxanalyzer.com/testimonials/?t=abc123guid, thanks!"
+    )

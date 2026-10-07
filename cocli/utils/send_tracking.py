@@ -19,6 +19,9 @@ import re
 from urllib.parse import urlparse
 
 
+_TRAILING_PUNCTUATION = ".,;:!?"
+
+
 def inject_send_guid(text: str, guid: str, domain: str) -> str:
     """Append `t=<guid>` to the query string of every link in `text`
     that points at `domain` (e.g. "https://getretirementtaxanalyzer.com"
@@ -28,17 +31,29 @@ def inject_send_guid(text: str, guid: str, domain: str) -> str:
     an HTML email body uses, matching whichever separator the URL
     already uses rather than mixing the two. A link with no existing
     query string (e.g. a bare `.../unsubscribe`) gets `?t=<guid>`.
+
+    `)` is excluded from the match (plain-text/markdown templates write
+    a bare URL in parens, e.g. "({landing_url})" - email_01_pas_hook.md
+    does exactly this - and `)` isn't a markdown link delimiter here,
+    there's no `[text](...)` around it, so without this the token landed
+    *after* the closing paren instead of inside the URL). Trailing
+    sentence punctuation (".,;:!?") is likewise moved past the token
+    rather than swallowed into it, for a bare URL followed by a period.
     """
     bare_domain = urlparse(domain if "://" in domain else f"//{domain}").netloc or domain
     pattern = re.compile(
-        r"https?://" + re.escape(bare_domain) + r"[^\s\"'<]*"
+        r"https?://" + re.escape(bare_domain) + r"[^\s\"')<]*"
     )
 
     def _append_token(match: re.Match[str]) -> str:
         url = match.group(0)
+        trailing = ""
+        while url and url[-1] in _TRAILING_PUNCTUATION:
+            trailing = url[-1] + trailing
+            url = url[:-1]
         separator = "&amp;" if "&amp;" in url else "&"
         if "?" in url:
-            return f"{url}{separator}t={guid}"
-        return f"{url}?t={guid}"
+            return f"{url}{separator}t={guid}{trailing}"
+        return f"{url}?t={guid}{trailing}"
 
     return pattern.sub(_append_token, text)
