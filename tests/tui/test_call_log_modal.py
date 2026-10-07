@@ -816,3 +816,113 @@ async def test_ctrl_enter_saves_the_call_same_as_ctrl_s(
         meetings_dir = paths.companies.entry("enter-co").path / "meetings"
         assert meetings_dir.exists()
         assert any(meetings_dir.iterdir())
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_f4_with_no_template_warns_and_does_not_send_or_save(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark, 2026-10-06: F4 is specifically "send the selected email" -
+    with no template picked there's nothing to send, so it should warn
+    and do nothing else (not silently log the call either)."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="No Template Co", slug="no-template-co", domain="notemplate.test", phone="555-444-3333")
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="no-template-co", phone="555-444-3333")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        modal.query_one("#call_notes").text = "Should not be saved"
+        await pilot.press("f4")
+        await pilot.pause(0.2)
+
+        # Modal is still open (dismiss was never reached).
+        assert app.screen is modal
+
+    meetings_dir = paths.companies.entry("no-template-co").path / "meetings"
+    assert not meetings_dir.exists() or not any(meetings_dir.iterdir())
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_f4_sends_immediately_and_skips_the_follow_up_queue(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The actual feature request (2026-10-06): sending a follow-up email
+    from the call log used to require closing the modal and performing
+    two more actions (prepare in Follow-Up Queue, then send in Target
+    Batches). F4 renders and sends it right then, in the same keypress
+    that also logs the call - and must NOT also queue a FollowUpTask,
+    since it was already sent."""
+    from cocli.application.follow_up_service import FollowUpService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+        ProspectContactMatch,
+        SendBatchResult,
+    )
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="Send Now Co", slug="send-now-co", domain="sendnow.test", phone="555-222-1111",
+        email="contact@sendnow.test",
+    )
+    co.save()
+
+    fake_match = ProspectContactMatch(
+        company_slug="send-now-co",
+        company_name="Send Now Co",
+        recipient_email="contact@sendnow.test",
+        contact_name="Pat Contact",
+        first_name="Pat",
+        role=None,
+        subject="",
+        body="",
+    )
+
+    send_calls: list[Any] = []
+
+    def _fake_send_batch(self: Any, matches: Any, **kwargs: Any) -> Any:
+        send_calls.append((matches, kwargs))
+        return SendBatchResult(batch_id="test-batch", sent=len(matches), failed=0)
+
+    with (
+        patch.object(
+            PersonalizedOutreachService, "find_contact_for_company", return_value=fake_match
+        ),
+        patch.object(
+            PersonalizedOutreachService,
+            "generate_copy",
+            return_value=("Subject line", "Body text"),
+        ),
+        patch.object(PersonalizedOutreachService, "send_batch", _fake_send_batch),
+    ):
+        app = CocliApp(auto_show=False)
+        async with app.run_test() as pilot:
+            modal = CallLogModal(company_slug="send-now-co", phone="555-222-1111")
+            app.push_screen(modal)
+            await pilot.pause(0.2)
+
+            modal.query_one("#call_notes").text = "Sent follow-up right away"
+            modal.query_one("#followup_template").value = "email_02_screenshots.md"
+            await pilot.press("f4")
+            await pilot.pause(0.3)
+
+    assert len(send_calls) == 1
+    sent_matches, sent_kwargs = send_calls[0]
+    assert sent_matches[0].recipient_email == "contact@sendnow.test"
+    assert sent_kwargs["template_id"] == "email_02_screenshots.md"
+
+    # The call itself was still logged...
+    meetings_dir = paths.companies.entry("send-now-co").path / "meetings"
+    assert meetings_dir.exists()
+    assert any(meetings_dir.iterdir())
+
+    # ...but no FollowUpTask was queued, since it was already sent.
+    assert FollowUpService("roadmap").list_pending(company_slug="send-now-co") == []

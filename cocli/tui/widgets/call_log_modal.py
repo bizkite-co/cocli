@@ -61,6 +61,7 @@ class CallLogModal(ModalScreen[bool]):
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save_call", "Save & Close"),
         Binding("ctrl+enter", "save_call", "Save & Close", show=False),
+        Binding("f4", "send_followup_now", "Send Follow-up Now"),
         # priority=True so these fire even while call_notes (a TextArea)
         # has focus and would otherwise consume plain "j"/"k" as typed
         # text. Bound to both key-id spellings ("J" vs "shift+j") since
@@ -195,7 +196,7 @@ class CallLogModal(ModalScreen[bool]):
                     yield Markdown(reference["product-comparison.md"], id="call-comparison-panel")
 
             yield Static(
-                "[bold reverse] CTRL+S / CTRL+ENTER: SAVE [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
+                "[bold reverse] CTRL+S / CTRL+ENTER: SAVE [/]  [bold reverse] F4: SEND FOLLOW-UP NOW [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
                 id="modal_help",
             )
 
@@ -282,6 +283,8 @@ class CallLogModal(ModalScreen[bool]):
     def handle_keys(self, event: events.Key) -> None:
         if event.key in ("ctrl+s", "ctrl+enter"):
             self.save_call()
+        elif event.key == "f4":
+            self.send_followup_now()
 
     def action_cancel(self) -> None:
         """Real call notes were lost to an unconfirmed instant discard here
@@ -311,7 +314,100 @@ class CallLogModal(ModalScreen[bool]):
 
         self.app.run_worker(run_cancel())
 
-    def save_call(self) -> None:
+    def send_followup_now(self) -> None:
+        """Deliberately named without the "action_" prefix, like save_call()
+        above: Textual auto-dispatches a Binding's action string to
+        "action_<name>" AND handle_keys() below calls it directly - if this
+        were action_send_followup_now, both paths would fire and the email
+        would send twice per keypress (caught via a failing test, 2026-10-06).
+        The "f4" Binding's action string exists only to show the keybinding
+        in the help bar; handle_keys() does the real dispatch, same as
+        ctrl+s/ctrl+enter.
+
+        Log the call exactly as Save & Close does, but instead of
+        queueing the selected email follow-up for later (FollowUpTask,
+        requiring a separate visit to Follow-Up Queue to "prepare" it and
+        then Target Batches to send it), render and send it immediately -
+        one keypress start to finish (Mark, 2026-10-06: "it doesn't send
+        until I close the call log and execute two more actions").
+
+        Deliberately bypasses the normal "render to a draft, review/edit,
+        then send" flow (see NO_EMAIL_FOLLOW_UP's docstring note above) -
+        that review step exists for the batch/campaign flow; here the
+        single explicit keypress on one specific contact, mid-call, *is*
+        the human decision to send, same as picking up the phone was.
+
+        Sync dispatcher + run_worker: sending is blocking network I/O and
+        this is a BINDINGS-triggered action, which doesn't get a worker
+        for free - same pattern as action_cancel above.
+        """
+        followup_template = self.query_one("#followup_template", SearchSelect).value
+        if not followup_template or followup_template == NO_EMAIL_FOLLOW_UP:
+            self.app.notify(
+                "Pick an email follow-up template first", severity="warning"
+            )
+            return
+        self.app.run_worker(self._send_followup_now_worker(followup_template))
+
+    async def _send_followup_now_worker(self, template_id: str) -> None:
+        import asyncio
+
+        from cocli.application.email_service import EmailService
+        from cocli.core.config import load_campaign_config
+        from cocli.models.mail import EmailSettings
+
+        campaign = get_campaign() or "default"
+
+        def _render_and_send() -> tuple[int, int, Optional[str]]:
+            service = PersonalizedOutreachService(campaign)
+            match = service.find_contact_for_company(self.company_slug)
+            if match is None:
+                return 0, 0, "No eligible contact found for this company"
+
+            subject, body = service.generate_copy(
+                first_name=match.first_name,
+                company_name=match.company_name,
+                company_slug=self.company_slug,
+                template_name=template_id,
+                initiative="rta",
+                person_slug=match.person_slug,
+            )
+            match.subject = subject
+            match.body = body
+
+            raw = load_campaign_config(campaign) or {}
+            email_raw = raw.get("email") or {}
+            settings = EmailSettings.model_validate(email_raw)
+            aws = raw.get("aws") or {}
+            profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
+            email_service = EmailService(campaign, settings, aws_profile=profile)
+
+            result = service.send_batch(
+                [match], template_id=template_id, email_service=email_service, initiative="rta"
+            )
+            return result.sent, result.failed, None
+
+        try:
+            sent, failed, error = await asyncio.to_thread(_render_and_send)
+        except Exception as exc:
+            logger.exception(f"Failed to send follow-up now for {self.company_slug}")
+            self.app.notify(f"Send failed: {exc}", severity="error")
+            return
+
+        if error:
+            self.app.notify(error, severity="error")
+            return
+        if failed:
+            self.app.notify(
+                f"Failed to send follow-up ({template_id}) to {self.company_slug}",
+                severity="error",
+            )
+            return
+
+        self.app.notify(f"Sent follow-up email ({template_id}) now.")
+        self.save_call(skip_followup_schedule=True)
+
+    def save_call(self, skip_followup_schedule: bool = False) -> None:
         notes = self.query_one("#call_notes", TextArea).text.strip()
         callback_str = self.query_one("#callback_date", CocliInput).value.strip()
         # No separate "schedule?" checkbox: a non-empty follow-up date IS
@@ -430,7 +526,11 @@ class CallLogModal(ModalScreen[bool]):
             # rendered draft in Target Batches, not by composing from
             # scratch (Mark, 2026-09-16).
             followup_template = self.query_one("#followup_template", SearchSelect).value
-            if followup_template and followup_template != NO_EMAIL_FOLLOW_UP:
+            if (
+                not skip_followup_schedule
+                and followup_template
+                and followup_template != NO_EMAIL_FOLLOW_UP
+            ):
                 followup_date_str = self.query_one("#followup_email_date", CocliInput).value.strip()
                 try:
                     followup_date = parse_follow_up_when(followup_date_str)
