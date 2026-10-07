@@ -8,6 +8,8 @@ from datetime import datetime, tzinfo
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import phonenumbers
+from phonenumbers import timezone as phonenumbers_timezone
 from tzlocal import get_localzone
 
 
@@ -176,13 +178,22 @@ class CompanyPlace:
     city: Optional[str] = None
     state: Optional[str] = None
     zip_code: Optional[str] = None
+    is_fallback: bool = False
 
     def place_label(self) -> str:
         city = (self.city or "").strip()
         state = (self.state or "").strip()
         if city and state:
             return f"{city}, {state}"
-        return city or state or "company local"
+        if city or state:
+            return city or state
+        if self.is_fallback:
+            # Mark, 2026-10-06: no location signal resolved at all, so this
+            # is tzlocal.get_localzone() - the viewer's own machine, not the
+            # company's. Previously labeled "company local" here, which
+            # silently misrepresented the viewer's own clock as theirs.
+            return "unknown - showing your local time"
+        return "company local"
 
 
 def normalize_state(state: Optional[str]) -> Optional[str]:
@@ -255,6 +266,29 @@ def _zip_to_zone(zip_code: str) -> Optional[str]:
     return "America/Los_Angeles"
 
 
+def _phone_to_zone(phone_e164: str) -> Optional[str]:
+    """Derive an IANA zone from a phone number's area code via libphonenumber.
+
+    Mark, 2026-10-06: a direct-dial number is often the only location
+    signal a record has (e.g. a per-person company record with no
+    address at all) - area codes are NANP-geographic, so this is a real
+    signal, not a guess. Returns the first candidate zone; multi-zone
+    area codes (e.g. some split historically) just take the first one
+    libphonenumber reports.
+    """
+    parsed = None
+    for region in (None, "US"):
+        try:
+            parsed = phonenumbers.parse(phone_e164, region)
+            break
+        except Exception:
+            continue
+    if parsed is None:
+        return None
+    zones = phonenumbers_timezone.time_zones_for_number(parsed)
+    return zones[0] if zones else None
+
+
 def _lng_to_us_zone(latitude: float, longitude: float) -> Optional[str]:
     if latitude < 24 or latitude > 50 or longitude > -66 or longitude < -170:
         return None
@@ -277,8 +311,17 @@ def resolve_company_place(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     address_text: Optional[str] = None,
+    phone_numbers: Optional[list[str]] = None,
 ) -> CompanyPlace:
-    """Best-effort place: explicit TZ, then zip/city/state/coords/address, then local."""
+    """Best-effort place: explicit TZ, then zip/city/phone-area-code/state/
+    coords/address, then local.
+
+    phone_numbers: candidate numbers in E.164 (e.g. "+18173492327"), tried
+    in order, first one libphonenumber can derive a zone from wins. Ranked
+    above state (an area code pins a city-ish region, more precise than a
+    whole state, and is often the *only* signal a per-person/per-branch
+    record has - see Austin Somers, 2026-10-06) and below explicit zip/city.
+    """
     parsed_city, parsed_state, parsed_zip = extract_us_location(address_text)
     city = (city or parsed_city or None)
     state_code = normalize_state(state) or parsed_state
@@ -298,6 +341,15 @@ def resolve_company_place(
         zname = _CITY_TO_ZONE.get(city.strip().lower())
         zone = _zoneinfo(zname) if zname else None
 
+    if zone is None and phone_numbers:
+        for candidate in phone_numbers:
+            if not candidate:
+                continue
+            zname = _phone_to_zone(candidate)
+            zone = _zoneinfo(zname) if zname else None
+            if zone is not None:
+                break
+
     if zone is None and state_code:
         zname = _STATE_TO_ZONE.get(state_code)
         zone = _zoneinfo(zname) if zname else None
@@ -310,13 +362,17 @@ def resolve_company_place(
         zname = _lng_to_us_zone(float(latitude), float(longitude))
         zone = _zoneinfo(zname) if zname else None
 
-    if zone is None:
-        zone_tz: tzinfo = get_localzone()
-    else:
-        zone_tz = zone
+    is_fallback = zone is None
+    zone_tz: tzinfo = get_localzone() if zone is None else zone
 
     display_city = city.title() if city else None
-    return CompanyPlace(tz=zone_tz, city=display_city, state=state_code, zip_code=zip_code)
+    return CompanyPlace(
+        tz=zone_tz,
+        city=display_city,
+        state=state_code,
+        zip_code=zip_code,
+        is_fallback=is_fallback,
+    )
 
 
 def resolve_company_tz(
@@ -335,6 +391,7 @@ def format_company_local_now(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     address_text: Optional[str] = None,
+    phone_numbers: Optional[list[str]] = None,
     place: Optional[CompanyPlace] = None,
 ) -> str:
     """Current local time, e.g. 'Fri 2:34:12 PM CDT'."""
@@ -346,6 +403,7 @@ def format_company_local_now(
         latitude=latitude,
         longitude=longitude,
         address_text=address_text,
+        phone_numbers=phone_numbers,
     )
     now = datetime.now(resolved.tz)
     hour = now.strftime("%I").lstrip("0") or "12"

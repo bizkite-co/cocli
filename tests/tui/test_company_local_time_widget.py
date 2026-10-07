@@ -82,6 +82,32 @@ async def test_company_detail_mounts_local_time_widget():
 
 
 @pytest.mark.asyncio
+async def test_company_with_only_a_phone_number_resolves_by_area_code(tmp_path: Any, monkeypatch: Any):
+    """Austin Somers (higginbotham-austin-somers), 2026-10-06: a per-person
+    company record with no address/city/state/zip at all - previously
+    this silently fell back to the operator's own machine timezone,
+    mislabeled as "company local". The 817 area code (Fort Worth, TX) is
+    the only location signal on the record and should now resolve it to
+    Central time instead."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    co = Company(
+        name="Higginbotham - Austin Somers",
+        slug="higginbotham-austin-somers",
+        phone_number="18173492327",
+    )
+    co.save()
+
+    widget = CompanyLocalTime(company=co)
+    app = LocalTimeTestApp(widget)
+    async with app.run_test():
+        assert str(widget._place.tz) == "America/Chicago"
+        assert widget._place.is_fallback is False
+
+
+@pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
 async def test_call_log_modal_uses_company_local_time(_mock_campaign: Any, tmp_path: Any, monkeypatch: Any):
     from cocli.core.paths import paths

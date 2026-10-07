@@ -32,6 +32,7 @@ def resolve_place_from_company(
         return resolve_company_place()
 
     company_slug: Optional[str] = slug
+    phone_numbers: list[str] = []
     if isinstance(company, Company):
         company_slug = company.slug
         timezone_name = company.timezone
@@ -40,6 +41,13 @@ def resolve_place_from_company(
         zip_code = company.zip_code
         latitude = company.latitude
         longitude = company.longitude
+        for phone in (company.phone_1, company.phone_number, company.phone_from_website):
+            if phone is None:
+                continue
+            try:
+                phone_numbers.append(phone.format("e164"))
+            except Exception:
+                pass
         address_bits = [
             str(company.street_address or ""),
             str(company.full_address or ""),
@@ -66,6 +74,10 @@ def resolve_place_from_company(
         zip_code = c_dict.get("zip_code")
         latitude = c_dict.get("latitude")
         longitude = c_dict.get("longitude")
+        for key in ("phone_1", "phone_number", "phone_from_website"):
+            raw_phone = c_dict.get(key)
+            if raw_phone:
+                phone_numbers.append(str(raw_phone))
         address_bits = [
             str(c_dict.get("street_address") or ""),
             str(c_dict.get("full_address") or ""),
@@ -99,6 +111,7 @@ def resolve_place_from_company(
         latitude=latitude,
         longitude=longitude,
         address_text="\n".join(bit for bit in address_bits if bit.strip()),
+        phone_numbers=phone_numbers or None,
     )
 
 
