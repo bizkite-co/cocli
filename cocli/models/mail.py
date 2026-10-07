@@ -67,6 +67,11 @@ class EmailSettings(BaseModel):
     reply_to: Optional[str] = None
     bcc_address: Optional[str] = None
     bcc_addresses: list[str] = Field(default_factory=list)
+    # Where "send me a test copy of this template" (Initiatives > Email
+    # Sequences, 't' key) actually goes - distinct from bcc_address, which
+    # is silently appended to every real send rather than being a send
+    # target of its own. Falls back to test@bizkite.net when unset.
+    test_send_address: Optional[str] = None
     ses_region: str = "us-east-1"
     ses_configuration_set: Optional[str] = None
     # SMTP / M365 settings

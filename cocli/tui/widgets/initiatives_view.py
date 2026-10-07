@@ -96,6 +96,10 @@ class _EmailSequencesPane(Horizontal):
     generate_copy() rendered with placeholder sample values, correctly
     scoped to whichever initiative is selected (not hardcoded)."""
 
+    BINDINGS = [
+        Binding("t", "send_test_copy", "Send Test Copy", show=True),
+    ]
+
     def __init__(self, initiative: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.initiative = initiative
@@ -143,6 +147,79 @@ class _EmailSequencesPane(Horizontal):
             )
             return
         self.preview.update_preview(subject, body)
+
+    def action_send_test_copy(self) -> None:
+        """Mark, 2026-10-07: "send myself a copy of any item I am viewing"
+        - renders the selected template with the same sample placeholder
+        data as the on-screen preview and sends it to a configurable test
+        address (EmailSettings.test_send_address, default test@bizkite.net),
+        prefixed "[TEST]" so it's never confused with a real send (same
+        convention as scripts/send_test_testimonial_email.py)."""
+        item = self.file_list.highlighted_child
+        if not isinstance(item, TemplateListItem):
+            self.app.notify("Select a template first", severity="warning")
+            return
+        self.run_worker(self._send_test_copy(item.template_name), exclusive=True)
+
+    async def _send_test_copy(self, template_name: str) -> None:
+        import asyncio
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        initiative = self.initiative
+
+        def _render_and_send() -> str:
+            from cocli.application.email_service import EmailService
+            from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+            from cocli.core.config import load_campaign_config
+            from cocli.models.mail import EmailSettings, SendMailRequest
+            from cocli.utils.html_to_text import html_to_text
+
+            service = PersonalizedOutreachService(campaign)
+            subject, body = service.generate_copy(
+                first_name="Sample",
+                company_name="Sample Co",
+                company_slug="sample-co",
+                template_name=template_name,
+                initiative=initiative,
+            )
+
+            layout = service._layout_for_template(template_name, initiative)
+            if layout:
+                html_body = service.render_markdown_email(
+                    body, layout, initiative, template_id=Path(template_name).stem
+                )
+                plain_body = html_to_text(html_body)
+            else:
+                html_body = None
+                plain_body = body
+
+            raw = load_campaign_config(campaign) or {}
+            email_raw = raw.get("email") or {}
+            settings = EmailSettings.model_validate(email_raw)
+            aws = raw.get("aws") or {}
+            profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
+            email_service = EmailService(campaign, settings, aws_profile=profile)
+
+            test_address = settings.test_send_address or "test@bizkite.net"
+            email_service.send(
+                SendMailRequest(
+                    to_address=test_address,
+                    subject=f"[TEST] {subject}",
+                    body=plain_body,
+                    html_body=html_body,
+                )
+            )
+            return test_address
+
+        try:
+            test_address = await asyncio.to_thread(_render_and_send)
+        except Exception as exc:
+            logger.exception(f"Failed to send test copy of {template_name}")
+            self.app.notify(f"Send failed: {exc}", severity="error")
+            return
+
+        self.app.notify(f"Sent test copy of {template_name} to {test_address}")
 
     def on_key(self, event: events.Key) -> None:
         # event.stop() is required on every branch here, not just

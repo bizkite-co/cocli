@@ -229,6 +229,110 @@ async def test_email_sequences_pane_renders_selected_template(mock_cocli_env, mo
 
 
 @pytest.mark.asyncio
+async def test_t_sends_a_test_copy_of_the_selected_template(mock_cocli_env, mocker) -> None:
+    """Mark, 2026-10-07: "send myself a copy of any item I am viewing" -
+    renders the selected template with the same sample data as the
+    preview and sends it to a configurable test address, defaulting to
+    test@bizkite.net, prefixed [TEST]."""
+    from cocli.application.email_service import EmailService
+
+    _make_initiative(
+        CAMPAIGN,
+        "rta",
+        {"email-sequences": {"hook.md": '---\nsubject: "Hi {first_name}"\n---\n\nBody for {company_name}'}},
+    )
+
+    sent_requests: list = []
+
+    def _fake_send(self, request):
+        sent_requests.append(request)
+
+        class _Result:
+            message_id = "test-msg-id"
+            to_address = request.to_address
+            subject = request.subject
+            note_written = False
+            company_slug = None
+
+        return _Result()
+
+    mocker.patch.object(EmailService, "send", _fake_send)
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0  # email-sequences
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_EmailSequencesPane)
+        file_list = pane.query_one("#email_sequences_file_list", ListView)
+        file_list.focus()
+        file_list.index = 0
+        await pilot.pause(0.1)
+
+        await pilot.press("t")
+        await pilot.pause(0.3)
+
+    assert len(sent_requests) == 1
+    request = sent_requests[0]
+    assert request.to_address == "test@bizkite.net"
+    assert request.subject == "[TEST] Hi Sample"
+    assert "Body for Sample Co" in request.body
+
+
+@pytest.mark.asyncio
+async def test_t_with_no_template_selected_warns_and_does_not_send(mock_cocli_env, mocker) -> None:
+    from cocli.application.email_service import EmailService
+
+    # _make_initiative only creates a category directory when it has files
+    # to write - list_initiative_categories() checks for the directory's
+    # existence, so an empty-but-present email-sequences/ dir needs an
+    # explicit mkdir here to show up as a selectable category at all.
+    (paths.campaigns / CAMPAIGN / "initiatives" / "rta" / "email-sequences").mkdir(parents=True, exist_ok=True)
+
+    send_spy = mocker.patch.object(EmailService, "send")
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0  # email-sequences
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_EmailSequencesPane)
+        pane.file_list.focus()
+        await pilot.press("t")
+        await pilot.pause(0.2)
+
+    send_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_tracking_pane_shows_send_log_scoped_to_this_initiative(mock_cocli_env, mocker) -> None:
     """Tracking is backed by the real send log (SendLogEntry), not raw
     files - and must only show this initiative's own rows, not another
