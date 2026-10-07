@@ -247,6 +247,101 @@ def _match(slug: str, email: str, subject: str = "Hi") -> ProspectContactMatch:
     )
 
 
+def _write_campaign_config(campaign_name: str, content: str) -> None:
+    from cocli.core.paths import paths
+
+    config_path = paths.campaign(campaign_name).path / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(content, encoding="utf-8")
+
+
+def test_landing_url_prefers_outreach_domain_over_bare_campaign_domain(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark, 2026-10-07: request_testimonial.md's CTA links were
+    hardcoded to the outreach domain while _landing_url() returned the
+    bare campaign domain - a 404 on that domain for /testimonials/ -
+    so inject_send_guid() never matched anything and every link in that
+    template got zero tracking. The outreach domain (built specifically
+    to host testimonials/unsubscribe/signup) must win when configured."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_campaign_config(
+        "roadmap",
+        '[campaign]\ndomain = "retirementtaxanalyzer.com"\n\n'
+        '[aws]\noutreach-hosted-zone-domain = "getretirementtaxanalyzer.com"\n',
+    )
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service._landing_url() == "https://getretirementtaxanalyzer.com"
+
+
+def test_landing_url_falls_back_to_campaign_domain_when_no_outreach_domain(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_campaign_config("roadmap", '[campaign]\ndomain = "example.com"\n')
+
+    service = PersonalizedOutreachService("roadmap")
+    assert service._landing_url() == "https://example.com"
+
+
+def test_send_batch_injects_guid_into_links_matching_the_outreach_domain(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Reproduces the actual bug end to end (request_testimonial.md: a
+    layout-rendered template whose CTA links are hardcoded to the
+    outreach domain) - once _landing_url() resolves to that same domain,
+    the rendered <a href="..."> must get a real tracking token appended."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _write_layout_template(paths)
+    _write_campaign_config(
+        "roadmap",
+        '[campaign]\ndomain = "retirementtaxanalyzer.com"\n\n'
+        '[aws]\noutreach-hosted-zone-domain = "getretirementtaxanalyzer.com"\n',
+    )
+
+    match = _match("acme-co", "bob@acme.test")
+    # A markdown-syntax link (request_testimonial.md's "Advisor Community"/
+    # "Feedback page" links) and a raw HTML <a> already in the markdown
+    # source (its CTA button) - the two bugs confirmed live each only
+    # affected one of these styles, so both must be covered.
+    match.body = (
+        "Hi Bob, see our [testimonials page]"
+        "(https://getretirementtaxanalyzer.com/testimonials/).\n\n"
+        '<a href="https://getretirementtaxanalyzer.com/testimonials/">CTA</a>'
+    )
+    fake_email_service = _FakeEmailService()
+
+    service = PersonalizedOutreachService("roadmap")
+    result = service.send_batch(
+        [match], template_id="email_02_product_overview.md", email_service=fake_email_service
+    )
+
+    assert result.sent == 1
+    html_body = fake_email_service.sent_requests[0].html_body
+    assert html_body is not None
+
+    # Every link gets exactly one token - not zero, not two.
+    assert html_body.count("getretirementtaxanalyzer.com/testimonials/?t=") == 2
+    import re
+
+    for href_match in re.finditer(r'href="([^"]+)"', html_body):
+        assert href_match.group(1).count("t=") == 1, href_match.group(1)
+
+    # No stray "&t=<guid>" or ".&t=<guid>" leaking out as visible text
+    # outside of an href (the markdown-link-boundary bug: injecting
+    # before rendering landed the token after the link's closing paren,
+    # since ")" isn't a regex stop character).
+    without_hrefs = re.sub(r'href="[^"]*"', 'href=""', html_body)
+    assert "t=" not in without_hrefs
+
+
 def test_send_batch_with_html_template_populates_html_body_and_text_fallback(
     tmp_path: Any, monkeypatch: Any
 ) -> None:

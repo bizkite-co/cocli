@@ -564,10 +564,33 @@ class PersonalizedOutreachService:
             return default_subject, default_body
 
     def _landing_url(self) -> str:
+        """The domain every {landing_url} template placeholder resolves
+        to, and the domain inject_send_guid() matches against to decide
+        which links in a rendered email get a tracking token appended -
+        the two must always agree, or GUID injection silently matches
+        nothing (Mark, 2026-10-07: request_testimonial.md's 3 CTA links
+        were hardcoded to the outreach domain while this returned the
+        bare campaign domain - a 404 on this domain for /testimonials/,
+        confirmed live - so every link in that template got zero
+        tracking, not even the old UTM params it used to have).
+
+        Prefers aws.outreach-hosted-zone-domain: the dedicated domain
+        built specifically to host every outbound-email conversion page
+        (testimonials, unsubscribe, signup) in its own reputation bucket,
+        separate from whatever the bare product domain serves - see
+        app.py's CocliEmailStack sending_domain comment for the same
+        reasoning applied to the sending identity. Falls back to
+        campaign.domain only when no outreach domain is configured.
+        """
         from cocli.core.config import load_campaign_config
 
         cfg = load_campaign_config(self.campaign_name) or {}
-        domain = (cfg.get("campaign") or {}).get("domain") or cfg.get("domain")
+        aws_cfg = cfg.get("aws") or {}
+        domain = (
+            aws_cfg.get("outreach-hosted-zone-domain")
+            or (cfg.get("campaign") or {}).get("domain")
+            or cfg.get("domain")
+        )
         if domain:
             return f"https://{domain}"
         return DEFAULT_LANDING_URL
@@ -801,8 +824,23 @@ class PersonalizedOutreachService:
                 if layout_name:
                     from cocli.utils.html_to_text import html_to_text
 
+                    # Mark, 2026-10-07: injecting into match.body *before*
+                    # rendering (as this used to do) corrupted the output
+                    # two ways, confirmed live against request_testimonial.md:
+                    # a markdown-syntax link's URL sits inside parens, which
+                    # aren't a regex stop character, so the token landed
+                    # *after* the closing paren - outside the link entirely -
+                    # leaking "...page).&t=<guid>" as visible body text,
+                    # while a raw HTML <a href="..."> link already in the
+                    # markdown source got the token twice (once here, once
+                    # from the second pass below, both matching the same
+                    # quote-delimited href). Injecting only once, after both
+                    # markdown-it and the Jinja2 layout have rendered
+                    # everything into real <a href="..."> tags, is correct
+                    # uniformly - including unsubscribe links that come from
+                    # the layout itself and don't exist until this point.
                     html_body = self.render_markdown_email(
-                        inject_send_guid(match.body, send_guid, landing_domain),
+                        match.body,
                         layout_name,
                         initiative,
                         template_id=Path(template_id).stem,

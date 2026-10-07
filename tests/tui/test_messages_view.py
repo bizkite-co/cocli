@@ -379,15 +379,21 @@ async def test_recent_messages_interleaves_calls_and_emails_newest_first(
         assert third.call.item_type == "call"
 
         first_label = str(first.query_one(Label).content)
+        assert "✉" in first_label
         assert "RCVD" in first_label
         third_label = str(third.query_one(Label).content)
         assert "📞" in third_label
 
         # Selecting the call row shows the call preview (not the email one).
+        # Pauses here are deliberately > the 0.25s debounce_highlight delay
+        # so that worker (exclusive=True, but still async) always settles
+        # before the next action - otherwise a pending debounce callback
+        # from the *previous* highlight can fire after this row's own
+        # synchronous Selected-driven update and flip the display back.
         message_list.index = 2
-        await pilot.pause(0.1)
+        await pilot.pause(0.3)
         await pilot.press("enter")
-        await pilot.pause(0.1)
+        await pilot.pause(0.3)
         assert widget.call_preview.display is True
         assert widget.email_detail.display is False
         preview_text = str(widget.query_one("#recent-call-preview-body", Static).content)
@@ -395,9 +401,9 @@ async def test_recent_messages_interleaves_calls_and_emails_newest_first(
 
         # Selecting an email row shows the email detail (not the call one).
         message_list.index = 0
-        await pilot.pause(0.1)
+        await pilot.pause(0.3)
         await pilot.press("enter")
-        await pilot.pause(0.1)
+        await pilot.pause(0.3)
         assert widget.email_detail.display is True
         assert widget.call_preview.display is False
         detail_text = str(widget.query_one("#send-log-detail-body", Static).content)

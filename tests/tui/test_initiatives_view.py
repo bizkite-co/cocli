@@ -229,6 +229,128 @@ async def test_email_sequences_pane_renders_selected_template(mock_cocli_env, mo
 
 
 @pytest.mark.asyncio
+async def test_email_sequences_shows_never_sent_for_a_template_with_no_log_rows(
+    mock_cocli_env, mocker
+) -> None:
+    """Mark, 2026-10-07: "I don't think I have ever sent the
+    request_testimonial... I want to see if we ever sent it, and I
+    should be able to see that right in the template list.\""""
+    _make_initiative(
+        CAMPAIGN,
+        "testimonials",
+        {"email-sequences": {"request_testimonial.md": '---\nsubject: "Hi"\n---\n\nBody'}},
+    )
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0  # email-sequences
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_EmailSequencesPane)
+        file_list = pane.query_one("#email_sequences_file_list", ListView)
+        file_list.focus()
+        file_list.index = 0
+        await pilot.pause(0.2)
+
+        sends_list = pane.query_one("#email_sequences_sends_list", ListView)
+        assert len(sends_list.children) == 1
+        assert "Never sent" in str(sends_list.children[0].query_one("Label").content)
+
+
+@pytest.mark.asyncio
+async def test_email_sequences_lists_recent_sends_for_the_selected_template(
+    mock_cocli_env, mocker
+) -> None:
+    from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+    from cocli.tui.widgets.initiatives_view import TemplateSendListItem
+
+    _make_initiative(
+        CAMPAIGN,
+        "testimonials",
+        {
+            "email-sequences": {
+                "request_testimonial.md": '---\nsubject: "Hi"\n---\n\nBody',
+                "other_template.md": '---\nsubject: "Hi"\n---\n\nBody',
+            }
+        },
+    )
+    _write_send_log(
+        CAMPAIGN,
+        [
+            SendLogEntry(
+                batch_id="b1",
+                template_id="request_testimonial.md",
+                company_slug="acme-financial",
+                recipient="bob@acme.test",
+                subject="Hi Bob",
+                status="sent",
+                initiative="testimonials",
+            ),
+            SendLogEntry(
+                batch_id="b1",
+                template_id="other_template.md",
+                company_slug="wrong-template-co",
+                recipient="x@other.test",
+                subject="Hi",
+                status="sent",
+                initiative="testimonials",
+            ),
+        ],
+    )
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0  # email-sequences
+        await pilot.pause(0.1)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_EmailSequencesPane)
+        file_list = pane.query_one("#email_sequences_file_list", ListView)
+        file_list.focus()
+
+        names = [i.template_name for i in file_list.children]
+        file_list.index = names.index("request_testimonial.md")
+        await pilot.pause(0.2)
+
+        sends_list = pane.query_one("#email_sequences_sends_list", ListView)
+        assert len(sends_list.children) == 1
+        item = sends_list.children[0]
+        assert isinstance(item, TemplateSendListItem)
+        assert item.entry.company_slug == "acme-financial"
+        label_text = str(item.query_one("Label").content)
+        assert "sent" in label_text
+        assert "acme-financial" in label_text
+        assert "bob@acme.test" in label_text
+
+
+@pytest.mark.asyncio
 async def test_t_sends_a_test_copy_of_the_selected_template(mock_cocli_env, mocker) -> None:
     """Mark, 2026-10-07: "send myself a copy of any item I am viewing" -
     renders the selected template with the same sample data as the

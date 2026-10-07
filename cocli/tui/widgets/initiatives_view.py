@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, cast, TYPE_CHECKING
+from typing import Any, Optional, cast, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,22 @@ class FileBrowserPreview(Container):
         body.update(content)
 
 
+class TemplateSendListItem(ListItem):
+    """One row in the "Recent Sends" sublist - a real SendLogEntry for
+    this template, newest first (same [green]sent[/red]failed[/] badge
+    convention as TrackingListItem)."""
+
+    def __init__(self, entry: Any) -> None:
+        super().__init__()
+        self.entry = entry
+
+    def compose(self) -> Any:
+        e = self.entry
+        badge = "[green]sent[/green]" if e.status == "sent" else "[red]failed[/red]"
+        ts_str = e.sent_at.astimezone().strftime("%m/%d %H:%M")
+        yield Label(f"✉ {badge} {ts_str}  {e.company_slug} <{e.recipient}>")
+
+
 class _EmailSequencesPane(Horizontal):
     """Email Sequences category content: list_initiative_templates() +
     generate_copy() rendered with placeholder sample values, correctly
@@ -104,10 +120,26 @@ class _EmailSequencesPane(Horizontal):
         super().__init__(**kwargs)
         self.initiative = initiative
         self.file_list = ListView(id="email_sequences_file_list")
+        self.sends_list = ListView(id="email_sequences_sends_list")
         self.preview = TemplatePreview(id="email_sequences_preview")
+        self._send_log_cache: Optional[list[Any]] = None
 
     def compose(self) -> ComposeResult:
-        yield Container(self.file_list, id="email-sequences-list-pane")
+        list_pane = Vertical(
+            Label("Templates", classes="field-label"),
+            self.file_list,
+            Label("Recent Sends (this template)", classes="field-label"),
+            self.sends_list,
+            id="email-sequences-list-pane",
+        )
+        # Mark, 2026-10-07: "reduce the template list width by 50%" - gives
+        # the preview column more room. Both stacked lists split the
+        # column's height evenly; the two one-line Labels above them cost
+        # a little extra, acceptable.
+        list_pane.styles.width = "25%"
+        self.file_list.styles.height = "50%"
+        self.sends_list.styles.height = "50%"
+        yield list_pane
         yield self.preview
 
     async def on_mount(self) -> None:
@@ -147,6 +179,36 @@ class _EmailSequencesPane(Horizontal):
             )
             return
         self.preview.update_preview(subject, body)
+        self._update_sends_list(message.item.template_name)
+
+    @on(ListView.Highlighted, "#email_sequences_file_list")
+    def on_template_highlighted(self, message: ListView.Highlighted) -> None:
+        if isinstance(message.item, TemplateListItem):
+            self._update_sends_list(message.item.template_name)
+
+    def _update_sends_list(self, template_name: str) -> None:
+        """Mark, 2026-10-07: "I don't think I have ever sent the
+        request_testimonial... I want to see if we ever sent it, and I
+        should be able to see that right in the template list." Reuses
+        PersonalizedOutreachService.list_send_log() (same source as the
+        Tracking pane), filtered to this one template - no new storage or
+        query path needed, just a narrower read of what already exists."""
+        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+
+        app = cast("CocliApp", self.app)
+        campaign = app.services.campaign_name
+        if self._send_log_cache is None:
+            service = PersonalizedOutreachService(campaign)
+            self._send_log_cache = service.list_send_log(initiative=self.initiative)
+
+        sends = [e for e in self._send_log_cache if e.template_id == template_name]
+
+        self.sends_list.clear()
+        if not sends:
+            self.sends_list.append(ListItem(Label("[dim]Never sent[/dim]")))
+            return
+        for entry in sends[:50]:
+            self.sends_list.append(TemplateSendListItem(entry))
 
     def action_send_test_copy(self) -> None:
         """Mark, 2026-10-07: "send myself a copy of any item I am viewing"

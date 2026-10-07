@@ -74,8 +74,11 @@ class RecentEmailListItem(ListItem):
         if len(snippet) > 80:
             snippet = snippet[:77] + "..."
         snippet_line = f"\n   [dim]{snippet}[/dim]" if snippet else ""
+        # Same emoji-icon convention as CompanyActivity/CompanyCall
+        # ("✉" for email) - calls/SMS rows (RecentCallListItem) already
+        # carry one, email rows didn't (Mark, 2026-10-07).
         yield Label(
-            f"{badge} {dt_str} {co_label} - {e.title}{snippet_line}"
+            f"✉ {badge} {dt_str} {co_label} - {e.title}{snippet_line}"
         )
 
 
