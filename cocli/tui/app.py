@@ -1102,7 +1102,7 @@ class CocliApp(App[None]):
         if return_to_messages_recent_calls:
             return_to_messages = True
             if return_to_messages_section is None:
-                return_to_messages_section = "recent-calls"
+                return_to_messages_section = "recent-messages"
 
         try:
             company_data = self.services.get_company_details(company_slug)

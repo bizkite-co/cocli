@@ -9,10 +9,9 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Label, ListItem, ListView
 
+from .draft_messages_view import DraftMessagesView
 from .initiatives_view import InitiativesView
-from .recent_calls_view import RecentCallsView
-from .recent_emails_view import RecentEmailsView
-from .target_batches_view import TargetBatchesView
+from .recent_messages_view import RecentMessagesView
 
 
 class MessagesSectionItem(ListItem):
@@ -31,10 +30,8 @@ class MessagesView(Container):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.section_list = ListView(
-            MessagesSectionItem("follow-ups", "Follow-up Drafts"),
-            MessagesSectionItem("batch-emails", "Batch Email Drafts"),
-            MessagesSectionItem("recent-calls", "Recent Calls & SMS"),
-            MessagesSectionItem("recent-emails", "Recent Emails"),
+            MessagesSectionItem("drafts", "Draft Messages"),
+            MessagesSectionItem("recent-messages", "Recent Messages"),
             MessagesSectionItem("initiatives", "Initiatives"),
             id="messages-section-list",
         )
@@ -49,7 +46,7 @@ class MessagesView(Container):
 
     async def on_mount(self) -> None:
         self.section_list.index = 0
-        await self._show_section("follow-ups", focus=False)
+        await self._show_section("drafts", focus=False)
         self.action_focus_master()
 
     def action_focus_sidebar(self) -> None:
@@ -58,19 +55,12 @@ class MessagesView(Container):
     def action_focus_master(self) -> None:
         self.section_list.focus()
 
-    def action_focus_recent_calls(self) -> None:
-        views = list(self.content.query(RecentCallsView))
+    def action_focus_recent_messages(self) -> None:
+        views = list(self.content.query(RecentMessagesView))
         if views:
             views[0].action_focus_master()
         else:
-            self.run_worker(self.show_section("recent-calls", focus=True))
-
-    def action_focus_recent_emails(self) -> None:
-        views = list(self.content.query(RecentEmailsView))
-        if views:
-            views[0].action_focus_master()
-        else:
-            self.run_worker(self.show_section("recent-emails", focus=True))
+            self.run_worker(self.show_section("recent-messages", focus=True))
 
     def action_focus_current_section(self) -> None:
         current_view = self.content.children[0] if self.content.children else None
@@ -92,17 +82,19 @@ class MessagesView(Container):
             await self._show_section(event.item.section, focus=True)
 
     async def _show_section(self, section: str, focus: bool = False) -> None:
-        from .follow_up_queue_view import FollowUpQueueView
-
         view_classes = {
-            "follow-ups": FollowUpQueueView,
-            "batch-emails": TargetBatchesView,
-            "recent-calls": RecentCallsView,
-            "recent-emails": RecentEmailsView,
-            "sent-email": RecentEmailsView,
+            "drafts": DraftMessagesView,
+            "recent-messages": RecentMessagesView,
+            # Back-compat aliases for any stale return_to_messages_section
+            # reference to the pre-merge section keys (2026-10-07).
+            "follow-ups": DraftMessagesView,
+            "batch-emails": DraftMessagesView,
+            "recent-calls": RecentMessagesView,
+            "recent-emails": RecentMessagesView,
+            "sent-email": RecentMessagesView,
             "initiatives": InitiativesView,
         }
-        target_cls = view_classes.get(section, RecentEmailsView)
+        target_cls = view_classes.get(section, RecentMessagesView)
 
         current_view = self.content.children[0] if self.content.children else None
         if current_view is not None and isinstance(current_view, target_cls):
