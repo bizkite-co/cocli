@@ -55,6 +55,7 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save", "Enqueue Follow-up"),
+        ("f4", "send_now", "Send Now"),
     ]
 
     def __init__(
@@ -131,7 +132,7 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
             yield CocliInput(value=default_date, id="followup_date")
 
             yield Static(
-                "[bold reverse] CTRL+S: ENQUEUE [/]  [dim] ESC: CANCEL [/]",
+                "[bold reverse] CTRL+S: ENQUEUE [/]  [bold reverse] F4: SEND NOW [/]  [dim] ESC: CANCEL [/]",
                 id="modal_help",
             )
 
@@ -144,9 +145,99 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
             self.action_save()
             event.prevent_default()
             event.stop()
+        elif event.key == "f4":
+            self.send_now()
+            event.prevent_default()
+            event.stop()
 
     def action_cancel(self) -> None:
         self.dismiss(False)
+
+    def _selected_template(self) -> Optional[tuple[str, str]]:
+        """Returns (initiative, template_id) from the template picker, or
+        None if nothing's selected."""
+        template_raw = self.query_one("#followup_template", SearchSelect).value
+        if not template_raw:
+            return None
+        if "::" in template_raw:
+            initiative, template_id = template_raw.split("::", 1)
+        else:
+            initiative, template_id = "rta", template_raw
+        return initiative, template_id
+
+    def send_now(self) -> None:
+        """Deliberately named without the "action_" prefix - see
+        CallLogModal.send_followup_now()'s docstring for why (Textual
+        auto-dispatches a Binding's action string to "action_<name>" AND
+        handle_keys() above calls it directly; action_-prefixing this
+        would fire both and send twice per keypress).
+
+        Mark, 2026-10-09: "Can we still use 'f' to open the modal, but
+        provide a send-now keymap on the modal?" - renders and sends the
+        currently-selected template/recipient immediately via
+        PersonalizedOutreachService.send_now() (the same macro Call Log's
+        F4 uses), skipping the schedule-then-render-then-review pipeline
+        this modal's Ctrl+S path still uses. Does not touch the follow-up
+        queue at all - nothing is scheduled, nothing needs "preparing"
+        afterward.
+        """
+        picked = self._selected_template()
+        if picked is None:
+            self.app.notify("Please select an email template", severity="error")
+            return
+        initiative, template_id = picked
+        recipient_email = self.query_one("#followup_contact", SearchSelect).value
+        self.run_worker(self._send_now_worker(template_id, initiative, recipient_email or None))
+
+    async def _send_now_worker(
+        self, template_id: str, initiative: str, recipient_email: Optional[str]
+    ) -> None:
+        import asyncio
+
+        from cocli.application.email_service import EmailService
+        from cocli.core.config import load_campaign_config
+        from cocli.models.mail import EmailSettings
+
+        campaign = get_campaign() or "default"
+
+        def _send() -> tuple[int, int, Optional[str]]:
+            service = PersonalizedOutreachService(campaign)
+            raw = load_campaign_config(campaign) or {}
+            email_raw = raw.get("email") or {}
+            settings = EmailSettings.model_validate(email_raw)
+            aws = raw.get("aws") or {}
+            profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
+            email_service = EmailService(campaign, settings, aws_profile=profile)
+
+            try:
+                result = service.send_now(
+                    self.company_slug,
+                    template_id=template_id,
+                    initiative=initiative,
+                    email_service=email_service,
+                    recipient_email=recipient_email,
+                )
+            except ValueError as exc:
+                return 0, 0, str(exc)
+            return result.sent, result.failed, None
+
+        try:
+            sent, failed, error = await asyncio.to_thread(_send)
+        except Exception as exc:
+            self.app.notify(f"Send failed: {exc}", severity="error")
+            return
+
+        if error:
+            self.app.notify(error, severity="error")
+            return
+        if failed:
+            self.app.notify(
+                f"Failed to send ({template_id}) to {self.company_slug}", severity="error"
+            )
+            return
+
+        self.app.notify(f"Sent ({template_id}) to {self.company_name} now.")
+        self.dismiss(True)
 
     def action_save(self) -> None:
         date_str = self.query_one("#followup_date", CocliInput).value.strip()
@@ -156,16 +247,11 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
             self.app.notify(f"Invalid date: '{date_str}'", severity="error")
             return
 
-        template_raw = self.query_one("#followup_template", SearchSelect).value
-        if not template_raw:
+        picked = self._selected_template()
+        if picked is None:
             self.app.notify("Please select an email template", severity="error")
             return
-
-        if "::" in template_raw:
-            initiative, template_id = template_raw.split("::", 1)
-        else:
-            initiative = "rta"
-            template_id = template_raw
+        initiative, template_id = picked
 
         recipient_email = self.query_one("#followup_contact", SearchSelect).value
 

@@ -952,6 +952,62 @@ class PersonalizedOutreachService:
 
         return result
 
+    def send_now(
+        self,
+        company_slug: str,
+        *,
+        template_id: str,
+        initiative: str,
+        email_service: "EmailService",
+        recipient_email: Optional[str] = None,
+    ) -> SendBatchResult:
+        """The express lane: render a template for one company/contact and
+        send it immediately, skipping the schedule-then-render-then-review
+        pipeline (FollowUpTask -> PendingBatchEntry -> TargetBatchesView)
+        entirely.
+
+        Mark, 2026-10-09: "I am thinking of this as something that can run
+        a bit like a macro, a function that calls each of the already
+        existing steps in sequence, with automatic approval" - not a new
+        queue + flag + poller (which would still wait on polling and need
+        a stored property to distinguish "process me now"), just a direct
+        synchronous call chain through the exact same steps send_batch()
+        already runs per recipient, so "express" and "reviewed" sends
+        can never drift apart on what "sent" actually means. There is
+        deliberately no stored flag anywhere marking a send as "express" -
+        the distinction is entirely which function gets called, not a
+        property on any queue item.
+
+        First built inline in call_log_modal.py's F4 action (2026-10-06),
+        extracted here (2026-10-09) so Company Detail's "send now" key
+        can call the identical sequence instead of a second hand-rolled
+        copy - exactly the kind of duplication that already caused a
+        real bug once (the test-copy feature silently never calling
+        inject_send_guid() at all because it re-implemented render+send
+        separately from send_batch()).
+
+        Raises ValueError if no eligible contact is found - callers
+        decide how to surface that (a TUI notify, a CLI error, etc.).
+        """
+        match = self.find_contact_for_company(company_slug, recipient_email=recipient_email)
+        if match is None:
+            raise ValueError(f"No eligible contact found for {company_slug}")
+
+        subject, body = self.generate_copy(
+            first_name=match.first_name,
+            company_name=match.company_name,
+            company_slug=company_slug,
+            template_name=template_id,
+            initiative=initiative,
+            person_slug=match.person_slug,
+        )
+        match.subject = subject
+        match.body = body
+
+        return self.send_batch(
+            [match], template_id=template_id, email_service=email_service, initiative=initiative
+        )
+
     def freeze_batch(
         self,
         *,

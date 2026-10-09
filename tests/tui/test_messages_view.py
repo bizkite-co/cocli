@@ -422,6 +422,16 @@ async def test_messages_recent_messages_lists_logged_phone_calls(mock_cocli_env,
     from cocli.models.companies.meeting import Meeting
     from cocli.tui.widgets.company_detail import CompanyDetail
 
+    # EnqueueFollowUpModal does `from cocli.core.config import
+    # get_campaign` - that binds its own copy of the name at import
+    # time, so mock_cocli_env's patch of cocli.core.config.get_campaign
+    # alone doesn't reach it (and relying on import order to patch it
+    # ambiently is fragile - test_enqueue_follow_up_modal.py's own tests
+    # import this module first and exposed that). Patch it directly.
+    mocker.patch(
+        "cocli.tui.widgets.enqueue_follow_up_modal.get_campaign", return_value=CAMPAIGN
+    )
+
     company = Company(name="Friday Caller", slug="friday-caller", tags=[CAMPAIGN])
     company.save()
     meetings_dir = paths.companies.entry(company.slug).path / "meetings"

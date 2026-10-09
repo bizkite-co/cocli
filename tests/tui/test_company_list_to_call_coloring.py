@@ -68,6 +68,62 @@ async def test_to_call_view_colors_overdue_and_due_soon_rows() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tpl_to_call_resets_sort_recent_so_the_dedicated_sort_actually_runs() -> None:
+    """Mark, 2026-10-08: "we have tried to update the to-call list
+    several times" - every earlier fix to search_service.py's dedicated
+    to-call ORDER BY (testimonial-target tier, then priority, then
+    most-overdue-first) was correct but never took effect: sort_recent
+    defaults True from __init__ and nothing reset it for this template,
+    so run_search()'s "sort_by = self.current_sort or ('recent' if
+    self.sort_recent else None)" evaluated to "recent" instead of None,
+    silently routing into an earlier, unrelated branch (plain
+    last_modified DESC) every single time the to-call template was
+    opened - confirmed live: that produced the exact order Mark saw
+    (testimonial-target companies buried near the bottom, no overdue-
+    first behavior at all)."""
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("c")
+
+        company_list_widget = await wait_for_widget(driver, CompanyList)
+        company_list_widget.sort_recent = True  # the pre-existing default
+        company_list_widget.apply_template("tpl_to_call")
+
+        assert company_list_widget.sort_recent is False
+        assert company_list_widget.current_sort is None
+
+
+@pytest.mark.asyncio
+async def test_tpl_to_call_search_is_not_sorted_by_recent() -> None:
+    """Same bug, exercised through the real search call: confirms
+    run_search() actually passes sort_by=None (not "recent") to
+    fuzzy_search() once the to-call template is applied."""
+    app = CocliApp(auto_show=False)
+    app.services.sync_search = True
+    captured: dict[str, object] = {}
+
+    def _fake_search_service(**kwargs: object) -> list:
+        captured.update(kwargs)
+        return []
+
+    app.services.search_service = _fake_search_service
+
+    async with app.run_test() as driver:
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("c")
+
+        company_list_widget = await wait_for_widget(driver, CompanyList)
+        company_list_widget.apply_template("tpl_to_call")
+        company_list_widget.run_search("")
+
+        assert captured.get("sort_by") is None
+        assert captured.get("filters") == {"to_call": True}
+
+
+@pytest.mark.asyncio
 async def test_non_to_call_view_never_colors_rows() -> None:
     """A company that happens to also be on the to-call queue must not
     show colored in an unrelated filtered/plain search view - coloring is

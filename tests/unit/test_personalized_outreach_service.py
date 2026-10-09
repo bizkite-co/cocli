@@ -212,6 +212,74 @@ def test_find_contact_for_company_returns_none_when_unresolvable(
     assert service.find_contact_for_company("does-not-exist") is None
 
 
+def test_send_now_renders_and_sends_without_touching_any_queue(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The express lane: Mark, 2026-10-09: "a function that calls each of
+    the already existing steps in sequence, with automatic approval" - no
+    FollowUpTask, no PendingBatchEntry, just find contact -> render ->
+    send, synchronously, via the same send_batch() machinery everything
+    else uses."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+
+    company = Company(
+        name="Target Financial",
+        slug="target-financial",
+        domain="targetfinancial.com",
+        email="info@targetfinancial.com",
+        tags=["roadmap"],
+    )
+    company.save()
+
+    person = Person(
+        name="Edward Miller",
+        email="edward@targetfinancial.com",
+        company_name="Target Financial",
+        slug="edward-miller",
+    )
+    person.save()
+
+    contacts_dir = paths.companies.entry("target-financial").path / "contacts"
+    contacts_dir.mkdir(parents=True, exist_ok=True)
+    (contacts_dir / "edward-miller").symlink_to(person.get_local_path())
+
+    fake_email_service = _FakeEmailService()
+    service = PersonalizedOutreachService("roadmap")
+
+    result = service.send_now(
+        "target-financial",
+        template_id="email_01_pas_hook.md",
+        initiative="rta",
+        email_service=fake_email_service,
+    )
+
+    assert result.sent == 1
+    assert result.failed == 0
+    assert fake_email_service.sent_to == ["edward@targetfinancial.com"]
+
+
+def test_send_now_raises_value_error_when_no_eligible_contact(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    service = PersonalizedOutreachService("roadmap")
+
+    try:
+        service.send_now(
+            "does-not-exist",
+            template_id="email_01_pas_hook.md",
+            initiative="rta",
+            email_service=_FakeEmailService(),
+        )
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "does-not-exist" in str(exc)
+
+
 class _FakeEmailResult:
     def __init__(self, message_id: str) -> None:
         self.message_id = message_id

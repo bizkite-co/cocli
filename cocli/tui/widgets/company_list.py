@@ -121,6 +121,20 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self.current_sort = "reviews"
         elif tpl_id == "tpl_to_call":
             self.current_filters = {"to_call": True}
+            # Mark, 2026-10-08: "the past due items do not get highlighted
+            # and put at the top of the list" - sort_recent defaults True
+            # from __init__ and nothing here ever cleared it for this
+            # template, so sort_by = self.current_sort or ("recent" if
+            # self.sort_recent else None) evaluated to "recent" instead
+            # of None - search_service.py's dedicated to-call ORDER BY
+            # (testimonial-target tier, then priority, then most-overdue-
+            # first) was correct but dead code, silently overridden by
+            # the earlier "if sort_by == 'recent'" branch (plain
+            # last_modified DESC, unrelated to callback_at) every time
+            # this template was opened. Confirmed live: multiple earlier
+            # fixes to that ORDER BY clause itself never took effect
+            # because this path was never reached at all.
+            self.sort_recent = False
         elif tpl_id == "tpl_invalid":
             self.current_filters = {"invalid": True}
         elif tpl_id == "tpl_filter_in":

@@ -127,12 +127,26 @@ class CallLogModal(ModalScreen[bool]):
         # Default callback to 7 days from now
         default_callback = (datetime.now(UTC) + timedelta(days=7)).strftime("%Y-%m-%d")
 
-        # "rta" default matches every other unspecified-initiative call
-        # site in this codebase (load_template/generate_copy/etc.) - this
-        # form has no initiative context of its own to pick from yet.
+        # Every initiative's templates, not just "rta" - Mark, 2026-10-07:
+        # request_testimonial.md (initiative "testimonials") was never
+        # selectable here at all, which is why it had only ever gone out
+        # once, in a one-off batch send outside this modal. The display
+        # label ("[testimonials] request_testimonial.md") doubles as the
+        # SearchSelect value so two initiatives can't collide on an
+        # identical filename; _template_initiative_by_label resolves it
+        # back to (template_name, initiative) when actually scheduling or
+        # sending.
         service = PersonalizedOutreachService(get_campaign() or "default")
-        template_names = service.list_initiative_templates("rta")
-        template_choices = [(NO_EMAIL_FOLLOW_UP, "")] + [(name, name) for name in template_names]
+        self._template_initiative_by_label: dict[str, tuple[str, str]] = {
+            label: (name, initiative)
+            for label, name, initiative in service.list_templates_with_initiative()
+        }
+        template_choices = [(NO_EMAIL_FOLLOW_UP, "")] + [
+            (label, label) for label in self._template_initiative_by_label
+        ]
+        # The call-script reference panel (opener/phrases/comparison) is
+        # genuinely RTA-sales-specific material, independent of which
+        # initiative's email template gets picked below - left as "rta".
         reference = service.load_call_reference("rta")
         phone_display = format_us_phone(self.phone) or self.phone
         caller_display = (
@@ -324,12 +338,11 @@ class CallLogModal(ModalScreen[bool]):
         in the help bar; handle_keys() does the real dispatch, same as
         ctrl+s/ctrl+enter.
 
-        Log the call exactly as Save & Close does, but instead of
-        queueing the selected email follow-up for later (FollowUpTask,
-        requiring a separate visit to Follow-Up Queue to "prepare" it and
-        then Target Batches to send it), render and send it immediately -
-        one keypress start to finish (Mark, 2026-10-06: "it doesn't send
-        until I close the call log and execute two more actions").
+        Sends the selected template right now, instead of queueing the
+        follow-up for later (FollowUpTask, requiring a separate visit to
+        Follow-Up Queue to "prepare" it and then Target Batches to send
+        it) - Mark, 2026-10-06: "it doesn't send until I close the call
+        log and execute two more actions".
 
         Deliberately bypasses the normal "render to a draft, review/edit,
         then send" flow (see NO_EMAIL_FOLLOW_UP's docstring note above) -
@@ -337,19 +350,31 @@ class CallLogModal(ModalScreen[bool]):
         single explicit keypress on one specific contact, mid-call, *is*
         the human decision to send, same as picking up the phone was.
 
+        Does nothing else - no meeting/call-note write, no disposition,
+        no callback scheduling, no dismiss. Mark, 2026-10-08: an earlier
+        version also called save_call() afterward (so F4 would log the
+        call and close the modal, same as Ctrl+S) - he explicitly wanted
+        that removed: "I only want to send the email... it's not
+        supposed to do any other actions other than send the email."
+        Logging the call is still Ctrl+S/Ctrl+Enter's job, whenever the
+        call actually ends - pressing F4 mid-call no longer touches that
+        at all, so there's no risk of it logging a half-finished note
+        now and a complete one again later.
+
         Sync dispatcher + run_worker: sending is blocking network I/O and
         this is a BINDINGS-triggered action, which doesn't get a worker
         for free - same pattern as action_cancel above.
         """
-        followup_template = self.query_one("#followup_template", SearchSelect).value
-        if not followup_template or followup_template == NO_EMAIL_FOLLOW_UP:
+        followup_label = self.query_one("#followup_template", SearchSelect).value
+        if not followup_label or followup_label == NO_EMAIL_FOLLOW_UP:
             self.app.notify(
                 "Pick an email follow-up template first", severity="warning"
             )
             return
-        self.app.run_worker(self._send_followup_now_worker(followup_template))
+        template_id, initiative = self._template_initiative_by_label[followup_label]
+        self.app.run_worker(self._send_followup_now_worker(template_id, initiative))
 
-    async def _send_followup_now_worker(self, template_id: str) -> None:
+    async def _send_followup_now_worker(self, template_id: str, initiative: str) -> None:
         import asyncio
 
         from cocli.application.email_service import EmailService
@@ -358,23 +383,8 @@ class CallLogModal(ModalScreen[bool]):
 
         campaign = get_campaign() or "default"
 
-        def _render_and_send() -> tuple[int, int, Optional[str]]:
+        def _send() -> tuple[int, int, Optional[str]]:
             service = PersonalizedOutreachService(campaign)
-            match = service.find_contact_for_company(self.company_slug)
-            if match is None:
-                return 0, 0, "No eligible contact found for this company"
-
-            subject, body = service.generate_copy(
-                first_name=match.first_name,
-                company_name=match.company_name,
-                company_slug=self.company_slug,
-                template_name=template_id,
-                initiative="rta",
-                person_slug=match.person_slug,
-            )
-            match.subject = subject
-            match.body = body
-
             raw = load_campaign_config(campaign) or {}
             email_raw = raw.get("email") or {}
             settings = EmailSettings.model_validate(email_raw)
@@ -382,13 +392,19 @@ class CallLogModal(ModalScreen[bool]):
             profile = aws.get("profile") if isinstance(aws.get("profile"), str) else None
             email_service = EmailService(campaign, settings, aws_profile=profile)
 
-            result = service.send_batch(
-                [match], template_id=template_id, email_service=email_service, initiative="rta"
-            )
+            try:
+                result = service.send_now(
+                    self.company_slug,
+                    template_id=template_id,
+                    initiative=initiative,
+                    email_service=email_service,
+                )
+            except ValueError as exc:
+                return 0, 0, str(exc)
             return result.sent, result.failed, None
 
         try:
-            sent, failed, error = await asyncio.to_thread(_render_and_send)
+            sent, failed, error = await asyncio.to_thread(_send)
         except Exception as exc:
             logger.exception(f"Failed to send follow-up now for {self.company_slug}")
             self.app.notify(f"Send failed: {exc}", severity="error")
@@ -405,9 +421,8 @@ class CallLogModal(ModalScreen[bool]):
             return
 
         self.app.notify(f"Sent follow-up email ({template_id}) now.")
-        self.save_call(skip_followup_schedule=True)
 
-    def save_call(self, skip_followup_schedule: bool = False) -> None:
+    def save_call(self) -> None:
         notes = self.query_one("#call_notes", TextArea).text.strip()
         callback_str = self.query_one("#callback_date", CocliInput).value.strip()
         # No separate "schedule?" checkbox: a non-empty follow-up date IS
@@ -525,12 +540,11 @@ class CallLogModal(ModalScreen[bool]):
             # template - the personal touch is added by editing the
             # rendered draft in Target Batches, not by composing from
             # scratch (Mark, 2026-09-16).
-            followup_template = self.query_one("#followup_template", SearchSelect).value
-            if (
-                not skip_followup_schedule
-                and followup_template
-                and followup_template != NO_EMAIL_FOLLOW_UP
-            ):
+            followup_label = self.query_one("#followup_template", SearchSelect).value
+            if followup_label and followup_label != NO_EMAIL_FOLLOW_UP:
+                followup_template, followup_initiative = self._template_initiative_by_label[
+                    followup_label
+                ]
                 followup_date_str = self.query_one("#followup_email_date", CocliInput).value.strip()
                 try:
                     followup_date = parse_follow_up_when(followup_date_str)
@@ -540,7 +554,7 @@ class CallLogModal(ModalScreen[bool]):
                         scheduled_at=followup_date,
                         format="email",
                         template_id=followup_template,
-                        initiative="rta",
+                        initiative=followup_initiative,
                     )
                     self.app.notify(
                         f"Scheduled email follow-up ({followup_template}) for "

@@ -400,6 +400,10 @@ async def test_email_follow_up_scheduled_when_template_picked(
         app.push_screen(modal)
         await driver.pause()
 
+        modal._template_initiative_by_label["email_02_screenshots.md"] = (
+            "email_02_screenshots.md",
+            "rta",
+        )
         modal.query_one("#followup_template").value = "email_02_screenshots.md"
         modal.query_one("#followup_email_date").value = "2026-09-30"
         await driver.press("ctrl+s")
@@ -410,6 +414,58 @@ async def test_email_follow_up_scheduled_when_template_picked(
     assert follow_ups[0].format == "email"
     assert follow_ups[0].template_id == "email_02_screenshots.md"
     assert follow_ups[0].scheduled_at.strftime("%Y-%m-%d") == "2026-09-30"
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_templates_from_every_initiative_are_selectable_and_schedule_correctly(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Mark, 2026-10-07: "It's not available in the email templates in
+    the Call Log screen. That's probably why I never sent it. We need
+    all the templates to be available there." request_testimonial.md
+    lives under the "testimonials" initiative, not "rta" - the dropdown
+    used to be hardcoded to list_initiative_templates("rta") only, so it
+    was never selectable here at all. Uses a real template file on disk
+    (not an injected dict entry) to exercise the actual population path,
+    and confirms the resulting FollowUpTask carries "testimonials" as
+    its initiative, not a hardcoded "rta"."""
+    from cocli.application.follow_up_service import FollowUpService
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(name="Acme Testimonial Co", slug="acme-testimonial-co", domain="acme-t.test", phone="555-333-4444")
+    co.save()
+
+    sequences_dir = (
+        paths.campaigns / "roadmap" / "initiatives" / "testimonials" / "email-sequences"
+    )
+    sequences_dir.mkdir(parents=True)
+    (sequences_dir / "request_testimonial.md").write_text(
+        '---\nsubject: "Hi {first_name}"\n---\n\nBody', encoding="utf-8"
+    )
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as driver:
+        modal = CallLogModal(company_slug="acme-testimonial-co", phone="555-333-4444")
+        app.push_screen(modal)
+        await driver.pause()
+
+        assert "[testimonials] request_testimonial.md" in modal._template_initiative_by_label
+        assert modal._template_initiative_by_label["[testimonials] request_testimonial.md"] == (
+            "request_testimonial.md",
+            "testimonials",
+        )
+
+        modal.query_one("#followup_template").value = "[testimonials] request_testimonial.md"
+        modal.query_one("#followup_email_date").value = "2026-09-30"
+        await driver.press("ctrl+s")
+        await driver.pause()
+
+    follow_ups = FollowUpService("roadmap").list_pending(company_slug="acme-testimonial-co")
+    assert len(follow_ups) == 1
+    assert follow_ups[0].template_id == "request_testimonial.md"
+    assert follow_ups[0].initiative == "testimonials"
 
 
 @pytest.mark.asyncio
@@ -446,6 +502,10 @@ async def test_natural_language_follow_up_dates(
         # call and through this exact interactive path; locked in here so
         # a future regression would actually be caught.
         modal.query_one("#callback_date").value = "monday 13:00"
+        modal._template_initiative_by_label["email_02_screenshots.md"] = (
+            "email_02_screenshots.md",
+            "rta",
+        )
         modal.query_one("#followup_template").value = "email_02_screenshots.md"
         modal.query_one("#followup_email_date").value = "next week"
         await driver.press("ctrl+s")
@@ -851,15 +911,22 @@ async def test_f4_with_no_template_warns_and_does_not_send_or_save(
 
 @pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
-async def test_f4_sends_immediately_and_skips_the_follow_up_queue(
+async def test_f4_sends_immediately_and_does_nothing_else(
     _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
 ) -> None:
     """The actual feature request (2026-10-06): sending a follow-up email
     from the call log used to require closing the modal and performing
     two more actions (prepare in Follow-Up Queue, then send in Target
-    Batches). F4 renders and sends it right then, in the same keypress
-    that also logs the call - and must NOT also queue a FollowUpTask,
-    since it was already sent."""
+    Batches). F4 renders and sends it right then.
+
+    Changed 2026-10-08 (Mark): F4 used to also log the call (meeting,
+    call note, disposition, callback) and close the modal afterward, the
+    same way Ctrl+S does - he explicitly didn't want that: "I only want
+    to send the email... it's not supposed to do any other actions
+    other than send the email." F4 now sends and nothing else - no
+    meeting/note written, no to-call completion, no FollowUpTask queued,
+    no dismiss. The call still gets logged normally via Ctrl+S/Ctrl+Enter
+    whenever the call actually ends."""
     from cocli.application.follow_up_service import FollowUpService
     from cocli.application.personalized_outreach_service import (
         PersonalizedOutreachService,
@@ -910,19 +977,26 @@ async def test_f4_sends_immediately_and_skips_the_follow_up_queue(
             await pilot.pause(0.2)
 
             modal.query_one("#call_notes").text = "Sent follow-up right away"
+            modal._template_initiative_by_label["email_02_screenshots.md"] = (
+                "email_02_screenshots.md",
+                "rta",
+            )
             modal.query_one("#followup_template").value = "email_02_screenshots.md"
             await pilot.press("f4")
             await pilot.pause(0.3)
+
+            # Modal is still open - F4 doesn't close it.
+            assert app.screen is modal
 
     assert len(send_calls) == 1
     sent_matches, sent_kwargs = send_calls[0]
     assert sent_matches[0].recipient_email == "contact@sendnow.test"
     assert sent_kwargs["template_id"] == "email_02_screenshots.md"
 
-    # The call itself was still logged...
+    # Nothing else happened: no meeting/call-note written, no
+    # FollowUpTask queued, the pending to-call task untouched.
     meetings_dir = paths.companies.entry("send-now-co").path / "meetings"
-    assert meetings_dir.exists()
-    assert any(meetings_dir.iterdir())
-
-    # ...but no FollowUpTask was queued, since it was already sent.
+    assert not meetings_dir.exists() or not any(meetings_dir.iterdir())
+    notes_dir = paths.companies.entry("send-now-co").path / "notes"
+    assert not notes_dir.exists() or not any(notes_dir.iterdir())
     assert FollowUpService("roadmap").list_pending(company_slug="send-now-co") == []
