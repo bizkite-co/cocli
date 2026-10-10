@@ -34,6 +34,12 @@ class Person(BaseModel):
     zip_code: Optional[str] = None
     country: Optional[str] = None
 
+    # A bio/team-page URL for this person at their employer's site (e.g.
+    # https://www.higginbotham.com/team/mitchell-gaylord/) - distinct from
+    # the company's own website_url, matching Company's "*_url" field
+    # naming convention.
+    profile_url: Optional[str] = None
+
     # --- Ordinant Protocol Implementation ---
     @property
     def collection(self) -> CollectionName:
@@ -44,6 +50,18 @@ class Person(BaseModel):
     def get_local_path(self) -> Path:
         """Returns the path to the person directory: data/people/{slug}/"""
         return paths.people.entry(self.slug).path
+
+    def get_file_path(self) -> Optional[Path]:
+        """Returns this person's actual .md file (the same one
+        from_directory() would read), or None if it doesn't exist yet.
+        Callers that re-save an edited Person must pass this as save()'s
+        person_file - otherwise save() derives a filename from the
+        (possibly just-edited) name and a rename silently leaves two .md
+        files behind, with from_directory() reading whichever one its
+        glob happens to return first."""
+        for person_file in self.get_local_path().glob("*.md"):
+            return person_file
+        return None
 
     def get_remote_key(self) -> str:
         """Returns the S3 prefix: people/{slug}/"""

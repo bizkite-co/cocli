@@ -320,15 +320,49 @@ class ContactsTable(QuadrantTable):
         Binding("a", "add_contact", "Add Contact"),
         Binding("i", "edit_item", "Edit Contact"),
         Binding("enter", "edit_item", "Edit Contact"),
+        Binding("w", "open_profile", "Profile Page"),
     ]
+
+    def _selected_contact(self) -> Optional[dict[str, Any]]:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if not detail_view:
+            return None
+        row = self.cursor_row
+        contacts = detail_view.company_data.get("contacts") or []
+        if isinstance(row, int) and 0 <= row < len(contacts):
+            return cast("dict[str, Any]", contacts[row])
+        return None
 
     def action_edit_item(self) -> None:
         detail_view = next(
             (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
         )
-        if detail_view:
-            # detail_view.action_edit_contact() # TODO
-            detail_view.app.notify("Edit Contact coming soon")
+        if not detail_view:
+            return
+        contact = self._selected_contact()
+        slug = contact.get("slug") if contact else None
+        if not slug:
+            detail_view.app.notify(
+                "Only saved contacts (not website-scraped rows) can be edited",
+                severity="warning",
+            )
+            return
+        detail_view.action_edit_contact(str(slug))
+
+    def action_open_profile(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if not detail_view:
+            return
+        contact = self._selected_contact()
+        profile_url = contact.get("profile_url") if contact else None
+        if not profile_url:
+            detail_view.app.notify("No profile URL on file for this contact", severity="warning")
+            return
+        detail_view._open_desktop_browser(str(profile_url), f"Opening {profile_url}")
 
 
 class ActivityTable(QuadrantTable):
@@ -929,6 +963,29 @@ class CompanyDetail(MarkPrefixMixin, Container):
         else:
             self.app.notify(f"Cleared high-value on '{name}'")
 
+    def action_edit_contact(self, person_slug: str) -> None:
+        """Opens the real contact editor (phone/email/role/profile_url),
+        replacing the former "Edit Contact coming soon" stub. Mark,
+        2026-10-09: added so a wrong contact phone (the Mitch Gaylord
+        bug) or a missing bio/profile URL can actually be fixed from the
+        Contacts panel instead of hand-editing the person's .md file."""
+        from .edit_contact_modal import EditContactModal
+
+        cursor_row = self.contacts_table.cursor_row
+
+        def on_dismiss(result: bool | None) -> None:
+            if result:
+                from ...application.company_service import list_known_contacts
+
+                slug = self.company_data.get("company", {}).get("slug")
+                if slug:
+                    self.company_data["contacts"] = list_known_contacts(str(slug))
+                self._refresh_contacts_table()
+                if isinstance(cursor_row, int):
+                    self.contacts_table.move_cursor(row=cursor_row)
+
+        self.app.push_screen(EditContactModal(person_slug=person_slug), on_dismiss)
+
     def action_enqueue_follow_up(self) -> None:
         """Open modal to enqueue an email follow-up."""
         slug = self.company_data.get("company", {}).get("slug")
@@ -956,10 +1013,29 @@ class CompanyDetail(MarkPrefixMixin, Container):
         showing stale data. push_screen_wait blocks until CallLogModal is
         actually dismissed (its return value isn't needed here, just the
         wait)."""
-        # Prefer phone_1 which is our primary standardized field
-        phone = self.company_data["company"].get("phone_1") or self.company_data[
-            "company"
-        ].get("phone_number")
+        # Mark, 2026-10-09: dialing phone_1 (a generic company-wide
+        # number from Google Maps enrichment) instead of the actual
+        # contact's own line was the bug - a real testimonial-target
+        # call went to Higginbotham's 800 number instead of Mitch
+        # Gaylord's 949 direct line. Prefer the currently-selected (or
+        # first/default) contact's own phone, same selection rule
+        # action_compose_email already uses for "to_address", so
+        # highlighting a different contact in the Contacts panel picks
+        # that person for calling too. Only fall back to the company-
+        # level fields when no contact has a phone on file at all.
+        contacts = self.company_data.get("contacts") or []
+        contact_phone = None
+        if contacts:
+            row = self.contacts_table.cursor_row if self.contacts_table.has_focus else None
+            contact = (
+                contacts[row]
+                if isinstance(row, int) and 0 <= row < len(contacts)
+                else contacts[0]
+            )
+            contact_phone = contact.get("phone")
+        phone = contact_phone or self.company_data["company"].get(
+            "phone_1"
+        ) or self.company_data["company"].get("phone_number")
         slug = self.company_data["company"].get("slug")
         domain = self.company_data["company"].get("domain")
 

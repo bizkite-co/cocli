@@ -239,3 +239,122 @@ async def test_call_company_refreshes_only_after_modal_dismissed(mock_company_da
         "refresh_meetings",
         "refresh_info",
     ]
+
+
+async def _run_call_and_capture_dialed_phone(app, pilot, detail) -> str | None:
+    dial_mock = MagicMock(return_value=True)
+    provider = MagicMock(dial=dial_mock)
+    with patch(
+        "cocli.tui.widgets.company_detail.open_url", return_value=True
+    ), patch(
+        "cocli.utils.calling_provider.get_calling_provider", return_value=provider
+    ), patch.object(
+        app, "push_screen_wait", AsyncMock(return_value=True)
+    ):
+        await pilot.press("p")
+        await pilot.pause()
+    if not dial_mock.call_args:
+        return None
+    return str(dial_mock.call_args[0][0])
+
+
+@pytest.mark.asyncio
+async def test_call_company_dials_the_first_contacts_phone_by_default(tmp_path: Path):
+    """Mark, 2026-10-09: calling Mitch Gaylord dialed Higginbotham's
+    generic 800 number (phone_1, from Google Maps enrichment) instead of
+    his own 949 direct line - the contact's own phone must win."""
+    enrichment_dir = tmp_path / "companies" / "higginbotham-mitch-gaylord" / "enrichments"
+    enrichment_dir.mkdir(parents=True)
+    company_data = {
+        "company": {
+            "name": "Higginbotham - Mitch Gaylord",
+            "slug": "higginbotham-mitch-gaylord",
+            "domain": None,
+            "phone_1": "18007282374",
+            "phone_number": "19494907817",
+        },
+        "contacts": [
+            {"name": "Mitch Gaylord", "email": "mgaylord@higginbotham.com", "phone": "19494907817"},
+        ],
+        "meetings": [],
+        "notes": [],
+        "website_data": None,
+        "tags": [],
+        "enrichment_path": str(enrichment_dir / "website.md"),
+    }
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = await _mount(app, pilot, company_data)
+        dialed = await _run_call_and_capture_dialed_phone(app, pilot, detail)
+
+    assert dialed == "19494907817"
+
+
+@pytest.mark.asyncio
+async def test_call_company_dials_the_selected_contacts_phone_when_table_focused(
+    tmp_path: Path,
+):
+    """Highlighting a different contact in the Contacts panel before
+    pressing the call key should dial that contact, not the default
+    (first) one."""
+    enrichment_dir = tmp_path / "companies" / "multi-contact-co" / "enrichments"
+    enrichment_dir.mkdir(parents=True)
+    company_data = {
+        "company": {
+            "name": "Multi Contact Co",
+            "slug": "multi-contact-co",
+            "domain": None,
+            "phone_1": "15555550000",
+        },
+        "contacts": [
+            {"name": "First Contact", "email": "first@test.com", "phone": "15551110001"},
+            {"name": "Second Contact", "email": "second@test.com", "phone": "15552220002"},
+        ],
+        "meetings": [],
+        "notes": [],
+        "website_data": None,
+        "tags": [],
+        "enrichment_path": str(enrichment_dir / "website.md"),
+    }
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = await _mount(app, pilot, company_data)
+        detail.contacts_table.focus()
+        detail.contacts_table.move_cursor(row=1)
+        await pilot.pause()
+        dialed = await _run_call_and_capture_dialed_phone(app, pilot, detail)
+
+    assert dialed == "15552220002"
+
+
+@pytest.mark.asyncio
+async def test_call_company_falls_back_to_company_phone_when_no_contacts_have_a_phone(
+    tmp_path: Path,
+):
+    enrichment_dir = tmp_path / "companies" / "no-contact-phones-co" / "enrichments"
+    enrichment_dir.mkdir(parents=True)
+    company_data = {
+        "company": {
+            "name": "No Contact Phones Co",
+            "slug": "no-contact-phones-co",
+            "domain": None,
+            "phone_1": "15555550000",
+        },
+        "contacts": [
+            {"name": "Email Only Contact", "email": "noone@test.com"},
+        ],
+        "meetings": [],
+        "notes": [],
+        "website_data": None,
+        "tags": [],
+        "enrichment_path": str(enrichment_dir / "website.md"),
+    }
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = await _mount(app, pilot, company_data)
+        dialed = await _run_call_and_capture_dialed_phone(app, pilot, detail)
+
+    assert dialed == "15555550000"
