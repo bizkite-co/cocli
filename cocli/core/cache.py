@@ -107,11 +107,11 @@ def _fast_extract_metadata(index_path: Path) -> dict[str, Any]:
             data["phone"] = m.group(1).strip().strip('"').strip("'")
 
         m = re.search(r"^average_rating:\s*(.*)$", content, re.MULTILINE)
-        if m:
+        if m and m.group(1).strip().lower() not in ("", "null", "none"):
             data["average_rating"] = m.group(1).strip()
 
         m = re.search(r"^reviews_count:\s*(.*)$", content, re.MULTILINE)
-        if m:
+        if m and m.group(1).strip().lower() not in ("", "null", "none"):
             data["reviews_count"] = m.group(1).strip()
 
         tags = []
@@ -196,23 +196,28 @@ def build_cache(campaign: Optional[str] = None) -> None:
     if people_dir.exists():
         with os.scandir(people_dir) as it:
             for entry in it:
-                if entry.is_file() and entry.name.endswith(".md"):
-                    meta = _fast_extract_metadata(Path(entry.path))
-                    tags = meta.get("tags", [])
-                    if campaign and campaign not in tags:
-                        continue
+                if not entry.is_dir():
+                    continue
+                person_md_files = list(Path(entry.path).glob("*.md"))
+                if not person_md_files:
+                    continue
 
-                    name = meta.get("name", Path(entry.name).stem)
-                    items.append(
-                        CompanyCacheItem(
-                            slug=Path(entry.name).stem,
-                            name=name,
-                            type="person",
-                            phone_number=meta.get("phone"),
-                            tags=tags,
-                            display=f"PERSON:{name}",
-                        )
+                meta = _fast_extract_metadata(person_md_files[0])
+                tags = meta.get("tags", [])
+                if campaign and campaign not in tags:
+                    continue
+
+                name = meta.get("name", entry.name)
+                items.append(
+                    CompanyCacheItem(
+                        slug=entry.name,
+                        name=name,
+                        type="person",
+                        phone_number=meta.get("phone"),
+                        tags=tags,
+                        display=f"PERSON:{name}",
                     )
+                )
 
     cache_dir = get_cache_path(campaign=campaign)
     cache_dir.mkdir(parents=True, exist_ok=True)
