@@ -28,7 +28,8 @@ That is the stations trichotomy (log → fold → present state), with payload k
 
 - Journal segments: ``paths.wal_journal(node_id)`` — Shape A, append-only.
 - Entity identity: ``paths.wal_target_id(target_dir)`` (e.g. companies/slug).
-- Apply on load: ``Company.from_directory`` calls :func:`read_updates`.
+- Apply on load: ``Company.from_directory`` and ``Person.from_file`` call
+  :func:`read_updates`.
 - Compact: :func:`cocli.core.entity_field_log.compact_entity_field_journal`.
 
 ## Further docs
@@ -42,6 +43,7 @@ That is the stations trichotomy (log → fold → present state), with payload k
 
 from __future__ import annotations
 
+import json
 import logging
 import socket
 from datetime import UTC, datetime
@@ -93,6 +95,51 @@ def append_update(
         value=value_str,
     )
     open_entity_field_log().append(record)
+
+
+def canonical_field_value(value: Any) -> str:
+    """Stable text for comparing a file value with a model dump."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        if all(not isinstance(item, (list, dict)) for item in value):
+            return json.dumps(sorted(str(item) for item in value))
+        return json.dumps(value, sort_keys=True, default=str)
+    if isinstance(value, dict):
+        return json.dumps(value, sort_keys=True, default=str)
+    return str(value)
+
+
+def _is_blank(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def journal_field_changes(
+    target_dir: Path,
+    previous: dict[str, Any],
+    current: dict[str, Any],
+    *,
+    campaign_name: Optional[str] = None,
+) -> list[str]:
+    """Append one datagram per field that changed. Returns those field names.
+
+    A missing value and an empty list or dict are the same, so the first
+    WAL-aware save of an older file does not emit a row for every default.
+    ``slug`` is the entity identity and is never journaled.
+    """
+    changed: list[str] = []
+    fields = set(previous) | set(current)
+    fields.discard("slug")
+    for field in sorted(fields):
+        old = previous.get(field)
+        new = current.get(field)
+        if _is_blank(old) and _is_blank(new):
+            continue
+        if canonical_field_value(old) == canonical_field_value(new):
+            continue
+        append_update(target_dir, field, "" if new is None else new, campaign_name=campaign_name)
+        changed.append(field)
+    return changed
 
 
 def read_updates(target_dir: Path) -> list[DatagramRecord]:

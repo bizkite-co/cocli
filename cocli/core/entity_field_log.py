@@ -155,89 +155,151 @@ def apply_field_updates_to_mapping(
     return merged
 
 
+def record_is_newer_than_file(record: DatagramRecord, index_path: Path) -> bool:
+    """True when this fact should replace the value stored in ``index_path``.
+
+    A whole-file save newer than the datagram wins. The February remote
+    journals must not clobber an ``_index.md`` written after them.
+    """
+    if not index_path.exists():
+        return False
+    stamp = _record_timestamp(record)
+    if stamp is None:
+        return False
+    return stamp >= index_path.stat().st_mtime
+
+
+def entity_markdown_path(data_root: Path, target: str) -> Optional[Path]:
+    """The file compaction rewrites for ``target``.
+
+    Companies use ``_index.md``. A person directory has one ``*.md`` whose
+    name is the slugified person name, so that file is the snapshot.
+    """
+    entity_dir = data_root / target
+    index_path = entity_dir / "_index.md"
+    if index_path.is_file():
+        return index_path
+    if not entity_dir.is_dir():
+        return None
+    markdowns = sorted(path for path in entity_dir.glob("*.md") if path.is_file())
+    if len(markdowns) == 1:
+        return markdowns[0]
+    if len(markdowns) > 1:
+        logger.warning(
+            "entity field compact: %s has %d markdown files; skipping apply",
+            target,
+            len(markdowns),
+        )
+    return None
+
+
 def compact_entity_field_journal(
     *,
     wal_root: Optional[Path] = None,
     apply_to_entities: bool = True,
     data_root: Optional[Path] = None,
     compactor_id: Optional[str] = None,
-) -> tuple[bool, int, int]:
+    archive: bool = True,
+) -> tuple[bool, int, int, list[Path]]:
     """Fold the entity field journal and write whole entity snapshots.
 
     1. Enumerate Shape A log via :class:`EntityFieldLogEdge` (stations LogEdge).
     2. Pure LWW fold per (target, field).
-    3. If ``apply_to_entities``, merge winners into each entity's ``_index.md``
-       (compaction updates the **whole** entity file — not in-place field surgery
-       as the multi-writer protocol).
-    4. Retire consumed journal segments (move to ``wal/compacted/{run_id}/``).
+    3. If ``apply_to_entities``, merge winners that are newer than the entity
+       file into that file (``_index.md``, or the person's single markdown).
+    4. If ``archive``, retire a segment only when every record in it was
+       eligible to apply. A segment that still holds an older fact stays put,
+       so read-time fold can keep using it.
 
-    Returns ``(did_work, record_count, entity_count)``.
+    Returns ``(did_work, record_count, entity_count, written_paths)``.
+    ``record_count`` is the number of journal rows read, not the number
+    applied. ``written_paths`` are the entity files this run rewrote.
     """
     edge = open_entity_field_log(wal_root=wal_root)
     root = edge._root()
     records = list(edge.iter_beyond())
     if not records:
         logger.info("entity field journal empty; nothing to compact")
-        return False, 0, 0
+        return False, 0, 0, []
 
     winners = fold_field_updates(records)
-    by_target = group_winners_by_target(winners)
     cid = compactor_id or datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
-    entities_touched = 0
+    root_base = data_root if data_root is not None else paths.root
+    written: list[Path] = []
+
+    # Decide archive eligibility before the write, because the write updates
+    # the file mtime and would make a just-applied fact look older than the file.
+    archivable: list[Path] = []
+    if archive:
+        for wal_file in list(root.glob("*.usv")):
+            if wal_file.name.startswith("checkpoint."):
+                continue
+            if _segment_is_fully_applied(wal_file, root_base):
+                archivable.append(wal_file)
+            else:
+                logger.info(
+                    "entity field journal left %s in place; it still holds an older fact",
+                    wal_file.name,
+                )
 
     if apply_to_entities:
-        root_base = data_root if data_root is not None else paths.root
-        for target, fields in by_target.items():
-            if _apply_fields_to_entity_index(root_base, target, fields):
-                entities_touched += 1
+        fresh: dict[str, dict[str, str]] = {}
+        for rec in winners:
+            entity_path = entity_markdown_path(root_base, rec.target)
+            if entity_path is None or not record_is_newer_than_file(rec, entity_path):
+                continue
+            fresh.setdefault(rec.target, {})[rec.field] = rec.value
+        for target, fields in fresh.items():
+            applied = _apply_fields_to_entity_index(root_base, target, fields)
+            if applied is not None:
+                written.append(applied)
 
-    # Retire Shape A segments that participated (all non-checkpoint *.usv)
-    archive = root / "compacted" / cid
-    archive.mkdir(parents=True, exist_ok=True)
     moved = 0
-    for wal_file in list(root.glob("*.usv")):
-        if wal_file.name.startswith("checkpoint."):
-            continue
-        dest = archive / wal_file.name
-        try:
-            shutil.move(str(wal_file), str(dest))
-            moved += 1
-        except OSError as exc:
-            logger.error("failed to archive journal segment %s: %s", wal_file, exc)
+    if archivable:
+        archive_dir = root / "compacted" / cid
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        for wal_file in archivable:
+            dest = archive_dir / wal_file.name
+            try:
+                shutil.move(str(wal_file), str(dest))
+                moved += 1
+            except OSError as exc:
+                logger.error("failed to archive journal segment %s: %s", wal_file, exc)
 
     logger.info(
         "entity field journal compacted id=%s records=%s winners=%s entities=%s segments=%s",
         cid,
         len(records),
         len(winners),
-        entities_touched,
+        len(written),
         moved,
     )
-    return True, len(records), entities_touched
+    return True, len(records), len(written), written
 
 
 def _apply_fields_to_entity_index(
     data_root: Path, target: str, fields: dict[str, str]
-) -> bool:
-    """Merge folded fields into ``{data_root}/{target}/_index.md`` if present.
+) -> Optional[Path]:
+    """Merge folded fields into the entity markdown file when it exists.
 
-    Writes a whole ``_index.md`` (YAML frontmatter + body). Multi-writer
-    coordination stays on the log; this is the single-writer compact step.
+    A company snapshot is ``_index.md`` and keeps its description in the
+    body. A person snapshot is the single ``*.md`` in the directory, and
+    the markdown body after the frontmatter is left as it was. Returns
+    the path written, or None when there is nothing to rewrite.
     """
-    entity_dir = data_root / target
-    index_path = entity_dir / "_index.md"
-    if not index_path.exists():
+    index_path = entity_markdown_path(data_root, target)
+    if index_path is None:
         logger.warning(
-            "entity field compact: no _index.md for target %s; skipping apply",
+            "entity field compact: no entity file for target %s; skipping apply",
             target,
         )
-        return False
+        return None
 
     try:
         content = index_path.read_text(encoding="utf-8")
     except OSError as exc:
         logger.error("cannot read %s: %s", index_path, exc)
-        return False
+        return None
 
     frontmatter: dict[str, Any] = {}
     body = ""
@@ -249,7 +311,7 @@ def _apply_fields_to_entity_index(
                 frontmatter = loaded if isinstance(loaded, dict) else {}
             except yaml.YAMLError as exc:
                 logger.error("YAML error in %s: %s", index_path, exc)
-                return False
+                return None
             body = parts[2]
     else:
         body = content
@@ -266,19 +328,54 @@ def _apply_fields_to_entity_index(
         except Exception:
             frontmatter[key] = raw
 
-    description = frontmatter.pop("description", None)
+    is_company_index = index_path.name == "_index.md"
+    description = frontmatter.pop("description", None) if is_company_index else None
 
     with open(index_path, "w", encoding="utf-8") as f:
         f.write("---\n")
         yaml.safe_dump(frontmatter, f, sort_keys=False)
         f.write("---\n")
-        if description:
-            f.write(f"\n{description}\n")
-        elif body.strip():
-            f.write(body if body.startswith("\n") else f"\n{body.lstrip()}")
+        if is_company_index:
+            if description:
+                f.write(f"\n{description}\n")
+            elif body.strip():
+                f.write(body if body.startswith("\n") else f"\n{body.lstrip()}")
+        else:
+            f.write(body)
 
     logger.info("entity field compact applied %d fields to %s", len(fields), target)
-    return True
+    return index_path
+
+
+def _record_timestamp(record: DatagramRecord) -> Optional[float]:
+    try:
+        stamp = datetime.fromisoformat(record.timestamp)
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.timestamp()
+
+
+def _segment_is_fully_applied(wal_file: Path, data_root: Path) -> bool:
+    """A segment may be archived only when every row is newer than its file."""
+    try:
+        content = wal_file.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    saw_record = False
+    for raw in content.split(RS):
+        if not raw.strip():
+            continue
+        saw_record = True
+        try:
+            record = DatagramRecord.from_usv(raw)
+        except (ValueError, IndexError):
+            return False
+        entity_path = entity_markdown_path(data_root, record.target)
+        if entity_path is None or not record_is_newer_than_file(record, entity_path):
+            return False
+    return saw_record
 
 
 def _period_day() -> str:

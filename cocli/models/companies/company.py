@@ -29,6 +29,27 @@ from ...core.config import get_campaign
 logger = logging.getLogger(__name__)
 
 
+def _read_index_frontmatter(index_path: Path) -> Optional[dict[str, Any]]:
+    """Return the current ``_index.md`` mapping, or None when there is no file.
+
+    A YAML error also returns None so a save still writes the file and does
+    not journal a bogus full diff.
+    """
+    if not index_path.exists():
+        return None
+    try:
+        content = index_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not (content.startswith("---") and "---" in content[3:]):
+        return {}
+    try:
+        loaded = yaml.safe_load(content.split("---", 2)[1])
+    except yaml.YAMLError:
+        return None
+    return loaded if isinstance(loaded, dict) else {}
+
+
 def split_categories(v: Any) -> list[str]:
     if isinstance(v, str):
         return [cat.strip() for cat in v.split(";") if cat.strip()]
@@ -459,6 +480,7 @@ class Company(BaseModel):
             tags_path = entry.tags
 
         company_dir.mkdir(parents=True, exist_ok=True)
+        previous = _read_index_frontmatter(index_path)
 
         # 1. Update tags.lst (Primary Source of Truth)
         if self.tags:
@@ -482,6 +504,17 @@ class Company(BaseModel):
                 f.write(f"\n{description}\n")
 
         logger.debug(f"Saved company: {self.slug}")
+
+        # Field datagrams for peers. The local file above is already current.
+        # The first save of a company has no previous file, so it does not
+        # emit a full snapshot. use_wal=False keeps bulk writers quiet.
+        if use_wal and previous is not None:
+            try:
+                from ...core.wal import journal_field_changes
+
+                journal_field_changes(company_dir, previous, data)
+            except Exception as exc:
+                logger.error("company save journal failed for %s: %s", self.slug, exc)
 
         # 4. Trigger Fuzzy Search Cache Rebuild (Non-blocking)
         # This ensures the TUI sees the new company immediately without a restart.

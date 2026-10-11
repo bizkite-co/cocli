@@ -18,6 +18,28 @@ from ...core.email_index_manager import EmailIndexManager
 
 logger = logging.getLogger(__name__)
 
+
+def _read_person_frontmatter(person_file: Path) -> Optional[dict[str, Any]]:
+    """Return the current markdown mapping, or None when there is no file.
+
+    A YAML error also returns None so a save still writes the file and does
+    not journal a bogus full diff.
+    """
+    if not person_file.exists():
+        return None
+    try:
+        content = person_file.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not (content.startswith("---") and "---" in content[3:]):
+        return {}
+    try:
+        loaded = yaml.safe_load(content.split("---", 2)[1])
+    except yaml.YAMLError:
+        return None
+    return loaded if isinstance(loaded, dict) else {}
+
+
 class Person(BaseModel):
     name: OptionalCompanyName = None
     email: Optional[EmailAddress] = None
@@ -118,7 +140,16 @@ class Person(BaseModel):
                 except yaml.YAMLError:
                     pass
 
-        # Set the slug from the directory name
+        # Peer field datagrams overlay the file the same way company load does.
+        # The slug stays the directory name even if a row names another.
+        from cocli.core.entity_field_log import apply_field_updates_to_mapping
+        from cocli.core.wal import read_updates
+
+        wal_records = read_updates(person_file.parent)
+        if wal_records:
+            frontmatter_data = apply_field_updates_to_mapping(
+                frontmatter_data, wal_records
+            )
         frontmatter_data["slug"] = slug
 
         try:
@@ -131,21 +162,36 @@ class Person(BaseModel):
             logger.error(f"Unexpected error loading person from {person_file}: {e}")
             return None
 
-    def save(self, person_file: Optional[Path] = None, base_dir: Optional[Path] = None) -> None:
-        """Saves the person data to a markdown file and syncs with email index."""
+    def save(
+        self,
+        person_file: Optional[Path] = None,
+        base_dir: Optional[Path] = None,
+        use_wal: bool = True,
+    ) -> None:
+        """Saves the person data to a markdown file and syncs with email index.
+
+        ``use_wal`` appends one datagram per changed frontmatter field so
+        another machine can overlay it on load. The local file is still
+        written. The first save has no previous file, so it does not emit
+        a full snapshot. ``use_wal=False`` keeps bulk writers quiet.
+        """
         if not person_file:
             if base_dir:
                 person_dir = base_dir / self.slug
             else:
                 person_dir = paths.people.entry(self.slug).path
-            
+
             person_dir.mkdir(parents=True, exist_ok=True)
             from ...core.text_utils import slugify
             person_file = person_dir / f"{slugify(str(self.name) if self.name else 'unnamed')}.md"
+        else:
+            person_dir = person_file.parent
+
+        previous = _read_person_frontmatter(person_file)
 
         # We don't want to save the description/content in YAML if it's large
         data = self.model_dump(exclude_none=True)
-        
+
         # Determine if we should preserve existing markdown content
         markdown_content = f"\n# {self.name}\n"
         if person_file.exists():
@@ -160,6 +206,14 @@ class Person(BaseModel):
             yaml.safe_dump(data, f, sort_keys=False)
             f.write("---\n")
             f.write(markdown_content)
+
+        if use_wal and previous is not None:
+            try:
+                from ...core.wal import journal_field_changes
+
+                journal_field_changes(person_dir, previous, data)
+            except Exception as exc:
+                logger.error("person save journal failed for %s: %s", self.slug, exc)
         
         # Sync with Email Index
         campaign_name = get_campaign()

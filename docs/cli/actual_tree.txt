@@ -885,6 +885,10 @@ cocli
         company_slug (text) [required]
     view-meetings - View all meetings for a specific company.
         company_name (text) [required]
+    wal - Fold the entity field journal into entity files.
+        compact - Rewrite entity files from the field journal and upload the files that changed.
+            --campaign/-c (text)
+            --no-upload (boolean)
     web - Manage web deployment.
         deploy - Deploys the web dashboard (shell) and campaign data (KMLs, Report) to S3.
             --campaign-name/--campaign (text)

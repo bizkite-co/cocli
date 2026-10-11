@@ -106,6 +106,42 @@ def test_append_read_via_log_edge(
     assert fields["address"] == "1 Main St"
 
 
+def test_compact_leaves_an_older_fact_in_place(tmp_path: Path, monkeypatch: Any) -> None:
+    """A February datagram must not replace a newer _index.md, or be archived."""
+    monkeypatch.setattr(paths, "root", tmp_path)
+    company_dir = tmp_path / "companies" / "acme-inc"
+    company_dir.mkdir(parents=True)
+    index = company_dir / "_index.md"
+    index.write_text("---\nname: Acme\nphone: 555-0199\n---\n\n", encoding="utf-8")
+
+    from cocli.core.entity_field_log import open_entity_field_log
+
+    open_entity_field_log(wal_root=tmp_path / "wal").append(
+        DatagramRecord(
+            timestamp="2020-01-01T00:00:00+00:00",
+            node_id="old-node",
+            campaign_name="test",
+            target="companies/acme-inc",
+            field="phone",
+            value="555-0100",
+        )
+    )
+
+    did, n_rec, n_ent, written = compact_entity_field_journal(
+        wal_root=tmp_path / "wal",
+        data_root=tmp_path,
+        apply_to_entities=True,
+        compactor_id="old-fact",
+    )
+    assert did is True
+    assert n_rec == 1
+    assert n_ent == 0
+    assert written == []
+    assert "555-0199" in index.read_text(encoding="utf-8")
+    assert list((tmp_path / "wal").glob("*.usv"))
+    assert not (tmp_path / "wal" / "compacted" / "old-fact").exists()
+
+
 def test_compact_applies_whole_entity_and_retires_journal(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -121,7 +157,7 @@ def test_compact_applies_whole_entity_and_retires_journal(
     append_update(company_dir, "phone", "555-0100", campaign_name="test")
     append_update(company_dir, "address", "1 Main St", campaign_name="test")
 
-    did, n_rec, n_ent = compact_entity_field_journal(
+    did, n_rec, n_ent, written = compact_entity_field_journal(
         wal_root=tmp_path / "wal",
         data_root=tmp_path,
         apply_to_entities=True,
@@ -130,6 +166,7 @@ def test_compact_applies_whole_entity_and_retires_journal(
     assert did is True
     assert n_rec == 2
     assert n_ent == 1
+    assert written == [index]
 
     # Journal segments retired under wal/compacted/
     live = list((tmp_path / "wal").glob("*.usv"))
@@ -141,3 +178,36 @@ def test_compact_applies_whole_entity_and_retires_journal(
     assert "555-0100" in text
     assert "1 Main St" in text
     assert "name: Acme" in text
+
+
+def test_compact_rewrites_a_person_markdown_and_keeps_the_body(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(paths, "root", tmp_path)
+    person_dir = tmp_path / "people" / "mitch-gaylord"
+    person_dir.mkdir(parents=True)
+    person_file = person_dir / "mitch-gaylord.md"
+    person_file.write_text(
+        "---\nname: Mitch Gaylord\nprofile_url: https://old.example/\n---\n\n# Mitch Gaylord\n",
+        encoding="utf-8",
+    )
+    append_update(
+        person_dir,
+        "profile_url",
+        "https://www.higginbotham.com/team/mitchell-gaylord/",
+        campaign_name="test",
+    )
+
+    did, n_rec, n_ent, written = compact_entity_field_journal(
+        wal_root=tmp_path / "wal",
+        data_root=tmp_path,
+        compactor_id="person",
+    )
+    text = person_file.read_text(encoding="utf-8")
+    assert did is True
+    assert n_rec == 1
+    assert n_ent == 1
+    assert written == [person_file]
+    assert "https://www.higginbotham.com/team/mitchell-gaylord/" in text
+    assert "# Mitch Gaylord" in text
+    assert list((tmp_path / "wal").glob("*.usv")) == []
