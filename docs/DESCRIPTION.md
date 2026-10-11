@@ -189,6 +189,7 @@ Frictionless Data for schema declaration; content-addressed filenames for idempo
 - ADR-010 — Distributed filesystem queue (`adr/010-distributed-filesystem-queue.md`)
 - ADR-011 — S3-native conditional leases (`adr/011-s3-native-conditional-leases.md`)
 - ADR-012 → ADR-013 — Distributed filesystem index → deterministic hash-sharded index
+- ADR-014 — Org, branch, and person relationships (`adr/014-org-branch-person-relationships.md`)
 - `wal-strategy.md` — WAL pattern and compaction
 - `architecture/compaction-and-checkpointing.md` — checkpoint layer and hybrid reads
 - `architecture/system-map.md` — execution domains and process-phase nomenclature

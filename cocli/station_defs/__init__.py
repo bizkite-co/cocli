@@ -30,6 +30,7 @@ from cocli.station_defs.campaigns.queues import (
     QUEUE_PENDING_TEMPLATE,
 )
 from cocli.station_defs.wal.entity_field import ENTITY_FIELD_JOURNAL
+from cocli.station_defs.wal.relationship import RELATIONSHIP_JOURNAL
 
 __all__ = [
     "DOMAIN_INBOX",
@@ -43,4 +44,5 @@ __all__ = [
     "GM_LIST_RESULTS_STATION",
     "QUEUE_PENDING_TEMPLATE",
     "ENTITY_FIELD_JOURNAL",
+    "RELATIONSHIP_JOURNAL",
 ]
