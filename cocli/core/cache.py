@@ -151,6 +151,40 @@ def _fast_extract_metadata(index_path: Path) -> dict[str, Any]:
     return data
 
 
+def _record_contact_tags(
+    company_dir: Path,
+    tags: list[str],
+    inherited: dict[str, list[str]],
+) -> None:
+    """Copy this company's tags onto each person named by a contacts/ symlink.
+
+    The link name is the person slug. The person file is not read or written.
+    """
+    contacts = company_dir / "contacts"
+    if not contacts.is_dir():
+        return
+    try:
+        with os.scandir(contacts) as it:
+            for entry in it:
+                if not entry.is_symlink():
+                    continue
+                bucket = inherited.setdefault(entry.name, [])
+                for tag in tags:
+                    if tag and tag not in bucket:
+                        bucket.append(tag)
+    except OSError as exc:
+        logger.warning("cannot read contacts for %s: %s", company_dir.name, exc)
+
+
+def _tags_with_inheritance(own: list[str], inherited: list[str]) -> list[str]:
+    """Union of tags stored on the person and tags of linked companies."""
+    merged = list(own)
+    for tag in inherited:
+        if tag and tag not in merged:
+            merged.append(tag)
+    return merged
+
+
 def build_cache(campaign: Optional[str] = None) -> None:
     """Builds the USV search cache and its datapackage.json."""
     from .paths import paths
@@ -159,6 +193,7 @@ def build_cache(campaign: Optional[str] = None) -> None:
     items: list[CompanyCacheItem] = []
     companies_dir = paths.companies.path
     people_dir = paths.people.path
+    inherited_tags: dict[str, list[str]] = {}
 
     if companies_dir.exists():
         with os.scandir(companies_dir) as it:
@@ -170,6 +205,7 @@ def build_cache(campaign: Optional[str] = None) -> None:
 
                     meta = _fast_extract_metadata(idx_path)
                     tags = meta.get("tags", [])
+                    _record_contact_tags(Path(entry.path), tags, inherited_tags)
                     if campaign and campaign not in tags:
                         continue
 
@@ -203,7 +239,10 @@ def build_cache(campaign: Optional[str] = None) -> None:
                     continue
 
                 meta = _fast_extract_metadata(person_md_files[0])
-                tags = meta.get("tags", [])
+                tags = _tags_with_inheritance(
+                    list(meta.get("tags", [])),
+                    inherited_tags.get(entry.name, []),
+                )
                 if campaign and campaign not in tags:
                     continue
 
