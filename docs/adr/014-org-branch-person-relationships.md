@@ -95,7 +95,7 @@ Raw provider payloads (a future People Data Labs body) are Shape B files, one fi
 
 ### 6. First implementation slice
 
-This ADR's first code is the record, the station declaration, the log edge, the three folds, and the predicate registry. It does not write `org.md`, move symlinks, derive campaign tags, or ingest provider blobs.
+The journal code is the record, the station declaration, the log edge, the three folds, and the predicate registry. `publish_relationship_journal` writes `org.md` and regenerates `units/` and `contacts/` symlinks from open instance edges. It does not delete journal segments, derive campaign tags, or ingest provider blobs.
 
 ## Consequences
 
