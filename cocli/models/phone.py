@@ -309,19 +309,35 @@ class PhoneNumber:
 OptionalPhone = Annotated[Optional[PhoneNumber], BeforeValidator(empty_to_none)]
 
 
+def as_phone_number(value: Any) -> Optional[PhoneNumber]:
+    """Parse a stored or typed phone into the protocol, or None when it is blank."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, PhoneNumber):
+        return value
+    try:
+        return PhoneNumber.validate(value)
+    except ValueError:
+        return None
+
+
+def render_phone(value: Any, pattern: str = "international") -> str:
+    """Render a phone through ``PhoneNumberProtocol.format``.
+
+    Blank values render as an empty string. A value the protocol cannot
+    parse is returned unchanged so the caller can still show what was stored.
+    """
+    number = as_phone_number(value)
+    if number is not None:
+        return number.format(pattern)
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text or text.lower() in {"none", "null"}:
+        return ""
+    return text
+
+
 def format_us_phone(phone: Any) -> str:
     """Render a stored phone as (555) 123-4567. Falls back to the original string."""
-    if phone is None:
-        return ""
-    if isinstance(phone, PhoneNumber):
-        return phone.format("national")
-    text = str(phone).strip()
-    if not text:
-        return ""
-    try:
-        parsed = PhoneNumber.validate(text)
-    except ValueError:
-        return text
-    if parsed is None:
-        return text
-    return parsed.format("national")
+    return render_phone(phone, "national")

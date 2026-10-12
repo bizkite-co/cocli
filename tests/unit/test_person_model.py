@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from cocli.models.company_name import CompanyName
 from cocli.models.people.person import Person
+from cocli.models.phone import PhoneNumber
 
 
 def test_profile_url_round_trips_through_save_and_from_file(
@@ -40,6 +42,34 @@ def test_get_file_path_returns_the_existing_md_file(tmp_path: Any, monkeypatch: 
     found = person.get_file_path()
     assert found is not None
     assert found.name == "mitch-gaylord.md"
+
+
+def test_social_urls_round_trip_and_the_profile_renders_them(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+    from cocli.tui.widgets.person_detail import PersonDetail
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    person = Person(
+        name=CompanyName("Richard Bendes"),
+        slug="richard-bendes",
+        phone=PhoneNumber.validate("15124574000"),
+        linkedin_url="https://www.linkedin.com/in/richard-bendes-36630462/",
+    )
+    person.save()
+
+    loaded = Person.get("richard-bendes")
+    assert loaded is not None
+    assert loaded.linkedin_url == "https://www.linkedin.com/in/richard-bendes-36630462/"
+
+    detail = PersonDetail(person_slug="richard-bendes")
+    detail.person = loaded
+    text = detail._get_person_description()
+    assert "**Phone:** +1 (512) 457-4000" in text
+    assert "https://www.linkedin.com/in/richard-bendes-36630462/" in text
+    assert "\n\n**Phone:**" in text
+    assert "\n\n**LinkedIn:**" in text
 
 
 def test_get_file_path_returns_none_before_first_save(tmp_path: Any, monkeypatch: Any) -> None:

@@ -64,6 +64,17 @@ def test_format_us_phone_national():
     assert format_us_phone(None) == ""
 
 
+def test_render_phone_uses_the_protocol_format() -> None:
+    from cocli.models.phone import render_phone
+
+    number = PhoneNumber.validate("15124574000")
+    assert number is not None
+    assert render_phone("15124574000") == number.format("international")
+    assert render_phone("15124574000") == "+1 (512) 457-4000"
+    assert render_phone(None) == ""
+    assert render_phone("not a phone") == "not a phone"
+
+
 def test_parse_with_extension():
     p = PhoneNumber.model_validate("(512) 555-1212 x101")
     assert p.country_code == "1"

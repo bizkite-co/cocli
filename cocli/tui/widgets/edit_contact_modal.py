@@ -5,16 +5,18 @@ from typing import Optional
 
 from textual import on, events
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Label, Static
 
 from ...models.people.person import Person
+from ...models.phone import render_phone
+from ...models.social import SOCIAL_URL_FIELDS
 from .inputs import CocliInput
 
 
 class EditContactModal(ModalScreen[bool]):
-    """Edits a Person record's phone/email/role/profile_url fields.
+    """Edits a Person record's phone, email, role, profile, and social URLs.
 
     Mark, 2026-10-09: this replaces the "Edit Contact coming soon" stub
     that used to sit behind the Contacts panel's i/Enter binding - there
@@ -32,12 +34,15 @@ class EditContactModal(ModalScreen[bool]):
     EditContactModal {
         align: center middle;
     }
-    #edit_contact_form {
+    #edit_contact_frame {
         width: 70;
-        height: auto;
+        height: 36;
         border: round $primary;
         background: $surface;
         padding: 1 2;
+    }
+    #edit_contact_form {
+        height: 1fr;
     }
     #edit_contact_title {
         text-align: center;
@@ -64,28 +69,35 @@ class EditContactModal(ModalScreen[bool]):
         person = Person.get(self.person_slug)
         name = str(person.name) if person and person.name else ""
         email = str(person.email) if person and person.email else ""
-        phone = str(person.phone) if person and person.phone else ""
+        phone = render_phone(person.phone) if person and person.phone else ""
         role = person.role if person and person.role else ""
         profile_url = person.profile_url if person and person.profile_url else ""
 
-        with Container(id="edit_contact_form"):
+        with Container(id="edit_contact_frame"):
             yield Label(f"EDIT CONTACT: [bold cyan]{name or self.person_slug}[/]", id="edit_contact_title")
+            with VerticalScroll(id="edit_contact_form"):
+                yield Label("Name", classes="field-label")
+                yield CocliInput(value=name, id="edit_contact_name")
 
-            yield Label("Name", classes="field-label")
-            yield CocliInput(value=name, id="edit_contact_name")
+                yield Label("Email", classes="field-label")
+                yield CocliInput(value=email, id="edit_contact_email")
 
-            yield Label("Email", classes="field-label")
-            yield CocliInput(value=email, id="edit_contact_email")
+                yield Label("Phone", classes="field-label")
+                yield CocliInput(value=phone, id="edit_contact_phone")
 
-            yield Label("Phone", classes="field-label")
-            yield CocliInput(value=phone, id="edit_contact_phone")
+                yield Label("Role", classes="field-label")
+                yield CocliInput(value=role, id="edit_contact_role")
 
-            yield Label("Role", classes="field-label")
-            yield CocliInput(value=role, id="edit_contact_role")
+                yield Label("Profile URL (bio/team page)", classes="field-label")
+                yield CocliInput(value=profile_url, id="edit_contact_profile_url")
 
-            yield Label("Profile URL (bio/team page)", classes="field-label")
-            yield CocliInput(value=profile_url, id="edit_contact_profile_url")
-
+                for field_name, label in SOCIAL_URL_FIELDS:
+                    current = getattr(person, field_name, None) if person else None
+                    yield Label(label, classes="field-label")
+                    yield CocliInput(
+                        value=str(current) if current else "",
+                        id=f"edit_contact_{field_name}",
+                    )
             yield Static(
                 "[bold reverse] CTRL+S: SAVE [/]  [dim] ESC: CANCEL [/]",
                 id="edit_contact_help",
@@ -120,6 +132,8 @@ class EditContactModal(ModalScreen[bool]):
         data["phone"] = _field("#edit_contact_phone")
         data["role"] = _field("#edit_contact_role")
         data["profile_url"] = _field("#edit_contact_profile_url")
+        for field_name, _label in SOCIAL_URL_FIELDS:
+            data[field_name] = _field(f"#edit_contact_{field_name}")
 
         try:
             updated = Person(**data)

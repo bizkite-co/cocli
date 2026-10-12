@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Union
 from textual.widgets import Label
 from rich.text import Text
-from cocli.models.phone import PhoneNumber
+from cocli.models.phone import as_phone_number, render_phone
 
 class Phone(Label):
     """A widget to display and interact with a phone number."""
@@ -21,15 +21,7 @@ class Phone(Label):
         """Consistently format phone numbers for display."""
         if not value:
             return "N/A"
-        try:
-            # If it's already a PhoneNumber object
-            if isinstance(value, PhoneNumber):
-                return Text(value.format("international"), style="bold #00ff00")
-            
-            # If it's a string/dict, validate it
-            pn = PhoneNumber.model_validate(value)
-            if pn:
-                return Text(pn.format("international"), style="bold #00ff00")
-        except Exception:
-            pass
-        return str(value)
+        rendered = render_phone(value)
+        if as_phone_number(value) is not None:
+            return Text(rendered, style="bold #00ff00")
+        return rendered or str(value)

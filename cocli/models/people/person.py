@@ -62,6 +62,14 @@ class Person(BaseModel):
     # naming convention.
     profile_url: Optional[str] = None
 
+    # Same social URL fields as Company, so a person profile can hold the
+    # links that today only exist on the company record.
+    facebook_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+
     # --- Ordinant Protocol Implementation ---
     @property
     def collection(self) -> CollectionName:

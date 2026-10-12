@@ -23,7 +23,7 @@ from ...models.companies.company import Company
 from ...models.companies.note import Note
 from ...models.companies.meeting import Meeting
 from ...models.companies.activity import CompanyActivity
-from ...models.phone import PhoneNumber
+from ...models.phone import as_phone_number, render_phone
 from ...core.paths import paths
 from ...core.config import get_editor_command
 from .mark_prefix import MarkPrefixMixin
@@ -216,16 +216,12 @@ def format_note_preview(n: dict[str, Any]) -> Text:
 
 
 def format_phone_display(value: Any) -> Union[Text, str]:
-    """Helper to consistently format phone numbers for display."""
+    """Display helper. The text comes from ``render_phone`` (PhoneNumber.format)."""
     if not value:
         return ""
-    try:
-        pn = PhoneNumber.model_validate(value)
-        if pn:
-            return Text(pn.format("international"), style="bold #00ff00")
-    except Exception:
-        pass
-    return str(value)
+    if as_phone_number(value) is None:
+        return str(value)
+    return Text(render_phone(value), style="bold #00ff00")
 
 
 def format_email_display(value: Any) -> Union[Text, str]:

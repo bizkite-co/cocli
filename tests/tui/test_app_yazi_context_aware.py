@@ -157,3 +157,28 @@ async def test_open_yazi_uses_campaign_root_without_company_detail(
             app.action_open_campaign_yazi()
 
         mock_run.assert_called_once_with(["/usr/bin/yazi", str(campaign_dir)], check=False)
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.app.time.sleep")
+@patch("cocli.tui.app.subprocess.run")
+@patch("cocli.tui.app.shutil.which", return_value="/usr/bin/yazi")
+async def test_open_yazi_uses_person_directory_when_person_detail_is_active(
+    mock_which, mock_run, mock_sleep, tmp_path, monkeypatch
+):
+    from cocli.tui.widgets.person_detail import PersonDetail
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    person_dir = tmp_path / "people" / "richard-bendes"
+    person_dir.mkdir(parents=True)
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        await app.query_one("#app_content").mount(PersonDetail(person_slug="richard-bendes"))
+        await pilot.pause()
+        with patch.object(app, "suspend", return_value=nullcontext()):
+            app.action_open_campaign_yazi()
+
+    mock_which.assert_called_once_with("yazi")
+    mock_run.assert_called_once_with(["/usr/bin/yazi", str(person_dir)], check=False)
+    mock_sleep.assert_called()

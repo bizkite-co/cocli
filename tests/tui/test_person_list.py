@@ -1,6 +1,6 @@
 import pytest
 from textual.app import App
-from textual.widgets import ListView, ListItem
+from textual.widgets import ListView, ListItem, Markdown
 from unittest.mock import MagicMock
 
 from cocli.tui.widgets.person_list import PersonList
@@ -91,4 +91,115 @@ async def test_person_list_search_duplicate_slugs():
         
         assert "Duplicate Person" in displayed_names
         assert "Another Duplicate Person" in displayed_names
-        assert len(displayed_names) == 2 
+        assert len(displayed_names) == 2
+
+
+def _person(index: int) -> SearchResult:
+    return SearchResult(
+        name=f"Person {index:02d}",
+        slug=f"person-{index:02d}",
+        type="person",
+        unique_id=f"person-{index:02d}",
+        tags=[],
+        display="",
+    )
+
+
+class _KeyApp(PersonListTestApp):
+    def __init__(self, services=None, *args, **kwargs):
+        super().__init__(services=services, *args, **kwargs)
+        self.opened: list[str] = []
+
+    def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
+        self.opened.append(message.person_slug)
+
+
+@pytest.mark.asyncio
+async def test_person_list_is_not_capped_at_twenty() -> None:
+    people = [_person(i) for i in range(25)]
+    services = ServiceContainer(search_service=MagicMock(return_value=people), sync_search=True)
+    app = PersonListTestApp(services=services)
+    async with app.run_test() as driver:
+        await driver.pause(0.2)
+        list_view = app.person_list.query_one(ListView)
+        assert len(list_view.children) == 25
+
+
+@pytest.mark.asyncio
+async def test_person_list_vim_keys_search_move_and_open() -> None:
+    services = ServiceContainer(
+        search_service=MagicMock(return_value=mock_fz_person_items),
+        sync_search=True,
+    )
+    app = _KeyApp(services=services)
+    async with app.run_test() as driver:
+        await driver.pause(0.2)
+        list_view = app.person_list.query_one("#person_list_view", ListView)
+        assert list_view.has_focus
+        assert list_view.index == 0
+
+        await driver.press("j")
+        assert list_view.index == 1
+        await driver.press("k")
+        assert list_view.index == 0
+
+        await driver.press("s")
+        assert app.person_list.query_one("#person_search_input").has_focus
+
+        await driver.press("escape")
+        assert list_view.has_focus
+
+        await driver.press("j")
+        await driver.press("l")
+        assert app.opened == ["person-two"]
+
+
+@pytest.mark.asyncio
+async def test_h_returns_from_person_detail_to_the_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """h on a person record returns to the people list.
+
+    The list stays mounted but hidden, and it used to keep focus. Back then
+    treated that hidden list as the current screen and left the record up.
+    """
+    from cocli.models.company_name import CompanyName
+    from cocli.models.people.person import Person
+    from cocli.tui.app import CocliApp
+    from cocli.tui.widgets.person_detail import PersonDetail
+
+    person = Person(
+        name=CompanyName("Richard Bendes"),
+        slug="richard-bendes",
+        role="Austin branch",
+        linkedin_url="https://www.linkedin.com/in/richard-bendes-36630462/",
+    )
+    services = ServiceContainer(
+        search_service=MagicMock(
+            return_value=[
+                SearchResult(
+                    name="Richard Bendes",
+                    slug="richard-bendes",
+                    type="person",
+                    unique_id="richard-bendes",
+                    tags=[],
+                    display="",
+                )
+            ]
+        ),
+        sync_search=True,
+    )
+    app = CocliApp(services=services, auto_show=False)
+    monkeypatch.setattr(Person, "get", classmethod(lambda cls, slug: person))
+    async with app.run_test() as driver:
+        await app.action_show_people()
+        await driver.pause(0.2)
+        await driver.press("l")
+        await driver.pause(0.2)
+        detail = app.query_one(PersonDetail)
+        assert detail.display
+        source = detail.query_one("#person-description", Markdown).source
+        assert "Person not found." not in source
+        assert "\n\n**Role:**" in source
+        await driver.press("h")
+        await driver.pause(0.4)
+        assert not any(widget.display for widget in app.query(PersonDetail))
+        assert app.query_one(PersonList).display

@@ -60,10 +60,14 @@ async def test_edit_item_opens_editor_and_save_updates_the_contact(
         await pilot.pause()
 
         assert isinstance(app.screen, EditContactModal)
+        assert app.screen.query_one("#edit_contact_phone").value == "+1 (800) 728-2374"
 
         app.screen.query_one("#edit_contact_phone").value = "19494907817"
         app.screen.query_one("#edit_contact_profile_url").value = (
             "https://www.higginbotham.com/team/mitchell-gaylord/"
+        )
+        app.screen.query_one("#edit_contact_linkedin_url").value = (
+            "https://www.linkedin.com/in/mitchell-gaylord/"
         )
         await pilot.press("ctrl+s")
         await pilot.pause()
@@ -75,6 +79,7 @@ async def test_edit_item_opens_editor_and_save_updates_the_contact(
     assert updated.phone is not None
     assert str(updated.phone) == "19494907817"
     assert updated.profile_url == "https://www.higginbotham.com/team/mitchell-gaylord/"
+    assert updated.linkedin_url == "https://www.linkedin.com/in/mitchell-gaylord/"
 
     # The in-memory contacts list (used by action_call_company) reflects
     # the edit without needing to reopen Company Detail.

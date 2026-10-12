@@ -706,19 +706,33 @@ class CocliApp(App[None]):
         current view, rather than keeping a second binding around just to
         reach the company folder).
 
-        Opens the visible CompanyDetail's own company folder if one is
-        active; otherwise the campaign root (queues, indexes, companies).
+        Opens the visible PersonDetail's person directory, else the visible
+        CompanyDetail's company folder, else the campaign root.
         """
         from .widgets.company_detail import CompanyDetail
+        from .widgets.person_detail import PersonDetail
         from ..core.paths import paths
 
-        detail: Optional[CompanyDetail] = None
-        for widget in self.query(CompanyDetail):
-            if widget.visible:
-                detail = widget
+        person: Optional[PersonDetail] = None
+        for person_widget in self.query(PersonDetail):
+            if person_widget.display and person_widget.visible:
+                person = person_widget
                 break
 
-        if detail is not None:
+        detail: Optional[CompanyDetail] = None
+        if person is None:
+            for company_widget in self.query(CompanyDetail):
+                if company_widget.display and company_widget.visible:
+                    detail = company_widget
+                    break
+
+        if person is not None:
+            slug = person.person_slug
+            folder = paths.people.entry(slug).path if slug else None
+            if folder is None or not folder.is_dir():
+                self.notify(f"Person folder not found: {slug}", severity="error")
+                return
+        elif detail is not None:
             slug = detail.company_data["company"].get("slug")
             folder = paths.companies.entry(slug).path if slug else None
             if folder is None or not folder.is_dir():
@@ -751,6 +765,8 @@ class CocliApp(App[None]):
         if detail is not None:
             detail.refresh_notes_data()
             detail.refresh_meetings_data()
+        elif person is not None:
+            person.reload()
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
@@ -1026,7 +1042,10 @@ class CocliApp(App[None]):
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
-                        if w.visible and w.has_focus_within:
+                        # display=False keeps CSS visibility, so a hidden
+                        # list that still holds focus must not count as the
+                        # screen the user is looking at.
+                        if w.display and w.visible and w.has_focus_within:
                             tui_debug_log(
                                 f"APP: Found active leaf: {widget_class.__name__}"
                             )
@@ -1041,7 +1060,10 @@ class CocliApp(App[None]):
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
-                        if w.visible and w.has_focus_within:
+                        # display=False keeps CSS visibility, so a hidden
+                        # list that still holds focus must not count as the
+                        # screen the user is looking at.
+                        if w.display and w.visible and w.has_focus_within:
                             tui_debug_log(
                                 f"APP: Found active root: {widget_class.__name__}"
                             )
@@ -1066,7 +1088,9 @@ class CocliApp(App[None]):
             else:
                 child.remove()
 
-        content.mount(PersonDetail(person_slug=message.person_slug))
+        detail = PersonDetail(person_slug=message.person_slug)
+        content.mount(detail)
+        detail.focus()
 
     def on_company_list_company_selected(
         self, message: CompanyList.CompanySelected
@@ -1295,7 +1319,7 @@ class CocliApp(App[None]):
                     child.remove()
 
             if person_list:
-                person_list.focus()
+                person_list.focus_list()
                 self.menu_bar.set_activity("")
                 return
 
