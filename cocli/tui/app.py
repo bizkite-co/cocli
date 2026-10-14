@@ -26,6 +26,7 @@ from textual import events, on
 from textual.command import Provider, Hit, DiscoveryHit, CommandPalette
 from textual.screen import ModalScreen
 
+from .calling_palette import CallingPaletteEntry, calling_palette_entries
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
 from .widgets.company_preview import CompanyPreview
@@ -35,6 +36,8 @@ from .widgets.application_view import ApplicationView
 from .widgets.status_view import StatusView
 from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_search import CompanySearchView
+from .widgets.confirm_screen import ConfirmScreen
+from .widgets.content_viewer_modal import ContentViewerModal
 from .widgets.template_list import TemplateList
 from .widgets.messages_view import MessagesView
 from .widgets.event_curation import EventCurationView
@@ -322,6 +325,11 @@ class CocliCommandProvider(Provider):
                 )
             )
 
+        for entry in calling_palette_entries():
+            commands.append(
+                (entry.name, self._calling_palette_action(entry), entry.help)
+            )
+
         # OperationService's registry (ApplicationView's Operations panel -
         # sync/scaling/maintenance/reporting jobs, including op_compile_to_call)
         # is a separate mechanism from these hand-picked navigation commands,
@@ -344,6 +352,56 @@ class CocliCommandProvider(Provider):
             return 0
 
         return sorted(commands, key=lambda c: (mru_score(c[0]), c[0]), reverse=True)
+
+    def _calling_palette_action(self, entry: CallingPaletteEntry) -> Callable[[], Any]:
+        """Run a `cocli calling` command after the palette finishes dismissing.
+
+        Sync, balance, status, and inspection run on a worker and report the
+        result. test-voice and test-sms ask first. Argument-taking commands
+        open the CLI form instead of guessing a value."""
+
+        def go() -> None:
+            app = cast("CocliApp", self.app)
+
+            def start() -> None:
+                if entry.confirm:
+                    app.push_screen(ConfirmScreen(entry.confirm), after_confirm)
+                    return
+                launch()
+
+            def after_confirm(confirmed: bool | None) -> None:
+                if confirmed:
+                    launch()
+
+            def launch() -> None:
+                if entry.present == "usage":
+                    app.push_screen(
+                        ContentViewerModal(entry.name, entry.usage or "")
+                    )
+                    return
+                app.notify(f"{entry.name}...")
+                app.run_worker(worker())
+
+            async def worker() -> None:
+                from .calling_palette import execute_calling_command
+
+                try:
+                    result = await asyncio.to_thread(
+                        execute_calling_command, entry.action_id
+                    )
+                except Exception as exc:
+                    app.notify(f"{entry.name} failed: {exc}", severity="error")
+                    return
+                if entry.present == "viewer":
+                    app.push_screen(ContentViewerModal(entry.name, result.text))
+                    if result.severity != "information":
+                        app.notify(result.text.split("\n", 1)[0], severity=result.severity)
+                    return
+                app.notify(result.text, severity=result.severity, timeout=10)
+
+            app.call_after_refresh(start)
+
+        return go
 
     def _go_to_operation_action(self, op_id: str) -> Callable[[], Any]:
         """Returns a no-arg callable (for _commands()'s uniform shape)
