@@ -307,6 +307,48 @@ async def test_recent_calls_panel_shows_this_companys_calls_newest_first(
 
 @pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_recent_calls_panel_shows_notes_not_the_disposition_title(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A logged call's title is always the disposition. The right column
+    has to show what was actually written."""
+    from datetime import UTC, datetime
+
+    from cocli.application.meeting_service import MeetingService
+    from cocli.core.paths import paths
+    from cocli.models.companies.meeting import CompanyCall
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    Company(name="Ref Co", slug="ref-co", domain="ref.test", phone="555-333-4444").save()
+
+    MeetingService("roadmap").record_call_in_cache(
+        CompanyCall(
+            datetime_utc=datetime(2026, 3, 1, tzinfo=UTC),
+            datetime_local=datetime(2026, 3, 1, tzinfo=UTC),
+            company_name="Ref Co",
+            company_slug="ref-co",
+            title="Logged Call: Follow Up Needed",
+            content=(
+                "Disposition: Follow Up Needed\n\n"
+                "Talked to Rick. Mimecast is marking the mail as spam, not blocking it."
+            ),
+            file_path=tmp_path / "rick.md",
+        )
+    )
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="ref-co", phone="555-333-4444")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        recent_calls = str(modal.query_one("#call-recent-calls").content)
+        assert "Talked to Rick. Mimecast is marking the mail as spam" in recent_calls
+        assert "Follow Up Needed" not in recent_calls
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
 async def test_recent_calls_panel_shows_placeholder_when_no_calls_yet(
     _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
 ) -> None:

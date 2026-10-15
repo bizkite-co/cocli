@@ -36,6 +36,28 @@ from .search_select import SearchSelect
 # this sentinel is the "don't schedule one" choice, always first/default.
 NO_EMAIL_FOLLOW_UP = "(No email follow-up)"
 
+
+def _recent_call_text(call: Any) -> str:
+    """The words logged for the call. The meeting title is only the
+    disposition ("Logged Call: Follow Up Needed"), so the right-hand
+    column shows the notes instead. A call saved with no notes falls
+    back to that disposition."""
+    raw = (getattr(call, "content", None) or "").replace("\r\n", "\n").strip()
+    notes = raw
+    if raw.lower().startswith("disposition:"):
+        _, _, rest = raw.partition("\n")
+        notes = rest.strip()
+    notes = " ".join(notes.split())
+    if len(notes) > 180:
+        notes = notes[:177] + "..."
+    if notes:
+        return notes
+    title = (getattr(call, "title", None) or "").replace("\n", " ").strip()
+    for prefix in ("Logged Call:", "Call Log:"):
+        if title.startswith(prefix):
+            title = title[len(prefix):].strip()
+    return title or "(no notes)"
+
 DISPOSITION_CHOICES = [
     ("Follow Up Needed", "Follow Up Needed"),
     ("Interested / Qualified", "Interested"),
@@ -243,8 +265,7 @@ class CallLogModal(ModalScreen[bool]):
         for c in company_calls:
             date_str = c.datetime_local.strftime("%Y-%m-%d %H:%M")
             direction = f" ({c.direction})" if c.direction else ""
-            clean_title = c.title.replace("\n", " ").strip()
-            lines.append(f"  {c.icon} {date_str}{direction}: {clean_title}")
+            lines.append(f"  {c.icon} {date_str}{direction}: {_recent_call_text(c)}")
         body = "\n".join(lines)
         return f"[bold]Recent calls[/bold]\n{body}"
 
