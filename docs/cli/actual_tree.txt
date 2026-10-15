@@ -226,6 +226,21 @@ cocli
             campaign_name (text)
         import-prospects - Imports prospects from a campaign's prospects.csv into the canonical company structure.
             campaign_name (text)
+        initiatives - Campaign initiatives.
+            record-demo - Type a scenario into the initiative form and record the viewport.
+                initiative (text) [required]
+                scenario (text) [required]
+                --campaign/-c (text)
+                --fixture (path)
+                --out (path)
+                --url (text)
+                --username (text)
+                --password (text)
+                --client-name (text)
+                --headed (boolean)
+                --char-delay (integer)
+                --pause (integer)
+                --pan (integer)
         list - List local campaigns with descriptions.
             --paths (boolean)
         mark-wilderness - Mark (or unmark) a global wilderness tile used by every campaign's scrapes.
@@ -840,6 +855,7 @@ cocli
             --skip-verify (boolean)
     tui - Launches the Textual TUI for cocli.
         --dump-tree (path)
+        kill - Stop every cocli TUI on this machine.
     video
         add - Add (import) an external video into the campaign raw queue.
             -c/--campaign (text)

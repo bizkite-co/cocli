@@ -536,6 +536,7 @@ cocli
         tree - Show a visual dependency tree of tasks.
     tui - Launches the Textual TUI for cocli.
         --dump-tree (path)
+        kill - Stop every cocli TUI on this machine.
     video
         add - Add a video to the raw queue.
             -c/--campaign (text)

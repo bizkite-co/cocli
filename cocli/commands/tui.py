@@ -1,13 +1,22 @@
 from __future__ import annotations
+
 import logging
-from typing import Optional
+import os
+import signal
+import time
 from pathlib import Path
+from typing import Any, Iterable, Optional, Sequence
+
 import typer
+
 from ..core.logging_config import setup_file_logging
 
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
+
+_COCLI_NAMES = {"cocli", "cocli.exe"}
+_OPTIONS_WITH_VALUES = {"-c", "--campaign"}
 
 @app.callback(invoke_without_command=True)
 def run_tui_app(
@@ -85,3 +94,140 @@ def run_tui_app(
     from ..tui.app import CocliApp
     tui_app = CocliApp()
     tui_app.run()
+
+
+def is_cocli_tui_argv(argv: Sequence[str]) -> bool:
+    """True when argv is a `cocli tui` session, including `cocli --campaign X tui`.
+
+    `cocli tui kill` is the stopper, so it does not match. The `cocli` token
+    has to be the program (or the script after a python launcher). A later
+    argument that happens to be named cocli is not a session.
+    """
+    if not argv:
+        return False
+    indexes = [0]
+    if Path(argv[0]).name.startswith("python") and len(argv) > 1:
+        indexes.append(1)
+    for index in indexes:
+        if Path(argv[index]).name not in _COCLI_NAMES:
+            continue
+        rest = list(argv[index + 1 :])
+        position = 0
+        while position < len(rest):
+            token = rest[position]
+            if token == "--":
+                position += 1
+                break
+            if token.startswith("-"):
+                if token in _OPTIONS_WITH_VALUES and "=" not in token:
+                    position += 2
+                else:
+                    position += 1
+                continue
+            break
+        if position >= len(rest) or rest[position] != "tui":
+            continue
+        following = rest[position + 1] if position + 1 < len(rest) else None
+        return following != "kill"
+    return False
+
+
+def list_cocli_tui_processes(process_iter: Iterable[Any] | None = None) -> list[Any]:
+    """Live `cocli tui` processes on this machine, excluding this process."""
+    if process_iter is None:
+        import psutil
+
+        process_iter = psutil.process_iter()
+    me = os.getpid()
+    found: list[Any] = []
+    for proc in process_iter:
+        if getattr(proc, "pid", None) == me:
+            continue
+        try:
+            argv = proc.cmdline()
+        except Exception:
+            continue
+        if is_cocli_tui_argv(argv):
+            found.append(proc)
+    return found
+
+
+def _still_running(proc: Any) -> bool:
+    try:
+        return bool(proc.is_running())
+    except Exception:
+        return False
+
+
+def _signal(proc: Any, sig: int) -> None:
+    try:
+        proc.send_signal(sig)
+    except Exception as exc:
+        logger.debug("Could not signal pid %s with %s: %s", getattr(proc, "pid", "?"), sig, exc)
+
+
+def terminate_cocli_tuis(
+    procs: Sequence[Any] | None = None,
+    wait_seconds: float = 2.0,
+) -> list[int]:
+    """SIGTERM every local cocli TUI and its children, then SIGKILL any that remain.
+
+    Returns the TUI pids that were targeted.
+    """
+    targets = list(procs) if procs is not None else list_cocli_tui_processes()
+    me = os.getpid()
+    tuis: list[Any] = []
+    victims: list[Any] = []
+    seen: set[int] = set()
+    for proc in targets:
+        pid = getattr(proc, "pid", None)
+        if pid is None or pid == me or pid in seen:
+            continue
+        seen.add(pid)
+        tuis.append(proc)
+        victims.append(proc)
+        try:
+            children = proc.children(recursive=True)
+        except Exception:
+            children = []
+        for child in children:
+            child_pid = getattr(child, "pid", None)
+            if child_pid is None or child_pid == me or child_pid in seen:
+                continue
+            seen.add(child_pid)
+            victims.append(child)
+
+    if not tuis:
+        return []
+
+    for proc in victims:
+        _signal(proc, signal.SIGTERM)
+
+    deadline = time.monotonic() + wait_seconds
+    while any(_still_running(proc) for proc in victims):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.05, remaining))
+
+    for proc in victims:
+        if _still_running(proc):
+            logger.info("PID %s ignored SIGTERM; sending SIGKILL", proc.pid)
+            _signal(proc, signal.SIGKILL)
+
+    return [proc.pid for proc in tuis]
+
+
+@app.command("kill")
+def kill_tui() -> None:
+    """Stop every cocli TUI on this machine."""
+    setup_file_logging("tui-kill", file_level=logging.INFO)
+    pids = terminate_cocli_tuis()
+    if not pids:
+        logger.info("No cocli TUI processes are running.")
+        return
+    logger.info(
+        "Stopped cocli TUI process%s: %s",
+        "" if len(pids) == 1 else "es",
+        ", ".join(str(pid) for pid in pids),
+    )
