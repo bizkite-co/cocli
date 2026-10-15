@@ -29,6 +29,7 @@ from textual.widgets import Label, ListItem, ListView, Static
 
 from ...core.paths import paths
 from .message_templates_view import TemplateListItem, TemplatePreview
+from .remote_pull import RemotePullMixin
 
 if TYPE_CHECKING:
     pass
@@ -512,13 +513,13 @@ class TrackingPreview(VerticalScroll):
         body.update("\n".join(lines))
 
 
-class _TrackingPane(Horizontal):
+class _TrackingPane(RemotePullMixin, Horizontal):
     """Tracking category content: this initiative's send log (sent +
     failed attempts) and web engagement signals (landing page views, CTA
     clicks, feedback submissions), newest first."""
 
     BINDINGS = [
-        Binding("p", "pull_telemetry", "Pull GA4", show=True),
+        Binding("p", "pull_remote", "Pull GA4", show=True),
         Binding("r", "refresh_tracking", "Refresh", show=True),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
@@ -627,8 +628,20 @@ class _TrackingPane(Horizontal):
                 )
         self.entry_list.focus()
 
-    def action_pull_telemetry(self) -> None:
-        self.run_worker(self.pull_telemetry(), exclusive=True)
+    def remote_pull_label(self) -> str:
+        return "GA4"
+
+    async def fetch_remote(self) -> str:
+        from cocli.application.engagement_service import EngagementService
+
+        app = cast("CocliApp", self.app)
+        eng_service = EngagementService(app.services.campaign_name)
+        new_events = await asyncio.to_thread(
+            eng_service.pull_from_ga4,
+            initiative=self.initiative,
+        )
+        await self.refresh_tracking()
+        return f"Pulled {len(new_events)} new GA4 signal(s)"
 
     def action_refresh_tracking(self) -> None:
         self.run_worker(self.refresh_tracking(), exclusive=True)
@@ -648,25 +661,6 @@ class _TrackingPane(Horizontal):
             co_slug = getattr(highlighted.entry, "company_slug", None)
             if co_slug:
                 cast("CocliApp", self.app).open_company_detail(co_slug)
-
-    async def pull_telemetry(self) -> None:
-        from cocli.application.engagement_service import EngagementService
-
-        app = cast("CocliApp", self.app)
-        campaign = app.services.campaign_name
-        eng_service = EngagementService(campaign)
-
-        self.notify("Pulling GA4 telemetry...")
-        try:
-            new_events = await asyncio.to_thread(
-                eng_service.pull_from_ga4,
-                initiative=self.initiative,
-            )
-            count = len(new_events)
-            self.notify(f"Pulled {count} new GA4 signal(s)")
-            await self.refresh_tracking()
-        except Exception as exc:
-            self.notify(f"GA4 pull failed: {exc}", severity="error")
 
     @on(ListView.Selected)
     def on_entry_selected(self, message: ListView.Selected) -> None:
@@ -722,7 +716,7 @@ class ResponseListItem(ListItem):
 
 class ResponsePreview(VerticalScroll):
     def compose(self) -> Any:
-        yield Label("Select a response to see details", id="response-preview-empty")
+        yield Label("No response selected. Press p to pull the S3 intake queue.", id="response-preview-empty")
         yield Static("", id="response-preview-body")
 
     def update_preview(self, submission: dict[str, Any] | None) -> None:
@@ -759,7 +753,7 @@ class ResponsePreview(VerticalScroll):
         body.update("\n".join(lines))
 
 
-class _ResponsesPane(Horizontal):
+class _ResponsesPane(RemotePullMixin, Horizontal):
     """This initiative's raw form submissions (pending + completed),
     read directly from S3 - the actual testimonial/signup content,
     separate from Tracking's mixed send-log/engagement-event view.
@@ -768,6 +762,7 @@ class _ResponsesPane(Horizontal):
     Responses shows what was actually said."""
 
     BINDINGS = [
+        Binding("p", "pull_remote", "Pull", show=True),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("h", "navigate_back", "Back", show=False),
@@ -787,27 +782,28 @@ class _ResponsesPane(Horizontal):
             yield self.entry_list
         yield self.preview
 
-    async def on_mount(self) -> None:
-        await self.refresh_responses()
+    def remote_pull_label(self) -> str:
+        return f"{self.initiative} responses"
 
-    async def refresh_responses(self) -> None:
+    async def on_mount(self) -> None:
+        await self._load_responses(surface_errors=True)
+
+    async def fetch_remote(self) -> str:
+        return await self._load_responses(surface_errors=False)
+
+    async def _load_responses(self, surface_errors: bool) -> str:
         from cocli.application.engagement_service import EngagementService
 
         app = cast("CocliApp", self.app)
-        campaign = app.services.campaign_name
-        eng_service = EngagementService(campaign)
+        eng_service = EngagementService(app.services.campaign_name)
 
-        try:
-            submissions = await asyncio.to_thread(
-                eng_service.list_form_submissions, queue_names=(self.initiative,)
-            )
-        except Exception as exc:
-            logger.warning("Could not list %s responses: %s", self.initiative, exc)
-            submissions = []
-
+        submissions, warnings = await asyncio.to_thread(
+            eng_service.collect_form_submissions, (self.initiative,)
+        )
         pending = sum(1 for s in submissions if s.get("_status") == "pending")
         completed = sum(1 for s in submissions if s.get("_status") == "completed")
-        self.stats_label.update(f"Pending: {pending}   Completed: {completed}   Total: {len(submissions)}")
+        summary = f"Pending: {pending}   Completed: {completed}   Total: {len(submissions)}"
+        self.stats_label.update(summary)
 
         await self.entry_list.clear()
         for submission in submissions:
@@ -822,8 +818,16 @@ class _ResponsesPane(Horizontal):
                 self.preview.update_preview(first_child.submission)
         self.entry_list.focus()
 
+        if warnings:
+            message = "S3 list failed: " + "; ".join(warnings)
+            if surface_errors:
+                self.notify(message, severity="error")
+            else:
+                raise RuntimeError(message)
+        return summary
+
     def action_refresh_responses(self) -> None:
-        self.run_worker(self.refresh_responses(), exclusive=True)
+        self.run_worker(self._load_responses(True), exclusive=True)
 
     def action_cursor_down(self) -> None:
         self.entry_list.action_cursor_down()

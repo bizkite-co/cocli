@@ -73,3 +73,13 @@ async def test_queue_sync_shortcuts(mocker):
         detail.action_sync_completed()
         await pilot.pause(0.05)
         assert mock_sync.called
+
+        # p Pull uses the same S3 sync as the sp/sc chords.
+        mock_sync.reset_mock()
+        mock_sync.return_value = {"status": "success", "queues": ["gm-list"]}
+        detail.action_pull_remote()
+        for _ in range(20):
+            if mock_sync.called:
+                break
+            await pilot.pause(0.05)
+        assert mock_sync.called

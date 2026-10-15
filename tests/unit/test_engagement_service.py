@@ -345,6 +345,12 @@ def test_process_testimonial_submissions_reads_directly_from_s3(
     assert len(new_events) == 1
     assert new_events[0].details["message"] == "Great tool, saved us hours."
 
+    fake_s3_client.put_object.assert_called_once_with(
+        Bucket="fake-bucket",
+        Key="campaigns/roadmap/queues/testimonials/completed/abc123.json",
+        Body=json.dumps(submission).encode("utf-8"),
+        ContentType="application/json",
+    )
     fake_s3_client.delete_object.assert_called_once_with(
         Bucket="fake-bucket",
         Key="campaigns/roadmap/queues/testimonials/pending/abc123.json",
@@ -354,6 +360,80 @@ def test_process_testimonial_submissions_reads_directly_from_s3(
         paths.campaign("roadmap").path / "queues" / "testimonials" / "completed" / "abc123.json"
     )
     assert completed_witness.exists()
+
+
+def test_collect_form_submissions_keeps_local_completed_witness_when_s3_pending_is_gone(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """process-testimonials used to delete the S3 pending object and write
+    only a local completed file. Responses must still show that witness."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    completed = paths.campaign("roadmap").path / "queues" / "testimonials" / "completed"
+    completed.mkdir(parents=True)
+    (completed / "local1.json").write_text(
+        json.dumps(
+            {
+                "id": "local1",
+                "name": "Kept",
+                "message": "still here",
+                "received_at": 100,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    fake_paginator = MagicMock()
+    fake_paginator.paginate.return_value = [{"Contents": []}]
+    fake_s3_client = MagicMock()
+    fake_s3_client.get_paginator.return_value = fake_paginator
+
+    with patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="fake-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=MagicMock()), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_s3_client
+    ):
+        items, warnings = EngagementService("roadmap").collect_form_submissions(
+            queue_names=("testimonials",)
+        )
+
+    assert warnings == []
+    assert len(items) == 1
+    assert items[0]["message"] == "still here"
+    assert items[0]["_status"] == "completed"
+
+
+def test_collect_form_submissions_reports_s3_list_failure_and_keeps_local_files(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    pending = paths.campaign("roadmap").path / "queues" / "testimonials" / "pending"
+    pending.mkdir(parents=True)
+    (pending / "local1.json").write_text(
+        json.dumps({"id": "local1", "name": "Local", "message": "from disk", "received_at": 50}),
+        encoding="utf-8",
+    )
+
+    fake_paginator = MagicMock()
+    fake_paginator.paginate.side_effect = Exception("access denied")
+    fake_s3_client = MagicMock()
+    fake_s3_client.get_paginator.return_value = fake_paginator
+
+    with patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="fake-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=MagicMock()), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_s3_client
+    ):
+        items, warnings = EngagementService("roadmap").collect_form_submissions(
+            queue_names=("testimonials",)
+        )
+
+    assert len(items) == 1
+    assert items[0]["_status"] == "pending"
+    assert any("access denied" in warning for warning in warnings)
 
 
 def test_process_testimonial_submissions_falls_back_to_local_pending_dir(

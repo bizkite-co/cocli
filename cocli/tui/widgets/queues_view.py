@@ -17,6 +17,7 @@ from cocli.models.campaigns.queues.metadata import (
 from cocli.core.paths import paths
 from cocli.core.ordinant import QueueIdentity
 from cocli.utils.open_url import open_url
+from cocli.tui.widgets.remote_pull import RemotePullMixin
 
 
 
@@ -41,7 +42,7 @@ class QueueSelection(ListView):
             yield ListItem(Label(meta.label), id=f"q_{q_id}")
 
 
-class QueueDetail(VerticalScroll):
+class QueueDetail(RemotePullMixin, VerticalScroll):
     """
     Detailed view for a specific queue.
     Uses a vertical scrolling layout to ensure both Metadata and Property Lists
@@ -49,6 +50,7 @@ class QueueDetail(VerticalScroll):
     """
 
     BINDINGS = [
+        ("p", "pull_remote", "Pull"),
         ("s p", "sync_pending", "sp: Sync Pending"),
         ("s c", "sync_completed", "sc: Sync Completed"),
     ]
@@ -263,6 +265,24 @@ class QueueDetail(VerticalScroll):
         widget = self.query_one("#queue_info_content", Static)
         widget.update(info_table)
         setattr(widget, "metadata_map", metadata)
+
+    def remote_pull_label(self) -> str:
+        if self.active_queue is not None:
+            return f"{self.active_queue.name} queue"
+        return "queue"
+
+    async def fetch_remote(self) -> str:
+        """Download this queue's pending and completed branches from S3, then refresh the counts."""
+        if self.active_queue is None:
+            return "No queue selected"
+        app = cast("CocliApp", self.app)
+        queue_name = self.active_queue.name
+        result = await asyncio.to_thread(app.services.data_sync_service.sync_queues, queue_name)
+        if isinstance(result, dict) and result.get("status") == "error":
+            raise RuntimeError(str(result.get("message") or "sync failed"))
+        await asyncio.to_thread(app.services.reporting_service.get_campaign_stats)
+        self.refresh_counts()
+        return f"Pulled {queue_name}"
 
     def action_sync_pending(self) -> None:
         if self.active_queue:

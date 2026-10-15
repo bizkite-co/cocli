@@ -919,7 +919,7 @@ async def test_tracking_pane_p_key_pulls_ga4_telemetry(mock_cocli_env, mocker) -
 async def test_responses_pane_shows_raw_form_submissions_with_message(mock_cocli_env, mocker) -> None:
     """Responses is the other half of Tracking's data: Tracking shows that
     a submission happened, Responses shows what was actually said - read
-    straight from S3 via list_form_submissions, pending and completed
+    straight from S3 via collect_form_submissions, pending and completed
     both, not gated on process-testimonials having been run."""
     from cocli.application.engagement_service import EngagementService
 
@@ -936,7 +936,9 @@ async def test_responses_pane_shows_raw_form_submissions_with_message(mock_cocli
             "received_at": 1790731192,
         }
     ]
-    mocker.patch.object(EngagementService, "list_form_submissions", return_value=fake_submissions)
+    mocker.patch.object(
+        EngagementService, "collect_form_submissions", return_value=(fake_submissions, [])
+    )
 
     app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
     async with app.run_test() as pilot:
@@ -971,3 +973,65 @@ async def test_responses_pane_shows_raw_form_submissions_with_message(mock_cocli
         assert "Jake Dukart" in text
         assert "Loved the 30-year spend-down tables!" in text
         assert "Higginbotham" in text
+
+
+@pytest.mark.asyncio
+async def test_responses_pull_refreshes_from_s3_and_reports_list_failures(
+    mock_cocli_env, mocker
+) -> None:
+    """p is the same Pull binding every S3-backed pane uses. A failed list
+    is an error toast, and rows already read (the local witness) stay on screen."""
+    from unittest.mock import patch
+
+    from cocli.application.engagement_service import EngagementService
+
+    _make_initiative(CAMPAIGN, "testimonials", {"responses": {".keep": "x"}})
+    kept = [
+        {
+            "_queue": "testimonials",
+            "_status": "completed",
+            "name": "Kept Locally",
+            "email": "kept@example.com",
+            "message": "witness",
+            "received_at": 1790731192,
+        }
+    ]
+
+    mock_collect = mocker.patch.object(
+        EngagementService,
+        "collect_form_submissions",
+        side_effect=[([], []), (kept, ["testimonials/pending: access denied"])],
+    )
+
+    app = CocliApp(services=ServiceContainer(campaign_name=CAMPAIGN), auto_show=False)
+    async with app.run_test() as pilot:
+        widget = InitiativesView()
+        await app.main_content.mount(widget)
+        await pilot.pause(0.2)
+
+        initiatives_list = widget.query_one("#initiatives_list", ListView)
+        initiatives_list.focus()
+        initiatives_list.index = 0
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        categories_list = widget.query_one("#categories_list", ListView)
+        categories_list.index = 0
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        pane = widget.query_one(_ResponsesPane)
+        with patch.object(app, "notify") as mock_notify:
+            pane.action_pull_remote()
+            await app.workers.wait_for_complete()
+            await pilot.pause(0.1)
+
+        assert mock_collect.call_count == 2
+        entry_list = pane.query_one("#response_entry_list", ListView)
+        assert len(entry_list.children) == 1
+        assert "Completed: 1" in str(pane.stats_label.content)
+        messages = [call.args[0] for call in mock_notify.call_args_list]
+        assert any("access denied" in message for message in messages)
+        assert any(
+            call.kwargs.get("severity") == "error" for call in mock_notify.call_args_list
+        )

@@ -6,14 +6,16 @@ import asyncio
 from datetime import datetime, UTC
 
 from cocli.core.gossip_bridge import bridge
+from cocli.tui.widgets.remote_pull import RemotePullMixin
 
 if TYPE_CHECKING:
     pass
 
-class ClusterView(VerticalScroll):
+class ClusterView(RemotePullMixin, VerticalScroll):
     """Real-time cluster dashboard using Gossip Bridge data."""
 
     BINDINGS = [
+        ("p", "pull_remote", "Pull"),
         ("R", "refresh_cluster", "Refresh Now"),
         ("D", "delete_node", "Delete Selected Registry"),
         ("P", "prune_heartbeat", "Prune Selected Heartbeat"),
@@ -116,8 +118,35 @@ class ClusterView(VerticalScroll):
                     break
                 await asyncio.sleep(0.1)
 
+    def remote_pull_label(self) -> str:
+        return "cluster registry"
+
+    async def fetch_remote(self) -> str:
+        """Pull the S3 registry and heartbeat tables and report a failed prefix."""
+        errors: list[str] = []
+        try:
+            await self._load_registry()
+        except Exception as exc:
+            errors.append(f"registry: {exc}")
+        try:
+            await self._load_s3_status()
+        except Exception as exc:
+            errors.append(f"heartbeats: {exc}")
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        return (
+            f"Registry nodes: {len(self.registry_data)}. "
+            f"Heartbeats: {len(self.heartbeat_data)}."
+        )
+
     async def _refresh_registry(self) -> None:
-        """Fetch registry from S3."""
+        """Fetch registry from S3. The poll loop swallows errors; Pull does not."""
+        try:
+            await self._load_registry()
+        except Exception:
+            return
+
+    async def _load_registry(self) -> None:
         from cocli.core.config import get_campaign, load_campaign_config
         from cocli.core.reporting import get_boto3_session
         import json
@@ -125,75 +154,74 @@ class ClusterView(VerticalScroll):
         campaign = get_campaign()
         if not campaign:
             return
-        
-        try:
-            config = load_campaign_config(campaign)
-            bucket = config.get("aws", {}).get("data_bucket_name")
-            if not bucket:
-                return
-            
-            # Run S3 call in thread to avoid blocking UI
-            def _get_s3() -> dict[str, Any]:
-                session = get_boto3_session(config)
-                s3 = session.client("s3")
-                prefix = "cluster/registry/"
-                resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-                nodes = {}
-                for obj in resp.get("Contents", []):
-                    key = obj["Key"]
-                    if not key.endswith(".json"):
-                        continue
-                    node_id = key.replace(prefix, "").replace(".json", "")
-                    data_resp = s3.get_object(Bucket=bucket, Key=key)
-                    peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
-                    nodes[node_id] = peer_data
-                return nodes
 
-            self.registry_data = await asyncio.to_thread(_get_s3)
-            self.update_registry_table()
-        except Exception:
-            pass
+        config = load_campaign_config(campaign)
+        bucket = config.get("aws", {}).get("data_bucket_name")
+        if not bucket:
+            raise RuntimeError("campaign config has no aws.data_bucket_name")
+
+        def _get_s3() -> dict[str, Any]:
+            session = get_boto3_session(config)
+            s3 = session.client("s3")
+            prefix = "cluster/registry/"
+            resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            nodes = {}
+            for obj in resp.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".json"):
+                    continue
+                node_id = key.replace(prefix, "").replace(".json", "")
+                data_resp = s3.get_object(Bucket=bucket, Key=key)
+                peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
+                nodes[node_id] = peer_data
+            return nodes
+
+        self.registry_data = await asyncio.to_thread(_get_s3)
+        self.update_registry_table()
 
     async def _refresh_s3_status(self) -> None:
-        """Fetch legacy heartbeats from status/ prefix in S3."""
+        """Fetch legacy heartbeats from status/ prefix in S3. The poll loop swallows errors."""
+        try:
+            await self._load_s3_status()
+        except Exception:
+            return
+
+    async def _load_s3_status(self) -> None:
         from cocli.core.config import get_campaign, load_campaign_config
         from cocli.core.reporting import get_boto3_session
         import json
-        
+
         campaign = get_campaign()
         if not campaign:
             return
-        
-        try:
-            config = load_campaign_config(campaign)
-            bucket = config.get("aws", {}).get("data_bucket_name")
-            if not bucket:
-                return
-            
-            def _get_s3_status() -> dict[str, Any]:
-                session = get_boto3_session(config)
-                s3 = session.client("s3")
-                prefix = "status/"
-                resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-                nodes = {}
-                for obj in resp.get("Contents", []):
-                    key = obj["Key"]
-                    if not key.endswith(".json"):
-                        continue
-                    node_id = key.replace(prefix, "").replace(".json", "")
-                    try:
-                        data_resp = s3.get_object(Bucket=bucket, Key=key)
-                        peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
-                        peer_data["last_modified"] = obj["LastModified"]
-                        nodes[node_id] = peer_data
-                    except Exception:
-                        continue
-                return nodes
 
-            self.heartbeat_data = await asyncio.to_thread(_get_s3_status)
-            self.update_status_table()
-        except Exception:
-            pass
+        config = load_campaign_config(campaign)
+        bucket = config.get("aws", {}).get("data_bucket_name")
+        if not bucket:
+            raise RuntimeError("campaign config has no aws.data_bucket_name")
+
+        def _get_s3_status() -> dict[str, Any]:
+            session = get_boto3_session(config)
+            s3 = session.client("s3")
+            prefix = "status/"
+            resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            nodes = {}
+            for obj in resp.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".json"):
+                    continue
+                node_id = key.replace(prefix, "").replace(".json", "")
+                try:
+                    data_resp = s3.get_object(Bucket=bucket, Key=key)
+                    peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
+                    peer_data["last_modified"] = obj["LastModified"]
+                    nodes[node_id] = peer_data
+                except Exception:
+                    continue
+            return nodes
+
+        self.heartbeat_data = await asyncio.to_thread(_get_s3_status)
+        self.update_status_table()
 
     def update_status_table(self) -> None:
         try:

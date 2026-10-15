@@ -13,6 +13,26 @@ from cocli.models.engagement import EngagementEvent
 
 logger = logging.getLogger(__name__)
 
+
+def _collapse_form_submissions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per submission id. Completed wins over a pending copy of the same id."""
+    chosen: dict[str, dict[str, Any]] = {}
+    no_id: list[dict[str, Any]] = []
+    for item in items:
+        item_id = str(item.get("id") or "")
+        if not item_id:
+            no_id.append(item)
+            continue
+        current = chosen.get(item_id)
+        if current is None or (
+            current.get("_status") != "completed" and item.get("_status") == "completed"
+        ):
+            chosen[item_id] = item
+    merged = list(chosen.values()) + no_id
+    merged.sort(key=lambda item: item.get("received_at") or 0, reverse=True)
+    return merged
+
+
 USV_HEADER = (
     "timestamp\x1fcampaign\x1fcompany_slug\x1fevent_type\x1fsource\x1futm_content\x1fdetails\n"
 )
@@ -571,15 +591,34 @@ class EngagementService:
                 event = self._process_one_testimonial(data, initiative)
                 new_events.append(event)
 
-                # Witness receipt in the local completed/ mirror, same
-                # convention as every other queue, even though this item
-                # was never locally mirrored into pending/ first.
+                # Witness in both places the Responses pane reads: the local
+                # completed/ mirror, and S3 completed/. Deleting pending
+                # without the S3 copy made a processed testimonial vanish
+                # from every other machine.
                 try:
                     (completed_dir / task_name).write_text(
                         jsonlib.dumps(data), encoding="utf-8"
                     )
                 except OSError as exc:
                     logger.warning("Could not write local completed/ witness for %s: %s", task_name, exc)
+
+                completed_key = (
+                    f"campaigns/{self.campaign_name}/queues/testimonials/completed/{task_name}"
+                )
+                try:
+                    s3_client.put_object(
+                        Bucket=bucket_name,
+                        Key=completed_key,
+                        Body=body,
+                        ContentType="application/json",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Processed %s but could not write S3 completed witness %s; "
+                        "leaving the pending object in place: %s",
+                        task_name, completed_key, exc,
+                    )
+                    continue
 
                 try:
                     s3_client.delete_object(Bucket=bucket_name, Key=key)
@@ -725,23 +764,36 @@ class EngagementService:
     def list_form_submissions(
         self, queue_names: tuple[str, ...] = ("testimonials", "signups"), since_days: Optional[int] = None
     ) -> list[dict[str, Any]]:
+        """List raw form submissions. See ``collect_form_submissions``."""
+        submissions, _warnings = self.collect_form_submissions(queue_names, since_days)
+        return submissions
+
+    def collect_form_submissions(
+        self, queue_names: tuple[str, ...] = ("testimonials", "signups"), since_days: Optional[int] = None
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """List raw form submissions across one or more S3-backed intake
         queues (see cdk_scraper_deployment/testimonials_stack.py's
-        FormIntakeStack), both pending/ (not yet processed by e.g.
-        `process-testimonials`) and completed/ (already processed) -
-        reading straight from S3 so this reflects reality even if
-        `cocli smart-sync` hasn't been run locally. Read-only: never
-        moves, deletes, or processes anything.
+        FormIntakeStack), both pending/ and completed/.
 
-        Each result dict is the submission's own JSON plus "_queue"
-        ("testimonials"/"signups") and "_status" ("pending"/"completed").
-        Sorted newest first. `since_days=None` returns everything.
+        S3 is the primary copy. The local ``queues/<name>/<status>/``
+        mirror is always unioned in, so a completed witness that exists
+        only on this machine (process wrote it, then the S3 copy failed)
+        still shows up. Read-only: never moves, deletes, or processes.
+
+        Each result dict is the submission's own JSON plus "_queue" and
+        "_status". Sorted newest first. Duplicate ids collapse to one
+        row, preferring completed over pending. ``since_days=None``
+        returns everything.
+
+        The second tuple member is a list of S3 list failures. A prefix
+        that could not be listed still contributes its local files.
         """
         import json as jsonlib
         import time
 
         cutoff = time.time() - (since_days * 86400) if since_days is not None else None
         results: list[dict[str, Any]] = []
+        warnings: list[str] = []
 
         s3_client = None
         bucket_name = None
@@ -754,6 +806,26 @@ class EngagementService:
             s3_client = get_s3_client(session=get_boto3_session(config))
         except Exception as exc:
             logger.debug("S3 access unavailable for list_form_submissions (local-only campaign?): %s", exc)
+
+        def _keep(item: dict[str, Any], queue_name: str, status: str) -> None:
+            received_at = item.get("received_at")
+            if cutoff is not None and (received_at is None or received_at < cutoff):
+                return
+            item["_queue"] = queue_name
+            item["_status"] = status
+            results.append(item)
+
+        def _read_local(queue_name: str, status: str) -> None:
+            local_dir = paths.campaign(self.campaign_name).path / "queues" / queue_name / status
+            if not local_dir.is_dir():
+                return
+            for task_file in local_dir.glob("*.json"):
+                try:
+                    item = jsonlib.loads(task_file.read_text(encoding="utf-8"))
+                except Exception as exc:
+                    logger.warning("Could not parse %s: %s", task_file, exc)
+                    continue
+                _keep(item, queue_name, status)
 
         for queue_name in queue_names:
             for status in ("pending", "completed"):
@@ -775,33 +847,12 @@ class EngagementService:
                                 except Exception as exc:
                                     logger.warning("Could not read/parse %s: %s", key, exc)
                                     continue
-                                received_at = item.get("received_at")
-                                if cutoff is not None and (received_at is None or received_at < cutoff):
-                                    continue
-                                item["_queue"] = queue_name
-                                item["_status"] = status
-                                results.append(item)
+                                _keep(item, queue_name, status)
                     except Exception as exc:
-                        logger.warning("Could not list S3 queue %s/%s: %s", queue_name, status, exc)
-                else:
-                    # Local-only fallback (no S3 access this session) -
-                    # reads whatever's already synced to the local mirror.
-                    local_dir = paths.campaign(self.campaign_name).path / "queues" / queue_name / status
-                    if not local_dir.is_dir():
-                        continue
-                    for task_file in local_dir.glob("*.json"):
-                        try:
-                            item = jsonlib.loads(task_file.read_text(encoding="utf-8"))
-                        except Exception as exc:
-                            logger.warning("Could not parse %s: %s", task_file, exc)
-                            continue
-                        received_at = item.get("received_at")
-                        if cutoff is not None and (received_at is None or received_at < cutoff):
-                            continue
-                        item["_queue"] = queue_name
-                        item["_status"] = status
-                        results.append(item)
+                        message = f"{queue_name}/{status}: {exc}"
+                        logger.warning("Could not list S3 queue %s", message)
+                        warnings.append(message)
+                _read_local(queue_name, status)
 
-        results.sort(key=lambda item: item.get("received_at") or 0, reverse=True)
-        return results
+        return _collapse_form_submissions(results), warnings
 
