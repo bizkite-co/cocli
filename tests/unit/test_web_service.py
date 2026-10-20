@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import toml
 from cocli.core.paths import paths
 from cocli.application.lead_export_service import LeadExportResult
+from cocli.application.pi_sync_service import SyncResult
 from cocli.application.web_service import WebService
 
 def test_web_service_resolve_deployment_config(tmp_path):
@@ -55,14 +56,25 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
     ) as mock_pi_sync, patch(
         "cocli.application.index_service.IndexService"
     ) as mock_index_service, patch(
+        "cocli.application.data_sync_service.DataSyncService"
+    ) as mock_data_sync, patch(
         "cocli.application.lead_export_service.export_enriched_emails",
         return_value=fake_result,
     ):
+        mock_pi_sync.return_value.sync_email_indexes.return_value = [
+            SyncResult(host="cocli5x0", success=True, files_synced=4)
+        ]
         mock_pi_sync.return_value.sync_prospect_wal_to_s3.return_value = []
+        mock_data_sync.return_value.compact_index.return_value = {
+            "status": "success",
+            "message": "Email index compacted",
+        }
         mock_index_service.return_value.compact.return_value = MagicMock(success=True)
 
         result = service.export_and_upload_emails_csv(mock_s3, "test-bucket")
 
+    mock_pi_sync.return_value.sync_email_indexes.assert_called_once()
+    mock_data_sync.return_value.compact_index.assert_called_once()
     assert result.exported_count == 3
     assert mock_s3.upload_file.call_count == 2
 
@@ -76,6 +88,32 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
         csv_call.kwargs["ExtraArgs"]["ContentDisposition"]
         == 'attachment; filename="test-campaign-emails.csv"'
     )
+
+
+def test_export_and_upload_emails_csv_stops_before_upload_when_email_sync_fails(tmp_path):
+    """A CSV uploaded after a missed worker email index would be counted as
+    the customer yield while the month of enrichment is still on the node."""
+    service = WebService(campaign_name="test-campaign")
+    mock_s3 = MagicMock()
+
+    with patch("subprocess.run"), patch(
+        "cocli.application.pi_sync_service.PiSyncService"
+    ) as mock_pi_sync, patch(
+        "cocli.application.lead_export_service.export_enriched_emails"
+    ) as mock_export:
+        mock_pi_sync.return_value.sync_email_indexes.return_value = [
+            SyncResult(host="NUC01", success=False, files_synced=0, error="Timeout")
+        ]
+        try:
+            service.export_and_upload_emails_csv(mock_s3, "test-bucket")
+            raised = False
+        except RuntimeError as exc:
+            raised = True
+            assert "NUC01" in str(exc)
+
+    assert raised
+    mock_export.assert_not_called()
+    mock_s3.upload_file.assert_not_called()
 
 
 def test_upload_lead_filter_exports_uploads_existing_files_only(tmp_path):

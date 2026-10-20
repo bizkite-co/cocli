@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 # A compactor lock older than this is presumed to belong to a crashed process
 # (hard kill, OOM, lost network) rather than a live one - stations
 # CONCURRENCY.md §2.3/§4.1 "lease expiry": a dead lease is taken over by
-# CAS-replace, never delete-then-create (C3). Picked to comfortably exceed
-# a real compaction's runtime (Tailscale rsync + DuckDB fold) while still
-# reclaiming a crashed lock in well under an hour.
-LOCK_STALE_SECONDS = 1800
+# CAS-replace, never delete-then-create (C3). A month of worker WAL is tens
+# of thousands of small files over Tailscale, so the lease has to outlast
+# that rsync plus the DuckDB fold. Two hours still reclaims a dead lock
+# the same day.
+LOCK_STALE_SECONDS = 7200
 
 
 def _aws_cli_env() -> dict[str, str]:
@@ -93,6 +94,11 @@ class CompactManager:
         # directly from the Pis via isolate_wal() and never touches S3
         # processing/, so cleanup() must not assume it needs to either.
         self._used_s3_staging: bool = False
+        # Hosts whose WAL rsync failed this run. isolate_wal still stages the
+        # nodes that succeeded, but a caller must not merge or report
+        # "nothing to compact" while this list is non-empty: the missing
+        # node is completed work that has not been folded yet.
+        self.wal_sync_errors: list[str] = []
 
         # S3 Client
         self._s3: Any = None
@@ -292,16 +298,21 @@ class CompactManager:
                         "-e", "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15",
                         remote_path, str(node_dir) + "/",
                     ],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True, text=True, timeout=3600,
                 )
             except subprocess.TimeoutExpired:
-                logger.warning(f"WAL rsync from {host} timed out - skipping this cycle.")
-                node_dir.rmdir()
+                logger.warning(f"WAL rsync from {host} timed out.")
+                self.wal_sync_errors.append(f"{host}: timeout")
+                import shutil
+                shutil.rmtree(node_dir, ignore_errors=True)
                 continue
 
             if result.returncode != 0:
-                logger.warning(f"WAL rsync from {host} failed: {result.stderr.strip()}")
-                node_dir.rmdir()
+                detail = result.stderr.strip() or "rsync failed"
+                logger.warning(f"WAL rsync from {host} failed: {detail}")
+                self.wal_sync_errors.append(f"{host}: {detail}")
+                import shutil
+                shutil.rmtree(node_dir, ignore_errors=True)
                 continue
 
             node_files = [p for p in node_dir.rglob("*.usv") if p.is_file()]

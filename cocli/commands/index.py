@@ -130,6 +130,42 @@ def sync_pi_wal(
         raise typer.Exit(code=1)
 
 
+@app.command(name="sync-pi-emails")
+def sync_pi_emails(
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+) -> None:
+    """
+    Pull each worker's email index into the local campaign email index.
+
+    Enrichment writes emails only on the worker. The customer CSV reads
+    this machine. Run this before `cocli data compact-emails` and
+    `cocli data export-enriched-emails`, or let `cocli web export-emails`
+    run the whole sequence.
+    """
+    from cocli.application.pi_sync_service import PiSyncService
+    from rich.table import Table
+
+    console.print(f"[bold]Syncing email indexes for {campaign}...[/bold]")
+    service = PiSyncService(campaign)
+    results = service.sync_email_indexes()
+
+    if not results:
+        console.print("[yellow]No Pi nodes configured for this campaign.[/yellow]")
+        raise typer.Exit(code=1)
+
+    table = Table(title="Email Index Sync")
+    table.add_column("Node")
+    table.add_column("Status")
+    table.add_column("Paths", justify="right")
+    for r in results:
+        status = "[green]OK[/green]" if r.success else f"[red]FAILED: {r.error}[/red]"
+        table.add_row(r.host, status, str(r.files_synced))
+    console.print(table)
+
+    if not all(r.success for r in results):
+        raise typer.Exit(code=1)
+
+
 @app.command(name="status")
 def status(
     campaign: str = typer.Option("roadmap", help="Campaign name"),

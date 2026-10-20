@@ -155,9 +155,14 @@ class WebService:
     ) -> LeadExportResult:
         """
         Refreshes the customer-facing enriched-emails CSV end to end: pulls
-        fresh gm-list/gm-details/enrichment results and WAL data from the Pi
-        cluster, compacts the prospects index, regenerates the export
-        USV/CSV, and uploads both to S3.
+        fresh gm-list/gm-details/enrichment results, each worker's email
+        index, and prospect WAL from the cluster, compacts the prospects
+        index and the email index, regenerates the export USV/CSV, and
+        uploads both to S3.
+
+        Email sync, email compaction, and prospect compaction are required.
+        A failure there raises, so this method does not upload a CSV counted
+        from a checkpoint that is missing worker output.
 
         This is the data-refresh subset of `cocli web deploy`, split out
         (2026-09-01) so it can run on its own cadence - needs AWS/1Password
@@ -184,10 +189,28 @@ class WebService:
         except Exception as e:
             log(f"Warning: Could not sync Pi results: {e}")
 
+        log(f"Syncing email indexes from workers for {self.campaign_name}...")
+        from cocli.application.pi_sync_service import PiSyncService, describe_sync_results
+
+        email_sync = PiSyncService(self.campaign_name)
+        email_ok, email_detail = describe_sync_results(email_sync.sync_email_indexes())
+        if not email_ok:
+            log(f"Email index sync failed: {email_detail}")
+            raise RuntimeError(f"Email index sync failed: {email_detail}")
+        log(f"Email index sync complete ({email_detail})")
+
+        log(f"Compacting email index for {self.campaign_name}...")
+        from cocli.application.data_sync_service import DataSyncService
+
+        email_compact = DataSyncService(self.campaign_name).compact_index()
+        if email_compact.get("status") != "success":
+            detail = str(email_compact.get("message") or "email compact failed")
+            log(f"Email compaction failed: {detail}")
+            raise RuntimeError(f"Email compaction failed: {detail}")
+        log(str(email_compact.get("message") or "Email index compacted"))
+
         log(f"Syncing google_maps_prospects WAL from Pi cluster for {self.campaign_name}...")
         try:
-            from cocli.application.pi_sync_service import PiSyncService
-
             wal_sync_results = PiSyncService(self.campaign_name).sync_prospect_wal_to_s3(
                 index_name="google_maps_prospects"
             )
@@ -204,10 +227,12 @@ class WebService:
             compact_result = IndexService(self.campaign_name).compact(
                 index_name="google_maps_prospects", log_callback=log
             )
-            if not compact_result.success:
-                log(f"Warning: compaction failed: {compact_result.message}")
         except Exception as e:
-            log(f"Warning: Could not compact google_maps_prospects index: {e}")
+            log(f"Prospect compaction failed: {e}")
+            raise RuntimeError(f"Prospect compaction failed: {e}") from e
+        if not compact_result.success:
+            log(f"Prospect compaction failed: {compact_result.message}")
+            raise RuntimeError(f"Prospect compaction failed: {compact_result.message}")
 
         log("Regenerating export CSV...")
         export_result = export_enriched_emails(self.campaign_name)

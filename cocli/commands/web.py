@@ -235,9 +235,17 @@ def export_emails(
     """
     Refreshes and uploads just the customer-facing enriched-emails CSV/USV -
     the data behind the dashboard's "download CSV" button - without
-    rebuilding or redeploying the static site shell. Needs AWS/1Password
-    auth, so this is a manual command; run `cocli web deploy` for a full
-    site + data deploy.
+    rebuilding or redeploying the static site shell.
+
+    Pulls worker email indexes, compacts that index, folds prospect WAL
+    into the checkpoint, writes the CSV/USV, then uploads. A failed pull
+    or compaction stops before upload. Needs AWS/1Password auth, so this
+    is a manual command; run `cocli web deploy` for a full site + data deploy.
+
+    The dashboard's prospect count is the refined lead-filter list when
+    that list is published. Refreshing it is a separate step:
+    `cocli web upload-lead-filter` after the filter CSVs are rebuilt.
+    See docs/data-management/customer-yield.md.
     """
     if not campaign_name:
         campaign_name = get_campaign()
@@ -266,7 +274,13 @@ def export_emails(
     def log_cb(msg: str) -> None:
         console.print(f"  {msg}")
 
-    export_result = services.web_service.export_and_upload_emails_csv(s3, bucket_name, log_callback=log_cb)
+    try:
+        export_result = services.web_service.export_and_upload_emails_csv(
+            s3, bucket_name, log_callback=log_cb
+        )
+    except RuntimeError as e:
+        console.print(f"[bold red]{e}[/bold red]")
+        raise typer.Exit(1)
     console.print(f"[bold green]Done. Exported {export_result.exported_count} companies.[/bold green]")
 
 @app.command(name="upload-lead-filter")

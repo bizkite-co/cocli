@@ -24,6 +24,7 @@ Data structures, storage, ETL pipelines, and S3 integration.
 *   [Enrichment Policy](./data-management/enrichment-policy.md): Rules for source monitoring.
 *   [S3 Integration Sequence](./data-management/s3-integration-sequence.md): Sequence diagram for S3 sync.
 *   [Data Quality Incidents Registry](./data-management/data-quality-incidents/README.md): Dated record of confirmed data-loss/corruption mechanisms - check here before re-investigating why a field or record is missing.
+*   [Customer yield](./data-management/customer-yield.md): The command that folds worker WAL and emails into the customer CSV, and how that number is published to the dashboard.
 
 ## Features
 Specific feature documentation.

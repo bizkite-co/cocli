@@ -46,6 +46,29 @@ class SyncResult:
     queue_results: dict[str, int] = field(default_factory=dict)
 
 
+def describe_sync_results(results: list[SyncResult]) -> tuple[bool, str]:
+    """Whether every configured node synced, and the text to show for that.
+
+    An empty node list and a partial queue failure are both incomplete.
+    Callers print a success line only when this returns True.
+    """
+    if not results:
+        return False, "No Pi nodes configured."
+    failed = [r for r in results if not r.success]
+    if failed:
+        lines: list[str] = []
+        for result in failed:
+            if result.error:
+                lines.append(f"{result.host}: {result.error}")
+                continue
+            bad = [name for name, count in result.queue_results.items() if count < 0]
+            detail = ", ".join(bad) if bad else "one or more queues failed"
+            lines.append(f"{result.host}: {detail}")
+        return False, "\n".join(lines)
+    files = sum(r.files_synced for r in results)
+    return True, f"{len(results)} nodes, {files} files"
+
+
 class PiSyncService:
     """
     Syncs queue results from Pi workers to local storage.
@@ -238,7 +261,7 @@ class PiSyncService:
                 logger.info(f"  Syncing {index_name} WAL from {host}...")
                 rsync_result = subprocess.run(
                     ["rsync", "-avzu", remote_path, str(node_staging) + "/"],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True, text=True, timeout=3600,
                 )
                 if rsync_result.returncode != 0:
                     error_msg = rsync_result.stderr.strip() or "Unknown rsync error"
@@ -256,7 +279,7 @@ class PiSyncService:
                     env["AWS_PROFILE"] = str(profile)
                 push_result = subprocess.run(
                     ["aws", "s3", "sync", str(node_staging), f"s3://{bucket_name}/{s3_prefix}", "--quiet"],
-                    capture_output=True, text=True, env=env, timeout=300,
+                    capture_output=True, text=True, env=env, timeout=3600,
                 )
                 if push_result.returncode != 0:
                     error_msg = push_result.stderr.strip() or "Unknown S3 sync error"
@@ -269,10 +292,72 @@ class PiSyncService:
                 results.append(SyncResult(host=host, success=True, files_synced=len(staged_files)))
 
             except subprocess.TimeoutExpired:
-                logger.warning(f"  {host}: WAL sync timeout (>5 minutes)")
+                logger.warning(f"  {host}: WAL sync timeout (>60 minutes)")
                 results.append(SyncResult(host=host, success=False, files_synced=0, error="Timeout"))
             except Exception as e:
                 logger.warning(f"  {host}: WAL sync error - {e}")
+                results.append(SyncResult(host=host, success=False, files_synced=0, error=str(e)))
+
+        return results
+
+    def sync_email_indexes(self) -> list[SyncResult]:
+        """Pull each worker's email index into this machine's email index.
+
+        Enrichment writes emails only on the worker
+        (EmailIndexManager.add_email). The customer CSV joins the local
+        email index, and nothing else copies these files off the worker.
+        ``rsync -au`` merges. ``--delete`` is omitted so one node's index
+        cannot erase another node's files.
+        """
+        local_root = paths.campaign(self.campaign).path / "indexes" / "emails"
+        os.makedirs(local_root, exist_ok=True)
+
+        results: list[SyncResult] = []
+        if not self.nodes:
+            logger.warning("No Pi nodes configured")
+            return results
+
+        for node in self.nodes:
+            host = node.hostname
+            target = node.ip_address if node.ip_address else host
+            remote_path = (
+                f"mstouffer@{target}:repos/data/campaigns/{self.campaign}/indexes/emails/"
+            )
+            try:
+                logger.info(f"  Syncing email index from {host}...")
+                rsync_result = subprocess.run(
+                    [
+                        "rsync",
+                        "-auz",
+                        "--stats",
+                        "-e",
+                        "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15",
+                        remote_path,
+                        str(local_root) + "/",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=3600,
+                )
+                if rsync_result.returncode != 0:
+                    error_msg = rsync_result.stderr.strip() or "Unknown rsync error"
+                    logger.warning(f"  {host}: email index rsync failed - {error_msg}")
+                    results.append(
+                        SyncResult(host=host, success=False, files_synced=0, error=error_msg)
+                    )
+                    continue
+                transferred = 0
+                for line in rsync_result.stdout.splitlines():
+                    if line.startswith("Number of regular files transferred:"):
+                        transferred = int(line.rsplit(":", 1)[-1].strip().replace(",", ""))
+                        break
+                logger.info(f"  {host}: email index sync transferred {transferred} paths.")
+                results.append(SyncResult(host=host, success=True, files_synced=transferred))
+            except subprocess.TimeoutExpired:
+                logger.warning(f"  {host}: email index sync timeout (>60 minutes)")
+                results.append(SyncResult(host=host, success=False, files_synced=0, error="Timeout"))
+            except Exception as e:
+                logger.warning(f"  {host}: email index sync error - {e}")
                 results.append(SyncResult(host=host, success=False, files_synced=0, error=str(e)))
 
         return results

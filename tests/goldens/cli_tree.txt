@@ -634,6 +634,8 @@ cocli
         status - Show the status of the index tiers (WAL, Processing, Checkpoint).
             --campaign (text)
             --index (text)
+        sync-pi-emails - Pull each worker's email index into the local campaign email index.
+            --campaign (text)
         sync-pi-wal - Pushes each Pi node's local index WAL to S3 (rsync Pi -> local staging,
             --campaign (text)
             --index (text)

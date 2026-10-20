@@ -481,6 +481,34 @@ def test_compact_aborts_when_isolate_wal_fails() -> None:
     manager.release_lock.assert_called_once()
 
 
+def test_compact_refuses_partial_wal_when_a_node_fails(tmp_path: Path) -> None:
+    """A node that times out must not be reported as an empty WAL. Merging
+    the nodes that did arrive would publish a checkpoint that drops that
+    worker's month of prospects."""
+    manager = _make_compact_manager_mock(lock_ok=True, moved=4)
+    manager.wal_sync_errors = ["NUC01: timeout"]
+    manager.local_proc_dir = tmp_path / "processing" / "run_x"
+    manager.local_proc_dir.mkdir(parents=True)
+    (manager.local_proc_dir / "kept.usv").write_text("row\n")
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(IndexService, "list_interrupted_runs", return_value=[]),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=0,
+        ),
+    ):
+        result = service.compact("google_maps_prospects")
+
+    assert result.success is False
+    assert "NUC01" in result.message
+    assert result.isolated_files == 4
+    manager.merge.assert_not_called()
+    manager.commit_remote.assert_not_called()
+    assert not manager.local_proc_dir.exists()
+
+
 def test_compact_reports_failure_when_recovery_raises() -> None:
     manager = _make_compact_manager_mock(lock_ok=True, moved=1)
     service = IndexService(campaign_name="roadmap")

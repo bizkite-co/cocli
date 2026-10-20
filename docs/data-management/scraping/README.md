@@ -15,6 +15,7 @@ This directory documents the architecture and operational practices for our high
 - [**Scraping Strategy**](./strategy.md): Details on the multi-stage simulation, Human Flow navigation, and Session-Heal hydration.
 - [**Data Pipeline & Staleness**](./pipeline.md): How we manage Mission Indices, Target Tiles, and the Scrape Index.
 - [**Quality Control & Testing**](./quality-control.md): Our methodology for testing parsers, browser alignment, and production data audits.
+- [**Customer yield**](../customer-yield.md): Compile worker output into the customer CSV and publish it.
 - [**Anti-Bot Detection (Historical)**](../../issues/completed/2026/anti-bot-detection.md): The root cause analysis of the "Limited View" trap.
 
 ## Key Components

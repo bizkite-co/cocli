@@ -482,6 +482,25 @@ class IndexService:
 
             _emit(log_callback, "Staging Pi WAL over Tailscale...")
             moved = manager.isolate_wal(nodes=nodes)
+            sync_errors = getattr(manager, "wal_sync_errors", None)
+            if isinstance(sync_errors, list) and sync_errors:
+                # Do not merge a partial batch and do not treat a timed-out
+                # node as "nothing to compact". The CSV yield is wrong until
+                # every configured worker's WAL is in the checkpoint.
+                msg = "Prospect WAL sync incomplete: " + "; ".join(sync_errors)
+                _emit(log_callback, msg)
+                import shutil
+
+                shutil.rmtree(manager.local_proc_dir, ignore_errors=True)
+                return CompactResult(
+                    campaign_name=self.campaign_name,
+                    index_name=index_name,
+                    success=False,
+                    recovered_runs=recovered,
+                    isolated_files=moved,
+                    message=msg,
+                    log_file=log_file,
+                )
             from cocli.core.compaction_coverage import count_usv_records
 
             wal_records = count_usv_records(manager.local_proc_dir)

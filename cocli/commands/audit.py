@@ -430,7 +430,7 @@ def audit_scrape(
     """
     from ..core.config import get_campaign
     from ..services.cluster_service import ClusterService
-    from cocli.application.pi_sync_service import PiSyncService
+    from cocli.application.pi_sync_service import PiSyncService, describe_sync_results
     from rich.table import Table
     import json
     import asyncio
@@ -444,8 +444,12 @@ def audit_scrape(
         f"[bold blue]Syncing PI results for campaign: {campaign_name}[/bold blue]"
     )
     sync_service = PiSyncService(campaign_name)
-    sync_service.sync_all_nodes(blocking=True)
-    console.print("[bold green]Sync Complete![/bold green]")
+    sync_ok, sync_detail = describe_sync_results(sync_service.sync_all_nodes(blocking=True))
+    if not sync_ok:
+        console.print("[bold red]Sync failed.[/bold red]")
+        console.print(sync_detail, highlight=False)
+        raise typer.Exit(1)
+    console.print(f"[bold green]Sync Complete![/bold green] ({sync_detail})")
 
     service = ClusterService(campaign_name)
     console.print("[bold cyan]Pulling latest tiles from cluster…[/bold cyan]")

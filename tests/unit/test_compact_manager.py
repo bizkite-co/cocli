@@ -96,6 +96,7 @@ def test_isolate_wal_continues_past_one_nodes_rsync_failure(tmp_path: Path) -> N
         staged = manager.isolate_wal(nodes=nodes)
 
     assert staged == 1
+    assert any("cocli5x0" in err for err in manager.wal_sync_errors)
     assert not (manager.local_proc_dir / "cocli5x0").exists()
     assert (manager.local_proc_dir / "cocli5x1" / "seg.usv").exists()
 
