@@ -201,6 +201,19 @@ CocliInput > .text-input--placeholder {
     color: #666666;
 }
 
+/* Slash-filter: the row exists only while the operator is typing. */
+CocliSearchInput.list-filter {
+    display: none;
+}
+CocliSearchInput.list-filter.-open {
+    display: block;
+    background: #143014;
+    color: #d8ffd8;
+}
+CocliSearchInput.list-filter.-open:focus {
+    background: #1c4020;
+}
+
 /* Common focus highlighting for all panes */
 .search-pane:focus-within,
 #app_nav_container:focus-within,

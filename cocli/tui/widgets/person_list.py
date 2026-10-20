@@ -2,6 +2,7 @@ import logging
 import asyncio
 from typing import TYPE_CHECKING, cast
 
+from textual.binding import Binding
 from textual.widgets import ListView, ListItem, Label, Input
 from textual.app import ComposeResult
 from textual.message import Message
@@ -11,6 +12,13 @@ if TYPE_CHECKING:
     from ..app import CocliApp
 from cocli.models.search import SearchResult
 from .inputs import CocliSearchInput
+from .list_filter import (
+    ListFilterState,
+    applied_header,
+    cancel_filter,
+    clear_filter,
+    commit_filter,
+)
 from ..base import CocliPanel
 
 logger = logging.getLogger(__name__)
@@ -40,6 +48,7 @@ class PersonList(CocliPanel):
 
     BINDINGS = [
         ("s", "focus_search", "Search"),
+        Binding("/", "open_filter", "Filter"),
         ("alt+s", "reset_view", "Return to List"),
     ]
 
@@ -47,10 +56,16 @@ class PersonList(CocliPanel):
         super().__init__(panel_title="PEOPLE", name=name, id=id, classes=classes)
         self.all_fz_items: list[SearchResult] = []
         self.filtered_fz_items: list[SearchResult] = []
+        self._filter = ListFilterState()
+        self._header_base = "PEOPLE"
 
     def compose(self) -> ComposeResult:
         yield Label("PEOPLE", id="person_list_header", classes="pane-header")
-        yield CocliSearchInput(placeholder="Search people...", id="person_search_input")
+        yield CocliSearchInput(
+            placeholder="Filter  ·  Enter applies  ·  Esc cancels",
+            id="person_search_input",
+            classes="list-filter",
+        )
         yield ListView(id="person_list_view")
 
     async def on_mount(self) -> None:
@@ -75,9 +90,51 @@ class PersonList(CocliPanel):
             list_view.index = 0
         list_view.focus()
 
+    def action_open_filter(self) -> None:
+        """Open the slash-filter row. `s` uses the same path."""
+        self.action_focus_search()
+
     def action_focus_search(self) -> None:
-        """Focus the search input."""
+        """Show the filter row and focus it."""
         self.query_one("#person_search_input", CocliSearchInput).focus()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "open_filter" and self._filter.editing:
+            return False
+        return True
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        if event.widget.id != "person_search_input":
+            return
+        self._filter.editing = True
+        event.widget.add_class("-open")
+        self._refresh_people_header()
+
+    def _commit_person_filter(self) -> None:
+        search_input = self.query_one("#person_search_input", CocliSearchInput)
+        commit_filter(self._filter, search_input.value)
+        self._refresh_people_header()
+        self._close_filter_input(search_input)
+
+    def _cancel_person_filter(self) -> None:
+        search_input = self.query_one("#person_search_input", CocliSearchInput)
+        restored = cancel_filter(self._filter, search_input.value)
+        if restored is not None:
+            search_input.value = restored
+        self._refresh_people_header()
+        self._close_filter_input(search_input)
+
+    def _close_filter_input(self, search_input: CocliSearchInput) -> None:
+        self.focus_list()
+        search_input.remove_class("-open")
+
+    def _refresh_people_header(self) -> None:
+        headers = self.query("#person_list_header")
+        if not headers:
+            return
+        self.query_one("#person_list_header", Label).update(
+            applied_header(self._header_base, self._filter)
+        )
 
     def action_open_highlighted(self) -> None:
         """Open the person under the cursor."""
@@ -92,8 +149,11 @@ class PersonList(CocliPanel):
     def action_reset_view(self) -> None:
         """Clear the search input and return focus to the list."""
         search_input = self.query_one("#person_search_input", CocliSearchInput)
-        search_input.value = ""
-        self.focus_list()
+        clear_filter(self._filter)
+        if search_input.value:
+            search_input.value = ""
+        self._refresh_people_header()
+        self._close_filter_input(search_input)
 
     def on_key(self, event: events.Key) -> None:
         """Vim keys match the company list: s searches, j/k move, l opens."""
@@ -104,8 +164,12 @@ class PersonList(CocliPanel):
         list_view = self.query_one("#person_list_view", ListView)
 
         if search_input.has_focus:
-            if event.key in ("escape", "enter"):
-                self.focus_list()
+            if event.key == "enter":
+                self._commit_person_filter()
+                event.prevent_default()
+                event.stop()
+            elif event.key == "escape":
+                self._cancel_person_filter()
                 event.prevent_default()
                 event.stop()
             elif event.key == "up":
@@ -118,7 +182,7 @@ class PersonList(CocliPanel):
                 event.stop()
             return
 
-        if event.key == "s":
+        if event.key in ("s", "/"):
             self.action_focus_search()
             event.prevent_default()
             event.stop()
@@ -195,7 +259,8 @@ class PersonList(CocliPanel):
             else:
                 list_view.index = None
             count = len(self.filtered_fz_items)
-            self.query_one("#person_list_header", Label).update(f"PEOPLE ({count})")
+            self._header_base = f"PEOPLE ({count})"
+            self._refresh_people_header()
         except Exception as e:
             logger.error(f"Error updating person list view: {e}")
 

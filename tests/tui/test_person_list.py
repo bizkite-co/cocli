@@ -81,8 +81,8 @@ async def test_person_list_search_duplicate_slugs():
         assert isinstance(person_list_screen, PersonList)
 
         list_view = person_list_screen.query_one(ListView)
-        # Simulate typing a search query that would include duplicate slugs
-        await driver.click("#person_search_input")
+        list_view.focus()
+        await driver.press("/")
         await driver.press("d", "u", "p", "l", "i", "c", "a", "t", "e")
         await driver.pause(0.2) # Allow Textual to process the input and update the list
 

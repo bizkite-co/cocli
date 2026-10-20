@@ -19,6 +19,13 @@ from cocli.models.email_address import EmailAddress
 from cocli.models.search import SearchResult
 
 from .inputs import CocliSearchInput
+from .list_filter import (
+    ListFilterState,
+    applied_header,
+    cancel_filter,
+    clear_filter,
+    commit_filter,
+)
 from .mark_prefix import MarkPrefixMixin
 from ..base import CocliPanel
 
@@ -68,6 +75,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         Binding("m", "open_mark_menu", "Mark"),
         Binding("u", "upload_lead_filter", "Upload Filter"),
         Binding("r", "refresh_to_call", "Refresh To-Call"),
+        Binding("/", "open_filter", "Filter"),
     ]
 
     def __init__(
@@ -85,11 +93,15 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         self._ignoring_input_change: bool = False
         self._last_g_time: float = 0.0
         self._next_index: Optional[int] = None
+        self._filter = ListFilterState()
+        self._header_base = "SEARCH"
 
     def compose(self) -> ComposeResult:
         yield Label("SEARCH", id="search_header", classes="pane-header")
         yield CocliSearchInput(
-            placeholder="Search companies...", id="company_search_input"
+            placeholder="Filter  ·  Enter applies  ·  Esc cancels",
+            id="company_search_input",
+            classes="list-filter",
         )
         with Container(id="list_container"):
             yield ListView(id="company_list_view")
@@ -152,6 +164,8 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                     setattr(search_input, "value", "")
             finally:
                 self._ignoring_input_change = False
+            clear_filter(self._filter)
+            search_input.remove_class("-open")
 
         # FORCE search update for the new template
         self.search_offset = 0
@@ -171,9 +185,49 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
         if list_views:
             list_views.first().focus()
 
+    def action_open_filter(self) -> None:
+        """Open the slash-filter row. `s` uses the same path."""
+        self.action_focus_search()
+
     def action_focus_search(self) -> None:
-        """Focus the search input."""
+        """Show the filter row and focus it."""
         self.query_one(CocliSearchInput).focus()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "open_filter" and self._filter.editing:
+            return False
+        return True
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        if event.widget.id != "company_search_input":
+            return
+        self._filter.editing = True
+        event.widget.add_class("-open")
+        self._refresh_search_header()
+
+    def _commit_search_filter(self) -> None:
+        search_input = self.query_one(CocliSearchInput)
+        commit_filter(self._filter, search_input.value)
+        self._refresh_search_header()
+        self._close_filter_input(search_input)
+
+    def _cancel_search_filter(self) -> None:
+        search_input = self.query_one(CocliSearchInput)
+        restored = cancel_filter(self._filter, search_input.value)
+        if restored is not None:
+            search_input.value = restored
+        self._refresh_search_header()
+        self._close_filter_input(search_input)
+
+    def _close_filter_input(self, search_input: CocliSearchInput) -> None:
+        self._focus_company_list()
+        search_input.remove_class("-open")
+
+    def _refresh_search_header(self) -> None:
+        headers = self.query("#search_header")
+        if not headers:
+            return
+        cast(Label, headers.first()).update(applied_header(self._header_base, self._filter))
 
     def action_open_highlighted(self) -> None:
         """Open the highlighted company (list index, not display-name match)."""
@@ -187,8 +241,11 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
     def action_reset_view(self) -> None:
         """Clear the search input and return focus to the list."""
         search_input = self.query_one(CocliSearchInput)
-        search_input.value = ""
-        self.query_one(ListView).focus()
+        clear_filter(self._filter)
+        if search_input.value:
+            search_input.value = ""
+        self._refresh_search_header()
+        self._close_filter_input(search_input)
 
     def action_add_company(self) -> None:
         """Pushes the Add Company modal."""
@@ -227,8 +284,8 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
 
     @on(Input.Submitted)
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Enter in search exits typing mode so j/k and Enter can drive the list."""
-        self._focus_company_list()
+        """Enter applies the filter and leaves typing mode."""
+        self._commit_search_filter()
         event.stop()
 
     @on(CocliSearchInput.DebouncedChanged)
@@ -259,8 +316,12 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
 
         # 1. Protection & Passthrough: If search is focused
         if search_input.has_focus:
-            if event.key in ("escape", "enter"):
-                self._focus_company_list()
+            if event.key == "enter":
+                self._commit_search_filter()
+                event.prevent_default()
+                event.stop()
+            elif event.key == "escape":
+                self._cancel_search_filter()
                 event.prevent_default()
                 event.stop()
             elif event.key == "up":
@@ -284,7 +345,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                 self.action_toggle_sort()
                 event.stop()
                 return
-            elif event.key == "s":
+            elif event.key in ("s", "/"):
                 self.action_focus_search()
                 event.stop()
                 return
@@ -539,7 +600,8 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             if total_count is None:
                 total_count = len(self.filtered_fz_items)
             count_str = f"{total_count:,}" if total_count > 0 else "0"
-            self.query_one("#search_header", Label).update(f"SEARCH ({count_str} results)")
+            self._header_base = f"SEARCH ({count_str} results)"
+            self._refresh_search_header()
         except Exception:
             pass
 

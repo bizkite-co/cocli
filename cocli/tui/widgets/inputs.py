@@ -51,6 +51,16 @@ class CocliSearchInput(CocliInput):
     """
     Extended CocliInput for Search.
     - Supports Up/Down arrow keys to navigate a target list.
+    - ``list-filter`` rows stay hidden until the list opens them with ``-open``.
+    """
+
+    DEFAULT_CSS = """
+    CocliSearchInput.list-filter {
+        display: none;
+    }
+    CocliSearchInput.list-filter.-open {
+        display: block;
+    }
     """
 
     def on_key(self, event: events.Key) -> None:
