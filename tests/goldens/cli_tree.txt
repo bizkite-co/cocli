@@ -400,6 +400,8 @@ cocli
     data - Utilities for interacting with frictionless data files.
         compact-emails - Compact the email index's hot inbox into cold shards (Hot Inbox -> Shards).
             --campaign/-c (text) [required]
+        compile-yield - Fold worker output into the customer enriched-emails CSV/USV.
+            --campaign/-c (text) [required]
         describe - Show the schema definition (fields/types) for a given USV file or datapackage.
             file_path (path) [required]
         export-enriched-emails - Joins the prospects checkpoint against the email index and writes the

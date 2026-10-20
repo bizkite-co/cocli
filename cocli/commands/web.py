@@ -237,10 +237,10 @@ def export_emails(
     the data behind the dashboard's "download CSV" button - without
     rebuilding or redeploying the static site shell.
 
-    Pulls worker email indexes, compacts that index, folds prospect WAL
-    into the checkpoint, writes the CSV/USV, then uploads. A failed pull
-    or compaction stops before upload. Needs AWS/1Password auth, so this
-    is a manual command; run `cocli web deploy` for a full site + data deploy.
+    Calls `cocli data compile-yield` (worker email pull, both compactions,
+    prospect WAL fold, CSV/USV), then uploads. A failed pull or compaction
+    stops before upload. Needs AWS/1Password auth, so this is a manual
+    command; run `cocli web deploy` for a full site + data deploy.
 
     The dashboard's prospect count is the refined lead-filter list when
     that list is published. Refreshing it is a separate step:

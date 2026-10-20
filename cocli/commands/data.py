@@ -193,6 +193,39 @@ def compact_emails(
     console.print(f"[green]{result.get('message')}[/green]")
 
 
+@app.command(name="compile-yield", no_args_is_help=True)
+def compile_yield(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+) -> None:
+    """Fold worker output into the customer enriched-emails CSV/USV.
+
+    Runs, in order: ``sync pi-results --force``, ``index sync-pi-emails``,
+    ``data compact-emails``, ``index compact`` for google_maps_prospects,
+    and ``data export-enriched-emails``. Stops before writing a count when
+    a pull or compaction fails. Does not upload. Publish with
+    ``cocli web export-emails``, which calls this same compile and then
+    uploads.
+
+    Example: cocli data compile-yield --campaign turboship
+    """
+    from cocli.application.customer_yield import compile_customer_yield
+
+    console.print(f"[cyan]Compiling customer yield for campaign '{campaign}'...[/cyan]")
+
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
+
+    try:
+        result = compile_customer_yield(campaign, log_callback=log_cb)
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    console.print(
+        f"[green]Exported {result.exported_count} companies.[/green] "
+        f"{result.output_csv}"
+    )
+
+
 @app.command(name="export-enriched-emails", no_args_is_help=True)
 def export_enriched_emails_cmd(
     campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),

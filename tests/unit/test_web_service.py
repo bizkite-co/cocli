@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -51,7 +52,10 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
 
     mock_s3 = MagicMock()
 
-    with patch("subprocess.run"), patch(
+    with patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(args=[], returncode=0),
+    ), patch(
         "cocli.application.pi_sync_service.PiSyncService"
     ) as mock_pi_sync, patch(
         "cocli.application.index_service.IndexService"
@@ -64,7 +68,6 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
         mock_pi_sync.return_value.sync_email_indexes.return_value = [
             SyncResult(host="cocli5x0", success=True, files_synced=4)
         ]
-        mock_pi_sync.return_value.sync_prospect_wal_to_s3.return_value = []
         mock_data_sync.return_value.compact_index.return_value = {
             "status": "success",
             "message": "Email index compacted",
@@ -74,6 +77,7 @@ def test_export_and_upload_emails_csv_uploads_usv_and_csv_with_download_headers(
         result = service.export_and_upload_emails_csv(mock_s3, "test-bucket")
 
     mock_pi_sync.return_value.sync_email_indexes.assert_called_once()
+    mock_pi_sync.return_value.sync_prospect_wal_to_s3.assert_not_called()
     mock_data_sync.return_value.compact_index.assert_called_once()
     assert result.exported_count == 3
     assert mock_s3.upload_file.call_count == 2
@@ -96,7 +100,10 @@ def test_export_and_upload_emails_csv_stops_before_upload_when_email_sync_fails(
     service = WebService(campaign_name="test-campaign")
     mock_s3 = MagicMock()
 
-    with patch("subprocess.run"), patch(
+    with patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(args=[], returncode=0),
+    ), patch(
         "cocli.application.pi_sync_service.PiSyncService"
     ) as mock_pi_sync, patch(
         "cocli.application.lead_export_service.export_enriched_emails"

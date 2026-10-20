@@ -14,13 +14,21 @@ dashboard.
 ## One command
 
 ```bash
+uv run cocli data compile-yield --campaign turboship
+```
+
+That runs the sequence below and prints `Exported N companies`. It does
+not upload. It stops before writing a count when the queue sync, the
+email pull, or a compaction fails.
+
+Publish that file, which repeats the compile and then uploads:
+
+```bash
 uv run cocli web export-emails --campaign turboship
 ```
 
-That command is the full sequence below, then the upload. Needs AWS
-credentials for the campaign profile (1Password, for `bizkite-support`).
-It stops before upload if the email pull or the prospect compaction
-fails. On success it writes:
+The upload needs AWS credentials for the campaign profile (1Password,
+for `bizkite-support`). On success the compile writes:
 
 - `~/.local/share/cocli_data/campaigns/<campaign>/exports/enriched_emails_<campaign>.csv`
 - the matching `.usv`
@@ -32,9 +40,8 @@ dashboard fetches it with a cache-busting query string.
 
 ## Command sequence
 
-Run these in order when you want each step visible. `web export-emails`
-runs the same steps and then uploads, so you do not also run that
-command after this list.
+`compile-yield` runs these, in order. They stay available on their own
+for inspection. Do not skip one and then export.
 
 ```bash
 uv run cocli sync pi-results --campaign turboship --force
@@ -43,16 +50,6 @@ uv run cocli data compact-emails --campaign turboship
 uv run cocli index compact --campaign turboship --index google_maps_prospects
 uv run cocli data export-enriched-emails --campaign turboship
 ```
-
-Then publish. The upload is the last action of:
-
-```bash
-uv run cocli web export-emails --campaign turboship
-```
-
-which repeats the five commands above before it uploads. Use it when
-you want one invocation. Use the five commands when you want to stop
-and read the count before publishing.
 
 What each step is for:
 
