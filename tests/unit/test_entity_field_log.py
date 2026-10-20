@@ -61,6 +61,28 @@ def test_phone_and_address_both_survive_fold() -> None:
     assert len(winners) == 2
 
 
+def test_apply_blank_journal_value_clears_the_field() -> None:
+    """A cleared field is journaled as \"\". Apply must restore None.
+
+    Company.callback_at is Optional[datetime]. The string \"\" fails
+    validation and Company.from_directory returns None.
+    """
+    base = {"name": "Acme", "callback_at": "2026-10-12T16:55:21Z"}
+    recs = [
+        DatagramRecord(
+            timestamp="2026-10-13T20:31:48+00:00",
+            node_id="n",
+            campaign_name="roadmap",
+            target="companies/acme",
+            field="callback_at",
+            value="",
+        ),
+    ]
+    out = apply_field_updates_to_mapping(base, recs)
+    assert out["callback_at"] is None
+    assert out["name"] == "Acme"
+
+
 def test_apply_field_updates_to_mapping_merges_base() -> None:
     base = {"name": "Acme", "phone": "old"}
     recs = [

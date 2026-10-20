@@ -126,3 +126,58 @@ async def test_selecting_an_unmaterialized_lead_auto_materializes_and_opens_deta
         # Check that directory was created on disk
         assert (tmp_path / "companies" / "unmaterialized-lead" / "_index.md").exists()
 
+
+@pytest.mark.asyncio
+async def test_existing_company_file_is_not_replaced_when_load_fails(tmp_path, monkeypatch):
+    """A directory that fails to load is already a company. Do not stub it."""
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    slug = "higginbotham-richard-bendes"
+    company_dir = tmp_path / "companies" / slug
+    company_dir.mkdir(parents=True)
+    original = (
+        "---\n"
+        "name: Higginbotham - Richard Bendes\n"
+        "slug: higginbotham-richard-bendes\n"
+        "phone_number: '15124574000'\n"
+        "---\n"
+    )
+    (company_dir / "_index.md").write_text(original, encoding="utf-8")
+
+    mock_search = MagicMock()
+    mock_search.return_value = [
+        SearchResult(
+            name="Higginbotham - Richard Bendes",
+            slug=slug,
+            domain="higginbotham.com",
+            type="company",
+            unique_id=slug,
+            tags=[],
+            display="",
+            email="cgerami@higginbotham.com",
+            phone_number="15124574000",
+        ),
+    ]
+
+    services = ServiceContainer(
+        search_service=mock_search,
+        company_service=MagicMock(return_value=None),
+        sync_search=True,
+    )
+    app = CocliApp(services=services, auto_show=False)
+
+    async with app.run_test() as driver:
+        await driver.app.action_show_companies()
+        await driver.pause(0.5)
+        company_list_screen = await wait_for_widget(driver, CompanyList)
+        list_view = company_list_screen.query_one(ListView)
+        list_view.focus()
+        await driver.pause(0.1)
+        list_view.index = 0
+        list_view.action_select_cursor()
+        await driver.pause(0.3)
+
+        assert (company_dir / "_index.md").read_text(encoding="utf-8") == original
+        assert list(driver.app.query(CompanyDetail)) == []
+

@@ -1189,6 +1189,24 @@ class CocliApp(App[None]):
         try:
             company_data = self.services.get_company_details(company_slug)
             if not company_data:
+                from ..core.paths import paths
+
+                existing = paths.companies.entry(company_slug)
+                if existing.exists():
+                    # The directory is already a company. A search-row stub
+                    # must not replace _index.md when the load failed
+                    # (blank journal callback_at did this on 2026-10-20).
+                    logger.warning(
+                        "Company directory exists but did not load: slug=%s",
+                        company_slug,
+                    )
+                    self.notify(
+                        f"'{company_slug}' is on disk but could not be loaded.",
+                        severity="warning",
+                    )
+                    self.bell()
+                    return
+
                 # A lead in "All leads" or search results may originate from raw prospects
                 # data (google_maps_prospects checkpoint) before being materialized to disk.
                 # Auto-materialize the company directory on demand so the user can open it.

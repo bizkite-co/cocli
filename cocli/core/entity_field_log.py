@@ -144,6 +144,12 @@ def apply_field_updates_to_mapping(
     merged = dict(base)
     winners = fold_field_updates(records)
     for rec in winners:
+        # journal_field_changes writes "" for None. Putting that blank
+        # string back onto a datetime field makes Company/Person validation
+        # fail, and the TUI then treats a real directory as "not imported".
+        if rec.value == "":
+            merged[rec.field] = None
+            continue
         try:
             if rec.value.startswith("[") or rec.value.startswith("{"):
                 val: Any = json.loads(rec.value)
