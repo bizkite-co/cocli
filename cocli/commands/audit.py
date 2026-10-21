@@ -1067,6 +1067,25 @@ def _fmt_pct(value: Any) -> str:
     return text
 
 
+def _fmt_temp(value: Any) -> str:
+    """Integer °C. Missing stays "-". 75+ is warm, 85+ is throttling territory."""
+    if value is None:
+        return "-"
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if v <= 0 or v > 120:
+        return "-"
+    shown = int(v + 0.5)
+    text = str(shown)
+    if shown >= 85:
+        return f"[red]{text}[/red]"
+    if shown >= 75:
+        return f"[yellow]{text}[/yellow]"
+    return text
+
+
 def _node_health_verdict(
     has_campaign: bool,
     last_log_age_s: Optional[float],
@@ -1333,6 +1352,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     table.add_column("Designation", style="magenta", no_wrap=True)
     table.add_column("CPU %", justify="right")
     table.add_column("MEM %", justify="right")
+    table.add_column("Temp", justify="right")
     table.add_column("Errors (30m)", justify="right")
     table.add_column("Last Activity")
     table.add_column("Health")
@@ -1367,6 +1387,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             system: dict[str, Any] = payload.get("system") or {}
             cpu_str = _fmt_pct(system.get("cpu"))
             mem_str = _fmt_pct(system.get("mem"))
+            temp_str = _fmt_temp(system.get("temp"))
 
             # The node's own report of which campaign it's actually running -
             # not just "which campaign's S3 prefix did we read this from".
@@ -1391,10 +1412,13 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             activity_str = _format_age(last_log_age) if last_log_age is not None else "-"
             health = _node_health_verdict(True, last_log_age, error_count, stale_content_types)
         except Exception as e:
-            table.add_row(hostname, "-", "-", "-", "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
+            table.add_row(hostname, "-", "-", "-", "-", "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
             continue
 
-        table.add_row(hostname, campaign_str, designation_str, cpu_str, mem_str, str(error_count), activity_str, health)
+        table.add_row(
+            hostname, campaign_str, designation_str, cpu_str, mem_str, temp_str,
+            str(error_count), activity_str, health,
+        )
 
     console.print(table)
 
@@ -1461,6 +1485,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
 
         cpu_str = "-"
         mem_str = "-"
+        temp_str = "-"
         hb_age: Optional[float] = None
         hb_type_activity: dict[str, float] = {}
         if sections["HEARTBEAT"]:
@@ -1473,6 +1498,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
                 system = hb.get("system") or {}
                 cpu_str = _fmt_pct(system.get("cpu"))
                 mem_str = _fmt_pct(system.get("mem"))
+                temp_str = _fmt_temp(system.get("temp"))
                 if hb.get("timestamp"):
                     try:
                         hb_dt = datetime.fromisoformat(str(hb["timestamp"]))
@@ -1540,6 +1566,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             "campaign": live_campaign,
             "cpu": cpu_str,
             "mem": mem_str,
+            "temp": temp_str,
             "designation": by_content_type,
             "error_count": error_count,
             "error_patterns": error_patterns,
@@ -1627,6 +1654,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             "campaign": payload.get("campaign"),
             "cpu": _fmt_pct(system.get("cpu")),
             "mem": _fmt_pct(system.get("mem")),
+            "temp": _fmt_temp(system.get("temp")),
             "designation": designation,
             "error_count": error_count,
             "error_patterns": [],
@@ -1646,6 +1674,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
     table.add_column("Done (1h)", justify="right")
     table.add_column("CPU %", justify="right")
     table.add_column("MEM %", justify="right")
+    table.add_column("Temp", justify="right")
     table.add_column("Errors (30m)", justify="right")
     table.add_column("Last Activity")
     table.add_column("Health")
@@ -1674,13 +1703,18 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
 
         cpu_str = d.get("cpu", "-")
         mem_str = d.get("mem", "-")
+        temp_str = d.get("temp", "-")
         error_count = d["error_count"]
         errors_str = str(error_count) if d["has_campaign"] else "-"
         activity_str = _format_age(d["last_log_age"]) if d["last_log_age"] is not None else "-"
         health = _node_health_verdict(d["has_campaign"], d["last_log_age"], error_count, d["stale_content_types"])
 
         if not relevant_queues:
-            table.add_row(d["host"], campaign_str, "-", "-", "-", "-", "-", cpu_str, mem_str, errors_str, activity_str, health, style=node_style)
+            table.add_row(
+                d["host"], campaign_str, "-", "-", "-", "-", "-",
+                cpu_str, mem_str, temp_str, errors_str, activity_str, health,
+                style=node_style,
+            )
             continue
 
         for row_idx, q in enumerate(relevant_queues):
@@ -1703,6 +1737,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
                 done_1h_str,
                 cpu_str if is_first else "",
                 mem_str if is_first else "",
+                temp_str if is_first else "",
                 errors_str if is_first else "",
                 activity_str if is_first else "",
                 health if is_first else "",

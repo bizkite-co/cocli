@@ -239,6 +239,42 @@ async def test_right_column_shows_call_reference_files(
 
 @pytest.mark.asyncio
 @patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
+async def test_call_log_shows_roadmap_usage(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="Jan Mohamed",
+        slug="jan-co",
+        domain="jan.test",
+        phone="555-333-4444",
+        tags=["testimonial-target", "rta-rank-2"],
+        rta_metrics={
+            "rank": 2,
+            "login_count": 308,
+            "active_minutes": 900,
+            "event_count": 12078,
+            "last_activity": "2026-10-19 20:29:47",
+        },
+    )
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = CallLogModal(company_slug="jan-co", phone="555-333-4444")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+        usage = str(modal.query_one("#call-roadmap-usage").render())
+        assert "Rank" in usage
+        assert "#2" in usage
+        assert "308" in usage
+        assert "2026-10-19" in usage
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.call_log_modal.get_campaign", return_value="roadmap")
 async def test_recent_calls_panel_shows_this_companys_calls_newest_first(
     _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
 ) -> None:

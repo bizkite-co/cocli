@@ -8,8 +8,10 @@ from typer.testing import CliRunner
 import cocli.commands.audit as audit_module
 from cocli.commands.audit import (
     _audit_cluster_from_heartbeats,
+    _audit_cluster_ssh,
     _classify_error_message,
     _count_error_types,
+    _fmt_temp,
     _parse_cluster_audit_sections,
 )
 
@@ -315,7 +317,7 @@ def test_audit_cluster_from_heartbeats_renders_cpu_and_mem(capsys: Any) -> None:
     heartbeats = {
         "cocli5x0": {
             "timestamp": now_iso,
-            "system": {"cpu": 91.4, "mem": 42.0},
+            "system": {"cpu": 91.4, "mem": 42.0, "temp": 82.4},
             "designation": {"enrichment": 2},
             "last_activity": {"enrichment": now_iso},
             "error_count_30m": 0,
@@ -340,11 +342,88 @@ def test_audit_cluster_from_heartbeats_renders_cpu_and_mem(capsys: Any) -> None:
         _audit_cluster_from_heartbeats("turboship", verbose=False)
 
     out = capsys.readouterr().out
+    assert "Temp" in out
     assert "91" in out
     assert "42" in out
+    hot = [line for line in out.splitlines() if "cocli5x0" in line]
+    assert hot and "82" in hot[0]
     # cocli5x1 has no "system" key - must degrade to "-", not throw.
     matching_lines = [line for line in out.splitlines() if "cocli5x1" in line]
     assert matching_lines and "-" in matching_lines[0]
+
+
+def test_fmt_temp_colors_by_displayed_degree() -> None:
+    assert _fmt_temp(None) == "-"
+    assert _fmt_temp("nope") == "-"
+    assert _fmt_temp(57.6) == "58"
+    assert _fmt_temp(74.4) == "74"
+    assert _fmt_temp(74.5) == "[yellow]75[/yellow]"
+    assert _fmt_temp(84.4) == "[yellow]84[/yellow]"
+    assert _fmt_temp(84.5) == "[red]85[/red]"
+
+
+def test_audit_cluster_ssh_renders_heartbeat_temp(capsys: Any) -> None:
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    class _Node:
+        hostname = "cocli5x0"
+
+    class _Service:
+        def __init__(self, campaign_name: str) -> None:
+            self.campaign_name = campaign_name
+
+        def get_nodes(self) -> list[_Node]:
+            return [_Node()]
+
+        async def run_remote_command(self, node: _Node, script: str) -> str:
+            payload = {
+                "campaign": "turboship",
+                "timestamp": now_iso,
+                "system": {"cpu": 11.0, "mem": 22.0, "temp": 88.2},
+                "last_activity": {},
+            }
+            return (
+                "CAMPAIGN_NAME=turboship\n"
+                "@@HEARTBEAT@@\n"
+                + json.dumps(payload)
+                + "\n\n@@WORKERS@@\n"
+                "@@ERRORS@@\n0\n"
+                "@@ERROR_PATTERNS@@\n"
+                "@@LASTLOG@@\n"
+                "@@TYPE_ACTIVITY@@\n"
+                "@@QUEUES@@\n"
+                "enrichment/pending=3\n"
+                "enrichment/completed=4\n"
+                "enrichment/done_1h=1\n"
+            )
+
+    heartbeats = {
+        "NUC01": {
+            "timestamp": now_iso,
+            "campaign": "turboship",
+            "system": {"cpu": 4.0, "mem": 8.0},
+            "designation": {},
+            "error_count_30m": 0,
+        }
+    }
+
+    with patch.object(audit_module, "console", Console(width=240, height=40, no_color=True)), \
+        patch("cocli.services.cluster_service.ClusterService", _Service), patch(
+        "cocli.core.config.load_campaign_config", return_value={}
+    ), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
+        "cocli.core.reporting.get_s3_client", return_value=FakeS3Client(heartbeats)
+    ):
+        _audit_cluster_ssh("turboship", verbose=False)
+
+    out = capsys.readouterr().out
+    pi = [line for line in out.splitlines() if "cocli5x0" in line]
+    nuc = [line for line in out.splitlines() if "NUC01" in line]
+    assert pi and "88" in pi[0]
+    assert nuc and "-" in nuc[0]
 
 
 def test_audit_cluster_from_heartbeats_tolerates_legacy_naive_timestamp(capsys: Any) -> None:

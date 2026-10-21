@@ -35,7 +35,7 @@ async def test_preview_renders_testimonial_banner_and_metrics() -> None:
         banners = list(preview.query(".testimonial-target-banner"))
         assert len(banners) == 1
         assert "TESTIMONIAL TARGET" in str(banners[0].render())
-        assert "Active RTA User" in str(banners[0].render())
+        assert "On The Roadmap" in str(banners[0].render())
 
         # Check for stats
         stats = list(preview.query(".testimonial-target-stats"))

@@ -530,11 +530,11 @@ class PersonalizedOutreachService:
             "vs. non-qualified assets deplete over a 30-year horizon is often the single most convincing moment in a client review.\n\n"
             "Patchwork spreadsheets and generic planning software usually fail at showing integrated tax drag, RMD impacts, "
             "and withdrawal sequencing in a clean, visual format that clients easily grasp.\n\n"
-            "We built the Retirement Tax Analyzer ({landing_url}) to give financial advisors a 30-year integrated spend-down table "
+            "We built The Roadmap ({landing_url}) to give financial advisors a 30-year integrated spend-down table "
             "that answers 'how long does the money last?' in seconds.\n\n"
             "Would you be open to a quick look to see how it can elevate your client review meetings?\n\n"
             "Best regards,\n"
-            "The Retirement Tax Analyzer Team\n\n"
+            "The Roadmap Partners\n\n"
             "---\n"
             'If you prefer not to receive future communications, reply "unsubscribe" to this email or visit {landing_url}/unsubscribe\n'
         )

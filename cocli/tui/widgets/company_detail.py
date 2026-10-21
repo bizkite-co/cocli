@@ -1009,29 +1009,25 @@ class CompanyDetail(MarkPrefixMixin, Container):
         showing stale data. push_screen_wait blocks until CallLogModal is
         actually dismissed (its return value isn't needed here, just the
         wait)."""
-        # Mark, 2026-10-09: dialing phone_1 (a generic company-wide
-        # number from Google Maps enrichment) instead of the actual
-        # contact's own line was the bug - a real testimonial-target
-        # call went to Higginbotham's 800 number instead of Mitch
-        # Gaylord's 949 direct line. Prefer the currently-selected (or
-        # first/default) contact's own phone, same selection rule
-        # action_compose_email already uses for "to_address", so
-        # highlighting a different contact in the Contacts panel picks
-        # that person for calling too. Only fall back to the company-
-        # level fields when no contact has a phone on file at all.
+        # A highlighted contact's own line wins (Mark, 2026-10-09: Mitch
+        # Gaylord's 949 line, not the company switchboard). With no
+        # contact selected, dial the Phone row the operator edits
+        # (phone_number). phone_1 is the Google Maps value and can be a
+        # different place entirely — Higginbotham's parent record had
+        # phone_1 set to Higginbotham Park in Claremont, so `p` kept
+        # calling city hall after the main number was corrected.
         contacts = self.company_data.get("contacts") or []
         contact_phone = None
-        if contacts:
-            row = self.contacts_table.cursor_row if self.contacts_table.has_focus else None
-            contact = (
-                contacts[row]
-                if isinstance(row, int) and 0 <= row < len(contacts)
-                else contacts[0]
-            )
-            contact_phone = contact.get("phone")
-        phone = contact_phone or self.company_data["company"].get(
-            "phone_1"
-        ) or self.company_data["company"].get("phone_number")
+        if contacts and self.contacts_table.has_focus:
+            row = self.contacts_table.cursor_row
+            if isinstance(row, int) and 0 <= row < len(contacts):
+                contact_phone = contacts[row].get("phone")
+        company = self.company_data["company"]
+        phone = (
+            contact_phone
+            or company.get("phone_number")
+            or company.get("phone_1")
+        )
         slug = self.company_data["company"].get("slug")
         domain = self.company_data["company"].get("domain")
 
@@ -1965,6 +1961,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
         field_map = {
             "Email": "email",
             "Phone": "phone_number",
+            "Phone (Maps)": "phone_1",
+            "Phone (Site)": "phone_from_website",
             "Domain": "domain",
             "Name": "name",
             "Street": "street_address",
@@ -2110,6 +2108,23 @@ class CompanyDetail(MarkPrefixMixin, Container):
         if extras:
             self.info_table.add_row("Emails", ", ".join(extras))
         self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
+        # phone_number is the main line the Phone row edits. phone_1 is
+        # the Google Maps number, and phone_from_website is scraped from
+        # the site. They are stored separately and can disagree.
+        if c.get("phone_1"):
+            self.info_table.add_row(
+                "Phone (Maps)", format_phone_display(c.get("phone_1"))
+            )
+        if c.get("phone_from_website"):
+            self.info_table.add_row(
+                "Phone (Site)", format_phone_display(c.get("phone_from_website"))
+            )
+
+        from cocli.application.roadmap_usage import rank_from_tags, usage_plain
+
+        usage = usage_plain(c.get("rta_metrics"), rank_from_tags(tags))
+        if usage:
+            self.info_table.add_row("Usage", usage)
 
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
 
@@ -2188,7 +2203,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
 
     def _create_info_table(self) -> InfoTable:
         table = InfoTable(id="info-table")
-        table.add_column("Attribute", width=10)
+        table.add_column("Attribute", width=13)
         table.add_column("Value")
         # Initialize content
         self.info_table = table  # Temporarily assign so _refresh works

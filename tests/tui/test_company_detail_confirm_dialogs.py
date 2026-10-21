@@ -261,8 +261,8 @@ async def _run_call_and_capture_dialed_phone(app, pilot, detail) -> str | None:
 @pytest.mark.asyncio
 async def test_call_company_dials_the_first_contacts_phone_by_default(tmp_path: Path):
     """Mark, 2026-10-09: calling Mitch Gaylord dialed Higginbotham's
-    generic 800 number (phone_1, from Google Maps enrichment) instead of
-    his own 949 direct line - the contact's own phone must win."""
+    generic 800 number instead of his own 949 direct line. The contact's
+    phone wins when that contact's row is highlighted."""
     enrichment_dir = tmp_path / "companies" / "higginbotham-mitch-gaylord" / "enrichments"
     enrichment_dir.mkdir(parents=True)
     company_data = {
@@ -286,6 +286,8 @@ async def test_call_company_dials_the_first_contacts_phone_by_default(tmp_path: 
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
         detail = await _mount(app, pilot, company_data)
+        detail.contacts_table.focus()
+        await pilot.pause()
         dialed = await _run_call_and_capture_dialed_phone(app, pilot, detail)
 
     assert dialed == "19494907817"
@@ -358,3 +360,39 @@ async def test_call_company_falls_back_to_company_phone_when_no_contacts_have_a_
         dialed = await _run_call_and_capture_dialed_phone(app, pilot, detail)
 
     assert dialed == "15555550000"
+
+
+@pytest.mark.asyncio
+async def test_call_company_dials_the_edited_main_number_not_a_stale_maps_phone(
+    tmp_path: Path,
+):
+    """The Phone row is phone_number. phone_1 can still hold a Google
+    Maps place that is not this company. Calling from the info panel
+    uses the number the operator can see and edit."""
+    enrichment_dir = tmp_path / "companies" / "higginbotham" / "enrichments"
+    enrichment_dir.mkdir(parents=True)
+    company_data = {
+        "company": {
+            "name": "Higginbotham",
+            "slug": "higginbotham",
+            "domain": "higginbotham.com",
+            "phone_1": "19093995460",
+            "phone_number": "18007282374",
+        },
+        "contacts": [
+            {"name": "Austin Somers", "phone": None},
+            {"name": "Cooper Gerami", "phone": "13377810147"},
+        ],
+        "meetings": [],
+        "notes": [],
+        "website_data": None,
+        "tags": [],
+        "enrichment_path": str(enrichment_dir / "website.md"),
+    }
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = await _mount(app, pilot, company_data)
+        dialed = await _run_call_and_capture_dialed_phone(app, pilot, detail)
+
+    assert dialed == "18007282374"

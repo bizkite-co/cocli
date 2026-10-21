@@ -124,34 +124,20 @@ class CompanyPreview(CocliPanel):
         if is_testimonial:
             testimonial_widgets.append(
                 Static(
-                    "⭐ [bold white]TESTIMONIAL TARGET[/]  [bold magenta]• Active RTA User[/]",
+                    "⭐ [bold white]TESTIMONIAL TARGET[/]  [bold magenta]• On The Roadmap[/]",
                     classes="testimonial-target-banner",
                 )
             )
-            parts = []
-            metrics = getattr(company, "rta_metrics", None)
-            if metrics and isinstance(metrics, dict):
-                if "rank" in metrics:
-                    parts.append(f"Rank [bold cyan]#{metrics['rank']}[/]")
-                if "login_count" in metrics:
-                    parts.append(f"[bold green]{metrics['login_count']}[/] logins")
-                if "active_minutes" in metrics:
-                    parts.append(f"[bold yellow]{metrics['active_minutes']}[/] active mins")
-                if "active_days" in metrics:
-                    parts.append(f"[bold white]{metrics['active_days']}[/] active days")
-                if "event_count" in metrics:
-                    parts.append(f"[bold magenta]{metrics['event_count']}[/] events")
-            if not parts:
-                for tag in company.tags:
-                    if tag.startswith("rta-rank-"):
-                        rank_num = tag.split("rta-rank-")[-1]
-                        parts.append(f"Rank [bold cyan]#{rank_num}[/]")
-                        break
-            if parts:
-                stats_str = " • ".join(parts)
+            from cocli.application.roadmap_usage import rank_from_tags, usage_markup
+
+            stats_str = usage_markup(
+                getattr(company, "rta_metrics", None),
+                rank_from_tags(company.tags),
+            )
+            if stats_str:
                 testimonial_widgets.append(
                     Static(
-                        f"📊 [bold magenta]RTA Activity:[/] {stats_str}",
+                        f"📊 [bold magenta]Roadmap:[/] {stats_str}",
                         classes="testimonial-target-stats",
                     )
                 )

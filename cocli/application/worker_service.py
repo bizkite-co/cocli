@@ -5,8 +5,11 @@ import asyncio
 import json
 import logging
 import os
+import re
+import subprocess
 import time
 from datetime import datetime, UTC
+from pathlib import Path
 from typing import Any, Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext
@@ -220,6 +223,112 @@ def route_discovered_list_item(
         gm_list_item_queue.push(
             list_item.to_task(campaign_name, force_refresh=False, job_run_id=job_run_id)
         )
+
+
+_VCGENCMD_TEMP_RE = re.compile(r"temp=\s*([0-9]+(?:\.[0-9]+)?)")
+# Zone `type` names and hwmon labels that are the CPU/SoC, not wifi or a disk.
+_CPU_TEMP_TOKENS = ("cpu", "x86_pkg", "coretemp", "soc", "tdie", "tctl", "package", "core ")
+
+
+def _sane_celsius(value: float) -> Optional[float]:
+    """Drop dead-sensor zeros and millidegree values that were not scaled."""
+    if value <= 0 or value > 120:
+        return None
+    return value
+
+
+def parse_vcgencmd_temp(text: str) -> Optional[float]:
+    """Parse `vcgencmd measure_temp` output (`temp=57.6'C`)."""
+    match = _VCGENCMD_TEMP_RE.search(text)
+    if match is None:
+        return None
+    return _sane_celsius(float(match.group(1)))
+
+
+def parse_sysfs_millidegree(text: str) -> Optional[float]:
+    """Parse a sysfs thermal reading stored as millidegrees Celsius."""
+    raw = text.strip()
+    if not raw:
+        return None
+    try:
+        milli = int(raw)
+    except ValueError:
+        return None
+    return _sane_celsius(milli / 1000.0)
+
+
+def _read_sysfs_cpu_temp_c(thermal_root: Path) -> Optional[float]:
+    if not thermal_root.is_dir():
+        return None
+    readings: list[float] = []
+    for zone in sorted(thermal_root.glob("thermal_zone*")):
+        try:
+            zone_type = (zone / "type").read_text(encoding="utf-8", errors="replace").strip().lower()
+            raw = (zone / "temp").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not any(token in zone_type for token in _CPU_TEMP_TOKENS):
+            continue
+        parsed = parse_sysfs_millidegree(raw)
+        if parsed is not None:
+            readings.append(parsed)
+    if not readings:
+        return None
+    return max(readings)
+
+
+def _read_hwmon_cpu_temp_c(hwmon_root: Path) -> Optional[float]:
+    if not hwmon_root.is_dir():
+        return None
+    readings: list[float] = []
+    for label_path in sorted(hwmon_root.glob("hwmon*/temp*_label")):
+        try:
+            label = label_path.read_text(encoding="utf-8", errors="replace").strip().lower()
+        except OSError:
+            continue
+        if not any(token in label for token in _CPU_TEMP_TOKENS):
+            continue
+        input_path = label_path.with_name(label_path.name.replace("_label", "_input"))
+        try:
+            raw = input_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        parsed = parse_sysfs_millidegree(raw)
+        if parsed is not None:
+            readings.append(parsed)
+    if not readings:
+        return None
+    return max(readings)
+
+
+def _read_vcgencmd_temp_c() -> Optional[float]:
+    try:
+        completed = subprocess.run(
+            ["vcgencmd", "measure_temp"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return parse_vcgencmd_temp(completed.stdout or "")
+
+
+def read_cpu_temp_c() -> Optional[float]:
+    """Celsius from the local CPU sensor, or None when nothing answers.
+
+    Sysfs is instant on both the Pi (`cpu-thermal`) and the NUC
+    (`x86_pkg_temp` / hwmon Package). `vcgencmd` is the Pi fallback and is
+    skipped when a sysfs reading already exists so the heartbeat does not
+    wait on a missing binary.
+    """
+    reading = _read_sysfs_cpu_temp_c(Path("/sys/class/thermal"))
+    if reading is None:
+        reading = _read_hwmon_cpu_temp_c(Path("/sys/class/hwmon"))
+    if reading is None:
+        reading = _read_vcgencmd_temp_c()
+    return reading
 
 
 class WorkerService:
@@ -1034,7 +1143,6 @@ class WorkerService:
         pending (via .usv presence, on this dev machine's stale local
         mirror) when the live, receipt-based count on the Pi itself was 2.
         """
-        from pathlib import Path
 
         from ..core.paths import paths
 
@@ -1072,6 +1180,14 @@ class WorkerService:
 
         cpu_usage = psutil.cpu_percent()
         mem_usage = psutil.virtual_memory().percent
+        try:
+            temp_c = read_cpu_temp_c()
+        except Exception as temp_err:
+            logger.debug(f"CPU temperature read failed: {temp_err}")
+            temp_c = None
+        system_stats: dict[str, float] = {"cpu": cpu_usage, "mem": mem_usage}
+        if temp_c is not None:
+            system_stats["temp"] = round(temp_c, 1)
 
         # Real per-content-type designation/activity from the child workers this
         # orchestrator actually launched (run_orchestrated_workers populates
@@ -1095,7 +1211,7 @@ class WorkerService:
             "timestamp": now_iso,
             "hostname": self.processed_by,
             "campaign": self.campaign_name,
-            "system": {"cpu": cpu_usage, "mem": mem_usage},
+            "system": system_stats,
             "workers": {
                 "s": designation.get("gm-list", 0),
                 "d": designation.get("gm-details", 0),

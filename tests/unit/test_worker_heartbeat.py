@@ -7,7 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cocli.application.worker_service import WorkerService
+from cocli.application.worker_service import (
+    WorkerService,
+    parse_sysfs_millidegree,
+    parse_vcgencmd_temp,
+    read_cpu_temp_c,
+    _read_hwmon_cpu_temp_c,
+    _read_sysfs_cpu_temp_c,
+)
 from cocli.core.logging_config import RollingErrorCounter, get_recent_error_count
 from cocli.core.paths import paths
 
@@ -50,6 +57,86 @@ async def test_heartbeat_reports_real_designation_from_child_workers(tmp_path: P
         assert "gm-details" in body["last_activity"]
         assert "enrichment" in body["last_activity"]
         assert body["error_count_30m"] == 0
+
+
+def test_parse_vcgencmd_and_sysfs_temp() -> None:
+    assert parse_vcgencmd_temp("temp=57.6'C") == 57.6
+    assert parse_vcgencmd_temp("temp=57.6°C\n") == 57.6
+    assert parse_vcgencmd_temp("no sensor") is None
+    assert parse_sysfs_millidegree("57600\n") == 57.6
+    assert parse_sysfs_millidegree("0") is None
+    assert parse_sysfs_millidegree("200000") is None
+
+
+def test_sysfs_temp_prefers_cpu_zone_and_ignores_wifi(tmp_path: Path) -> None:
+    wifi = tmp_path / "thermal_zone0"
+    cpu = tmp_path / "thermal_zone1"
+    wifi.mkdir()
+    cpu.mkdir()
+    (wifi / "type").write_text("iwlwifi\n")
+    (wifi / "temp").write_text("90000\n")
+    (cpu / "type").write_text("x86_pkg_temp\n")
+    (cpu / "temp").write_text("81200\n")
+
+    assert _read_sysfs_cpu_temp_c(tmp_path) == 81.2
+    assert _read_sysfs_cpu_temp_c(tmp_path / "missing") is None
+
+
+def test_hwmon_temp_reads_package_label(tmp_path: Path) -> None:
+    zone = tmp_path / "hwmon0"
+    zone.mkdir()
+    (zone / "temp1_label").write_text("Package id 0\n")
+    (zone / "temp1_input").write_text("76400\n")
+    (zone / "temp2_label").write_text("nvme\n")
+    (zone / "temp2_input").write_text("95000\n")
+
+    assert _read_hwmon_cpu_temp_c(tmp_path) == 76.4
+
+
+def test_read_cpu_temp_falls_back_to_vcgencmd(tmp_path: Path) -> None:
+    with patch(
+        "cocli.application.worker_service._read_sysfs_cpu_temp_c", return_value=None
+    ), patch(
+        "cocli.application.worker_service._read_hwmon_cpu_temp_c", return_value=None
+    ), patch(
+        "cocli.application.worker_service.subprocess.run",
+        return_value=SimpleNamespace(stdout="temp=57.6'C\n", stderr=""),
+    ):
+        assert read_cpu_temp_c() == 57.6
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_includes_cpu_temp_when_sensor_answers(tmp_path: Path, mock_s3: MagicMock) -> None:
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        supervisor = WorkerService(campaign_name="test_campaign", processed_by="node1")
+        supervisor.child_workers = []
+        with patch("psutil.cpu_percent", return_value=12.3), patch(
+            "psutil.virtual_memory", return_value=MagicMock(percent=45.6)
+        ), patch(
+            "cocli.application.worker_service.read_cpu_temp_c", return_value=57.64
+        ):
+            await supervisor._push_supervisor_heartbeat(mock_s3)
+
+        body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert body["system"]["temp"] == 57.6
+        assert body["system"]["cpu"] == 12.3
+        assert body["system"]["mem"] == 45.6
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_omits_temp_when_no_sensor(tmp_path: Path, mock_s3: MagicMock) -> None:
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        supervisor = WorkerService(campaign_name="test_campaign", processed_by="node1")
+        supervisor.child_workers = []
+        with patch("psutil.cpu_percent", return_value=1.0), patch(
+            "psutil.virtual_memory", return_value=MagicMock(percent=2.0)
+        ), patch(
+            "cocli.application.worker_service.read_cpu_temp_c", return_value=None
+        ):
+            await supervisor._push_supervisor_heartbeat(mock_s3)
+
+        body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert "temp" not in body["system"]
 
 
 def test_rolling_error_counter_ages_out_old_entries() -> None:

@@ -46,7 +46,7 @@ def main() -> None:
     subject_pattern, body_template = outreach_service.load_template(template_id, initiative=initiative)
     layout = outreach_service._layout_for_template(template_id, initiative=initiative)
 
-    subject = "[TEST] Mark, are you having any problems with Retirement Tax Analyzer?"
+    subject = "[TEST] Mark, are you having any problems with The Roadmap?"
     # Personalize markdown body
     body_md = body_template.replace("{first_name}", "Mark")
     # Replace any relative or template links with proper test UTM

@@ -121,6 +121,7 @@ class CallLogModal(ModalScreen[bool]):
             except Exception:
                 self.caller_id = None
         company = Company.get(company_slug)
+        self._company = company
         self.local_time_widget = CompanyLocalTime(company=company, slug=company_slug, id="company_local_time")
         self._place: CompanyPlace = self.local_time_widget._place
         self._contacts = list_known_contacts(company_slug)
@@ -185,6 +186,9 @@ class CallLogModal(ModalScreen[bool]):
             yield Label(f"LOGGING CALL: [bold cyan]{self.company_slug}[/]", id="call_modal_title")
             yield self.local_time_widget
             yield Label(phone_markup, classes="modal-subtitle", id="call_phone")
+            usage = self._usage_markup()
+            if usage:
+                yield Static(usage, id="call-roadmap-usage")
             if self.call_error:
                 yield Label(
                     f"⚠️ [bold red]Call Failed:[/] [yellow]{self.call_error}[/]",
@@ -235,6 +239,20 @@ class CallLogModal(ModalScreen[bool]):
                 "[bold reverse] CTRL+S / CTRL+ENTER: SAVE [/]  [bold reverse] F4: SEND FOLLOW-UP NOW [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
                 id="modal_help",
             )
+
+    def _usage_markup(self) -> str:
+        from cocli.application.roadmap_usage import rank_from_tags, usage_markup
+
+        company = self._company
+        if company is None:
+            return ""
+        line = usage_markup(
+            getattr(company, "rta_metrics", None),
+            rank_from_tags(list(getattr(company, "tags", None) or [])),
+        )
+        if not line:
+            return ""
+        return f"[bold magenta]Roadmap:[/] {line}"
 
     def _contacts_markup(self) -> str:
         lines = [format_contact_line(c) for c in self._contacts]

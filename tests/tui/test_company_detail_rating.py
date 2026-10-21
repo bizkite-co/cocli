@@ -55,6 +55,92 @@ async def test_company_detail_rating_display(mock_cocli_env, mocker):
         assert "120 reviews" in str(rating_row[1])
         assert "/5.0" not in str(rating_row[1])
 
+
+@pytest.mark.asyncio
+async def test_company_detail_shows_roadmap_usage(mock_cocli_env, mocker):
+    slug = "roadmap-user"
+    company = Company(
+        name="Roadmap User",
+        slug=slug,
+        phone_number="12142158004",
+        tags=["testimonial-target", "rta-rank-2"],
+        rta_metrics={
+            "rank": 2,
+            "login_count": 308,
+            "active_minutes": 900,
+            "active_days": 80,
+            "event_count": 12078,
+            "last_activity": "2026-10-19 20:29:47",
+        },
+    )
+    mocker.patch("cocli.models.companies.company.Company.get", return_value=company)
+    company_data = {
+        "company": company.model_dump(),
+        "notes": [],
+        "meetings": [],
+        "contacts": [],
+        "tags": company.tags,
+        "website_data": {},
+        "enrichment_path": str(paths.companies.entry(slug) / "enrichment.md"),
+    }
+    mocker.patch(
+        "cocli.application.services.ServiceContainer.get_company_details",
+        return_value=company_data,
+    )
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        from cocli.tui.widgets.company_list import CompanyList
+
+        app.on_company_list_company_selected(CompanyList.CompanySelected(slug))
+        await pilot.pause()
+        table = app.query_one("#info-table", DataTable)
+        rows = [table.get_row_at(i) for i in range(table.row_count)]
+        usage = next(row for row in rows if row[0] == "Usage")
+        rendered = str(usage[1])
+        assert "Rank #2" in rendered
+        assert "308 logins" in rendered
+        assert "2026-10-19" in rendered
+
+
+@pytest.mark.asyncio
+async def test_company_detail_shows_maps_and_website_phones(mock_cocli_env, mocker):
+    slug = "two-phones"
+    company = Company(
+        name="Two Phones",
+        slug=slug,
+        phone_number="18007282374",
+        phone_1="19093995460",
+        phone_from_website="18173362377",
+    )
+    mocker.patch("cocli.models.companies.company.Company.get", return_value=company)
+    company_data = {
+        "company": company.model_dump(),
+        "notes": [],
+        "meetings": [],
+        "contacts": [],
+        "tags": [],
+        "website_data": {},
+        "enrichment_path": str(paths.companies.entry(slug) / "enrichment.md"),
+    }
+    mocker.patch(
+        "cocli.application.services.ServiceContainer.get_company_details",
+        return_value=company_data,
+    )
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        from cocli.tui.widgets.company_list import CompanyList
+
+        app.on_company_list_company_selected(CompanyList.CompanySelected(slug))
+        await pilot.pause()
+        table = app.query_one("#info-table", DataTable)
+        rows = {row[0]: str(row[1]) for row in (table.get_row_at(i) for i in range(table.row_count))}
+        assert "800" in rows["Phone"]
+        assert "909" in rows["Phone (Maps)"]
+        assert "817" in rows["Phone (Site)"]
+
+
 if __name__ == "__main__":
     import subprocess
     subprocess.run(["pytest", "-s", __file__])

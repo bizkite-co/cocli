@@ -715,6 +715,9 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                 tags=list(item.tags) if item.tags else [],
             )
             setattr(company, "_enqueued_at", item.enqueued_at)
+            from cocli.application.roadmap_usage import attach_stored_usage
+
+            attach_stored_usage(company)
             if item.list_found_at:
                 try:
                     company.list_found_at = datetime.fromisoformat(item.list_found_at)
