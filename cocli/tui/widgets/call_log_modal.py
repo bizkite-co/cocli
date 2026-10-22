@@ -83,6 +83,7 @@ class CallLogModal(ModalScreen[bool]):
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save_call", "Save & Close"),
         Binding("ctrl+enter", "save_call", "Save & Close", show=False),
+        Binding("f3", "edit_followup", "Edit Follow-up"),
         Binding("f4", "send_followup_now", "Send Follow-up Now"),
         # priority=True so these fire even while call_notes (a TextArea)
         # has focus and would otherwise consume plain "j"/"k" as typed
@@ -202,7 +203,7 @@ class CallLogModal(ModalScreen[bool]):
                     yield Label("Call Disposition (type to filter, Enter or Space to pick)", classes="field-label")
                     yield SearchSelect(DISPOSITION_CHOICES, initial_value="Follow Up Needed", id="call_disposition")
 
-                    yield Label("Call Notes (VIM-ish keys supported)", classes="field-label")
+                    yield Label("Call Notes (#spoke / 'Spoke to <name>' records live talk)", classes="field-label")
                     yield TextArea(id="call_notes", classes="notes-area")
 
                     yield Label(
@@ -236,7 +237,7 @@ class CallLogModal(ModalScreen[bool]):
                     yield Markdown(reference["product-comparison.md"], id="call-comparison-panel")
 
             yield Static(
-                "[bold reverse] CTRL+S / CTRL+ENTER: SAVE [/]  [bold reverse] F4: SEND FOLLOW-UP NOW [/]  [dim] ESC: CANCEL  ·  drag + two-finger tap: COPY [/]",
+                "[bold reverse] CTRL+S / CTRL+ENTER: SAVE [/]  [bold reverse] F3: EDIT FOLLOW-UP [/]  [bold reverse] F4: SEND NOW [/]  [dim] ESC: CANCEL [/]",
                 id="modal_help",
             )
 
@@ -366,6 +367,31 @@ class CallLogModal(ModalScreen[bool]):
                 self.dismiss(False)
 
         self.app.run_worker(run_cancel())
+
+    def edit_followup(self) -> None:
+        """Opens EmailSendModal to edit and customize follow-up email before sending."""
+        followup_label = self.query_one("#followup_template", SearchSelect).value
+        if not followup_label or followup_label == NO_EMAIL_FOLLOW_UP:
+            self.app.notify(
+                "Pick an email follow-up template first", severity="warning"
+            )
+            return
+        template_id, initiative = self._template_initiative_by_label[followup_label]
+
+        from .email_send_modal import EmailSendModal
+
+        def _after(sent: Optional[bool]) -> None:
+            if sent:
+                self.app.notify(f"Sent follow-up ({template_id}) to {self.company_slug}.")
+
+        self.app.push_screen(
+            EmailSendModal(
+                company_slug=self.company_slug,
+                template_id=template_id,
+                initiative=initiative,
+            ),
+            _after,
+        )
 
     def send_followup_now(self) -> None:
         """Deliberately named without the "action_" prefix, like save_call()
@@ -509,12 +535,20 @@ class CallLogModal(ModalScreen[bool]):
                 logger.warning(f"Could not update recent calls cache: {cache_err}")
 
             # 2. Log CallNote in company notes/ directory
+            from cocli.application.call_history_service import detect_spoke_in_notes
+
+            is_connected, matched_contact = detect_spoke_in_notes(notes)
+            if disposition in ("Interested", "Interested / Qualified"):
+                is_connected = True
+
             notes_dir = paths.companies.entry(self.company_slug).path / "notes"
             call_note = CallNote(
                 title=f"Call Log: {disposition}",
                 disposition=disposition,
                 phone=self.phone,
-                content=notes or f"Disposition: {disposition}"
+                content=notes or f"Disposition: {disposition}",
+                connected=is_connected if is_connected else None,
+                contact_name=matched_contact,
             )
             call_note.to_file(notes_dir)
 

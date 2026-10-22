@@ -1630,3 +1630,34 @@ def test_generate_copy_and_draft_with_person_slug(tmp_path: Any, monkeypatch: An
     recovered = service.entry_to_match(entry)
     assert recovered.person_slug == "alice-smith"
 
+
+def test_send_now_with_custom_subject_and_body_overrides(tmp_path: Any, monkeypatch: Any) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    _make_eligible_prospect(paths, slug="custom-co", email_addr="target@custom.test", company_name="Custom Target")
+
+    service = PersonalizedOutreachService("roadmap")
+    fake_email_service = _FakeEmailService()
+
+    custom_subject = "Following up on our talk about The Roadmap (10/14)"
+    custom_body = "Hi Custom,\n\nFollowing up on our talk yesterday. Here is the link: https://getretirementtaxanalyzer.com/testimonials/\n\nBest,\nMark"
+
+    result = service.send_now(
+        "custom-co",
+        template_id="email_01_pas_hook.md",
+        initiative="rta",
+        email_service=fake_email_service,
+        subject=custom_subject,
+        body=custom_body,
+    )
+
+    assert result.sent == 1
+    assert len(fake_email_service.sent_requests) == 1
+    req = fake_email_service.sent_requests[0]
+    assert req.subject == custom_subject
+    assert "Following up on our talk yesterday" in req.body
+    # Verify send_guid injection on the custom link
+    assert "t=" in req.body
+
+

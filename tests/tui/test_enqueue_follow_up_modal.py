@@ -117,3 +117,36 @@ async def test_f4_with_no_template_warns_and_does_not_send(
         await pilot.pause(0.2)
 
         assert app.screen is modal
+
+
+@pytest.mark.asyncio
+@patch("cocli.tui.widgets.enqueue_follow_up_modal.get_campaign", return_value="roadmap")
+async def test_f3_opens_email_send_modal(
+    _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+    from cocli.tui.widgets.email_send_modal import EmailSendModal
+    from cocli.tui.widgets.enqueue_follow_up_modal import EnqueueFollowUpModal
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    co = Company(
+        name="Edit Send Co",
+        slug="edit-send-co",
+        domain="editsend.test",
+        email="contact@editsend.test",
+    )
+    co.save()
+
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        modal = EnqueueFollowUpModal(company_slug="edit-send-co")
+        app.push_screen(modal)
+        await pilot.pause(0.2)
+
+        await pilot.press("f3")
+        await pilot.pause(0.2)
+
+        # Active screen should now be EmailSendModal
+        assert isinstance(app.screen, EmailSendModal)
+        assert app.screen.company_slug == "edit-send-co"
+

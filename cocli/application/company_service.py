@@ -789,6 +789,8 @@ def get_company_activity(
                             "duration_seconds": item.duration_seconds,
                             "recording_path": item.recording_path,
                             "transcript_path": item.transcript_path,
+                            "connected": getattr(item, "connected", None),
+                            "contact_name": getattr(item, "contact_name", None),
                         },
                         is_scheduled=False,
                     )

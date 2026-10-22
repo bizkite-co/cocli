@@ -55,6 +55,7 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "save", "Enqueue Follow-up"),
+        ("f3", "edit_and_send", "Edit & Send"),
         ("f4", "send_now", "Send Now"),
     ]
 
@@ -132,7 +133,7 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
             yield CocliInput(value=default_date, id="followup_date")
 
             yield Static(
-                "[bold reverse] CTRL+S: ENQUEUE [/]  [bold reverse] F4: SEND NOW [/]  [dim] ESC: CANCEL [/]",
+                "[bold reverse] CTRL+S: ENQUEUE [/]  [bold reverse] F3: EDIT & SEND [/]  [bold reverse] F4: SEND NOW [/]  [dim] ESC: CANCEL [/]",
                 id="modal_help",
             )
 
@@ -143,6 +144,10 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
     def handle_keys(self, event: events.Key) -> None:
         if event.key == "ctrl+s":
             self.action_save()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "f3":
+            self.edit_and_send()
             event.prevent_default()
             event.stop()
         elif event.key == "f4":
@@ -164,6 +169,41 @@ class EnqueueFollowUpModal(ModalScreen[bool]):
         else:
             initiative, template_id = "rta", template_raw
         return initiative, template_id
+
+    def edit_and_send(self) -> None:
+        """Opens the EmailSendModal preloaded with contact, template, and
+        prior call history so copy and subject can be tailored before sending."""
+        picked = self._selected_template()
+        if picked is None:
+            self.app.notify("Please select an email template", severity="error")
+            return
+        initiative, template_id = picked
+        recipient_email = self.query_one("#followup_contact", SearchSelect).value
+
+        contact_name = None
+        contacts = list_known_contacts(self.company_slug)
+        for c in contacts:
+            if c.get("email") == recipient_email:
+                contact_name = c.get("name")
+                break
+
+        from .email_send_modal import EmailSendModal
+
+        def _after(sent: Optional[bool]) -> None:
+            if sent:
+                self.dismiss(True)
+
+        self.app.push_screen(
+            EmailSendModal(
+                company_slug=self.company_slug,
+                company_name=self.company_name,
+                recipient_email=recipient_email or None,
+                contact_name=contact_name,
+                template_id=template_id,
+                initiative=initiative,
+            ),
+            _after,
+        )
 
     def send_now(self) -> None:
         """Deliberately named without the "action_" prefix - see

@@ -28,6 +28,8 @@ class CallNote(BaseModel):
     # (e.g. "recordings/RE....wav"), so it survives a campaign data move.
     recording_path: Optional[str] = None
     transcript_path: Optional[str] = None
+    connected: Optional[bool] = None
+    contact_name: Optional[str] = None
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -63,6 +65,10 @@ class CallNote(BaseModel):
             frontmatter_data["recording_path"] = self.recording_path
         if self.transcript_path:
             frontmatter_data["transcript_path"] = self.transcript_path
+        if self.connected is not None:
+            frontmatter_data["connected"] = self.connected
+        if self.contact_name:
+            frontmatter_data["contact_name"] = self.contact_name
 
         frontmatter = yaml.dump(
             frontmatter_data, sort_keys=False, default_flow_style=False, allow_unicode=True
@@ -107,6 +113,8 @@ class CallNote(BaseModel):
                     timestamp = datetime.fromtimestamp(note_path.stat().st_mtime, tz=UTC)
 
             duration_raw = frontmatter_data.get("duration_seconds")
+            connected_raw = frontmatter_data.get("connected")
+            contact_name_raw = frontmatter_data.get("contact_name")
             return cls(
                 timestamp=timestamp,
                 title=title,
@@ -119,6 +127,8 @@ class CallNote(BaseModel):
                 duration_seconds=int(duration_raw) if duration_raw is not None else None,
                 recording_path=frontmatter_data.get("recording_path") or None,
                 transcript_path=frontmatter_data.get("transcript_path") or None,
+                connected=bool(connected_raw) if connected_raw is not None else None,
+                contact_name=str(contact_name_raw) if contact_name_raw else None,
             )
         except Exception as e:
             logger.error(f"Error loading CallNote from {note_path}: {e}")

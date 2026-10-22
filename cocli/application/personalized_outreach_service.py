@@ -960,6 +960,8 @@ class PersonalizedOutreachService:
         initiative: str,
         email_service: "EmailService",
         recipient_email: Optional[str] = None,
+        subject: Optional[str] = None,
+        body: Optional[str] = None,
     ) -> SendBatchResult:
         """The express lane: render a template for one company/contact and
         send it immediately, skipping the schedule-then-render-then-review
@@ -993,16 +995,22 @@ class PersonalizedOutreachService:
         if match is None:
             raise ValueError(f"No eligible contact found for {company_slug}")
 
-        subject, body = self.generate_copy(
-            first_name=match.first_name,
-            company_name=match.company_name,
-            company_slug=company_slug,
-            template_name=template_id,
-            initiative=initiative,
-            person_slug=match.person_slug,
-        )
-        match.subject = subject
-        match.body = body
+        if subject is not None and body is not None:
+            match.subject = subject
+            match.body = body
+        else:
+            gen_subject, gen_body = self.generate_copy(
+                first_name=match.first_name,
+                company_name=match.company_name,
+                company_slug=company_slug,
+                template_name=template_id,
+                initiative=initiative,
+                person_slug=match.person_slug,
+            )
+            match.subject = subject if subject is not None else gen_subject
+            match.body = body if body is not None else gen_body
+
+        self.render_and_save_draft(match, template_id=template_id, initiative=initiative)
 
         return self.send_batch(
             [match], template_id=template_id, email_service=email_service, initiative=initiative
