@@ -303,6 +303,8 @@ class EngagementService:
                 "screen_page_views": int(metrics.get("screenPageViews", 0)),
                 "active_users": int(metrics.get("activeUsers", 0)),
             }
+            if "userEngagementDuration" in metrics:
+                details["engagement_duration_s"] = int(float(metrics["userEngagementDuration"]))
             if ad_content and ad_content != co_slug:
                 details["link_label"] = ad_content
             if ambiguous_term_match:
@@ -361,14 +363,13 @@ class EngagementService:
 
         campaign_cfg = load_campaign_config(self.campaign_name)
         ga_cfg = campaign_cfg.get("google_analytics", {}) or {}
-        p_id = property_id or ga_cfg.get("ga4_property_id")
+        provider = GoogleTelemetryProvider(self.campaign_name)
+        p_id = property_id or ga_cfg.get("ga4_property_id") or provider.resolve_property_id()
         if not p_id:
             raise RuntimeError(
                 "Missing GA4 numeric property ID. Pass property_id, or set "
                 "google_analytics.ga4_property_id in this campaign's config.toml."
             )
-
-        provider = GoogleTelemetryProvider(self.campaign_name)
         rows = provider.query_cta_clicks(str(p_id), days=days)
 
         existing_events = self.list_events(initiative=initiative)

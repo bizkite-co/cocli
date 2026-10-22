@@ -86,6 +86,32 @@ class GoogleTelemetryProvider:
             logger.warning("Error resolving GA4 Measurement ID: %s", exc)
             return "G-RTA0000000" if default_if_missing else None
 
+    def resolve_property_id(self) -> Optional[str]:
+        """Resolves numeric GA4 property ID from campaign config.toml or auto-discovery."""
+        from cocli.core.config import load_campaign_config
+
+        cfg = load_campaign_config(self.campaign_name)
+        ga_cfg = cfg.get("google_analytics", {}) or {}
+        p_id = ga_cfg.get("ga4_property_id")
+        if p_id:
+            return str(p_id)
+        m_id = ga_cfg.get("ga4_measurement_id")
+        if m_id:
+            try:
+                from gtm_telemetry_wizard.config import TelemetryConfig
+                from gtm_telemetry_wizard.service import TelemetryProvider
+
+                tele_cfg = TelemetryConfig(
+                    campaign_name=self.campaign_name, ga4_measurement_id=m_id
+                )
+                provider = TelemetryProvider(config=tele_cfg)
+                discovered = provider._discover_property_id()
+                if discovered:
+                    return str(discovered)
+            except Exception as exc:
+                logger.debug("Failed auto-discovering GA4 property ID: %s", exc)
+        return None
+
     def compile_container_manifest(
         self, measurement_id: str, campaign_name: Optional[str] = None
     ) -> Path:
@@ -271,6 +297,69 @@ class GoogleTelemetryProvider:
             "limit": str(limit),
         }
         return self._run_ga4_report(property_id, payload)
+
+    def query_campaign_sessions(
+        self, property_id: str, campaign: Optional[str] = None, days: int = 7, limit: int = 250
+    ) -> list[dict[str, Any]]:
+        """Per-session breakdown via GA4 Data API including userEngagementDuration."""
+        payload: dict[str, Any] = {
+            "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
+            "dimensions": [
+                {"name": "pagePath"},
+                {"name": "sessionCampaignName"},
+                {"name": "sessionManualAdContent"},
+                {"name": "sessionManualTerm"},
+            ],
+            "metrics": [
+                {"name": "activeUsers"},
+                {"name": "sessions"},
+                {"name": "screenPageViews"},
+                {"name": "userEngagementDuration"},
+            ],
+            "limit": str(limit),
+        }
+        if campaign:
+            payload["dimensionFilter"] = {
+                "filter": {
+                    "fieldName": "sessionCampaignName",
+                    "stringFilter": {"matchType": "CONTAINS", "value": campaign},
+                }
+            }
+        return self._run_ga4_report(property_id, payload)
+
+    def query_recent_errors(
+        self, property_id: str, days: int = 7, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Query recent error-related events or 404 pagepaths from GA4."""
+        payload: dict[str, Any] = {
+            "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
+            "dimensions": [{"name": "pagePath"}, {"name": "eventName"}],
+            "metrics": [{"name": "eventCount"}, {"name": "activeUsers"}],
+            "dimensionFilter": {
+                "orGroup": {
+                    "expressions": [
+                        {
+                            "filter": {
+                                "fieldName": "eventName",
+                                "inListFilter": {"values": ["client_error", "form_error", "exception"]},
+                            }
+                        },
+                        {
+                            "filter": {
+                                "fieldName": "pagePath",
+                                "stringFilter": {"matchType": "CONTAINS", "value": "404"},
+                            }
+                        },
+                    ]
+                }
+            },
+            "limit": str(limit),
+        }
+        try:
+            return self._run_ga4_report(property_id, payload)
+        except Exception as exc:
+            logger.debug("Recent errors query note: %s", exc)
+            return []
 
     def register_event_custom_dimension(
         self, property_id: str, parameter_name: str, display_name: str, description: str = ""

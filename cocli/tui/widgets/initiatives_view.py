@@ -424,7 +424,18 @@ class TrackingListItem(ListItem):
             co = self.entry.company_slug or self.entry.utm_content or "(web visitor)"
             person = f" [cyan]({self.entry.utm_term})[/cyan]" if getattr(self.entry, "utm_term", None) else ""
             source_tag = self.entry.utm_source or self.entry.source
-            yield Label(f"{badge}  {co}{person}  [dim]{source_tag} ({ts_str})[/dim]")
+
+            details = self.entry.details if isinstance(self.entry.details, dict) else {}
+            extra = ""
+            if self.entry.event_type == "cta_click":
+                btn = details.get("button_label") or details.get("target_url")
+                if btn and btn != "(not set)":
+                    extra = f"  [italic cyan]'{btn}'[/italic cyan]"
+            elif details.get("engagement_duration_s"):
+                dur = details["engagement_duration_s"]
+                extra = f"  [yellow]{dur}s active[/yellow]"
+
+            yield Label(f"{badge}  {co}{person}{extra}  [dim]{source_tag} ({ts_str})[/dim]")
         else:
             # SendLogEntry
             icon = "[green]sent[/green]" if self.entry.status == "sent" else "[red]failed[/red]"
@@ -480,8 +491,12 @@ class TrackingPreview(VerticalScroll):
                 feedback_msg = details_dict.get("message")
                 if feedback_msg:
                     lines.append(f"\n[bold green]Advisor Feedback Message:[/] {feedback_msg}\n")
+                if "engagement_duration_s" in details_dict:
+                    lines.append(f"  [bold yellow]Engagement Time:[/] {details_dict['engagement_duration_s']}s")
+                if "button_label" in details_dict and details_dict["button_label"] != "(not set)":
+                    lines.append(f"  [bold cyan]Button Clicked:[/] {details_dict['button_label']}")
                 for k, v in details_dict.items():
-                    if k != "message":
+                    if k not in ("message", "engagement_duration_s", "button_label"):
                         lines.append(f"  [dim]{k}:[/dim] {v}")
             if getattr(entry, "company_slug", None):
                 lines.append("")
@@ -640,6 +655,14 @@ class _TrackingPane(RemotePullMixin, Horizontal):
             eng_service.pull_from_ga4,
             initiative=self.initiative,
         )
+        try:
+            click_events = await asyncio.to_thread(
+                eng_service.pull_cta_clicks,
+                initiative=self.initiative,
+            )
+            new_events = list(new_events) + list(click_events)
+        except Exception as exc:
+            logger.debug("CTA clicks pull note: %s", exc)
         await self.refresh_tracking()
         return f"Pulled {len(new_events)} new GA4 signal(s)"
 

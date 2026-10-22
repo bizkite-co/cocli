@@ -414,12 +414,10 @@ def pages_telemetry(
     from rich.table import Table
 
     from cocli.application.telemetry_service import GoogleTelemetryProvider
-    from cocli.core.config import load_campaign_config
 
     camp = campaign or get_campaign() or "roadmap"
-    campaign_cfg = load_campaign_config(camp)
-    ga_cfg = campaign_cfg.get("google_analytics", {}) or {}
-    p_id = property_id or ga_cfg.get("ga4_property_id")
+    provider = GoogleTelemetryProvider(camp)
+    p_id = property_id or provider.resolve_property_id()
     if not p_id:
         typer.echo(
             "Error: no GA4 property ID. Pass --property-id or set "
@@ -428,7 +426,6 @@ def pages_telemetry(
         )
         raise typer.Exit(code=1)
 
-    provider = GoogleTelemetryProvider(camp)
     try:
         rows = provider.query_page_engagement(str(p_id), days=days, limit=limit)
     except Exception as exc:
@@ -462,4 +459,126 @@ def pages_telemetry(
 
     console.print(table)
     console.print(f"\n[bold]{len(rows)}[/bold] page(s) with traffic in the last {days} day(s).")
+
+
+@app.command(name="check")
+def check_telemetry(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name override"),
+    alert: bool = typer.Option(False, "--alert", "-a", help="Send alert via ntfy if any probe fails"),
+) -> None:
+    """Verify health and operational readiness of landing pages, intake endpoints, and telemetry."""
+    import time
+    import urllib.request
+    from rich.console import Console
+    from rich.table import Table
+
+    from cocli.application.engagement_service import EngagementService
+    from cocli.application.telemetry_service import GoogleTelemetryProvider
+    from cocli.core.config import load_campaign_config
+    from cocli.utils.alert_utils import send_alert
+
+    camp = campaign or get_campaign() or "roadmap"
+    campaign_cfg = load_campaign_config(camp)
+    domain = campaign_cfg.get("aws", {}).get("outreach-hosted-zone-domain") or "getretirementtaxanalyzer.com"
+    gtm_container_id = campaign_cfg.get("gtm", {}).get("container_id") or "GTM-53F6J2WX"
+
+    console = Console()
+    table = Table(title=f"Telemetry & Web Landing Health ({camp})", show_header=True)
+    table.add_column("Target / Probe")
+    table.add_column("Endpoint")
+    table.add_column("Status")
+    table.add_column("Details")
+
+    failures: list[str] = []
+
+    # 1. Main landing page probe
+    url_main = f"https://{domain}/"
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(url_main, headers={"User-Agent": "cocli-health-probe/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            body = resp.read().decode("utf-8", errors="replace")
+            has_gtm = gtm_container_id in body
+            if resp.status == 200 and has_gtm:
+                table.add_row("Landing Page (Root)", url_main, "[green]HEALTHY[/green]", f"{elapsed_ms}ms, GTM tag verified")
+            else:
+                table.add_row("Landing Page (Root)", url_main, "[yellow]WARN[/yellow]", f"HTTP {resp.status}, GTM: {has_gtm}")
+                if not has_gtm:
+                    failures.append(f"Root landing page missing GTM container {gtm_container_id}")
+    except Exception as exc:
+        table.add_row("Landing Page (Root)", url_main, "[bold red]FAILED[/bold red]", str(exc))
+        failures.append(f"Root landing page unreachable: {exc}")
+
+    # 2. Testimonials page probe
+    url_testi = f"https://{domain}/testimonials/"
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(url_testi, headers={"User-Agent": "cocli-health-probe/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            body = resp.read().decode("utf-8", errors="replace")
+            has_form = 'id="feedback-form"' in body
+            has_gtm = gtm_container_id in body
+            if resp.status == 200 and has_form and has_gtm:
+                table.add_row("Testimonials Page", url_testi, "[green]HEALTHY[/green]", f"{elapsed_ms}ms, form & GTM verified")
+            else:
+                table.add_row("Testimonials Page", url_testi, "[yellow]WARN[/yellow]", f"HTTP {resp.status}, form: {has_form}, gtm: {has_gtm}")
+                if not has_form:
+                    failures.append("Testimonials page missing #feedback-form")
+    except Exception as exc:
+        table.add_row("Testimonials Page", url_testi, "[bold red]FAILED[/bold red]", str(exc))
+        failures.append(f"Testimonials page unreachable: {exc}")
+
+    # 3. Feedback intake Function URL probe
+    feedback_endpoint = "https://6jvd5zwhva6oflv2cgdel23ode0wrnyp.lambda-url.us-east-1.on.aws/"
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(feedback_endpoint, headers={"User-Agent": "cocli-health-probe/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            table.add_row("Feedback Intake Queue", "Lambda Function URL", "[green]HEALTHY[/green]", f"HTTP {resp.status} ({elapsed_ms}ms)")
+    except Exception as exc:
+        table.add_row("Feedback Intake Queue", "Lambda Function URL", "[bold red]FAILED[/bold red]", str(exc))
+        failures.append(f"Feedback intake endpoint error: {exc}")
+
+    # 4. Form Submissions S3 Queue
+    try:
+        eng_service = EngagementService(camp)
+        submissions = eng_service.list_form_submissions(queue_names=("testimonials", "signups"))
+        pending = sum(1 for s in submissions if s.get("_status") == "pending")
+        table.add_row("Form Submissions", "S3 Intake", "[green]OK[/green]", f"{len(submissions)} total, {pending} pending processing")
+    except Exception as exc:
+        table.add_row("Form Submissions", "S3 Intake", "[yellow]WARN[/yellow]", str(exc))
+
+    # 5. GA4 error signals
+    provider = GoogleTelemetryProvider(camp)
+    p_id = provider.resolve_property_id()
+    if p_id:
+        errors = provider.query_recent_errors(p_id, days=7)
+        if errors:
+            err_summary = ", ".join(f"{e.get('eventName')}:{e.get('eventCount')}" for e in errors[:5])
+            table.add_row("GA4 Error Signals", f"Property {p_id}", "[yellow]WARNING[/yellow]", f"Recent error events: {err_summary}")
+            failures.append(f"Recent GA4 error events detected: {err_summary}")
+        else:
+            table.add_row("GA4 Error Signals", f"Property {p_id}", "[green]HEALTHY[/green]", "0 error events in past 7 days")
+    else:
+        table.add_row("GA4 Error Signals", "Config", "[dim]SKIPPED[/dim]", "No numeric property ID configured")
+
+    console.print(table)
+
+    if failures:
+        console.print(f"\n[bold red]{len(failures)} issue(s) detected![/bold red]")
+        for f in failures:
+            console.print(f"  • [red]{f}[/red]")
+        if alert:
+            send_alert(
+                message=f"Telemetry & Web Health failure for {camp}: " + "; ".join(failures),
+                title=f"Web Health Alert: {camp}",
+                priority=4,
+                tags=["warning", "web", "telemetry"],
+            )
+        raise typer.Exit(code=1)
+    else:
+        console.print("\n[bold green]All web endpoints and telemetry probes are healthy.[/bold green]")
 

@@ -35,6 +35,9 @@ def test_script_js_contains_datalayer_and_utm_tracking() -> None:
     assert "utm_source" in content, "script.js must parse utm_source"
     assert "utm_campaign" in content, "script.js must parse utm_campaign"
     assert "cta_click" in content, "script.js must emit cta_click telemetry events"
+    assert "client_error" in content, "script.js must capture client runtime errors"
+    assert "form_error" in content, "script.js must emit form error telemetry"
+    assert "button_label" in content, "script.js must pass button_label for GTM"
 
 
 def test_robots_txt_and_sitemap_exist() -> None:
@@ -116,5 +119,29 @@ def test_script_js_contains_feedback_submit_handler() -> None:
     assert "lambda-url.us-east-1.on.aws" in content, "script.js must dispatch to the Lambda delivery endpoint"
     assert "formsubmit.co/ajax" not in content, "script.js must not POST to formsubmit.co"
     assert "rta_feedback_backups" in content, "script.js must cache backup in localStorage"
+
+
+def test_telemetry_check_runner() -> None:
+    from unittest.mock import MagicMock, patch
+    from typer.testing import CliRunner
+    from cocli.commands.telemetry import app
+
+    runner = CliRunner()
+    fake_resp = MagicMock()
+    fake_resp.status = 200
+    fake_resp.read.return_value = b'<div id="feedback-form"></div>GTM-53F6J2WX'
+    fake_resp.__enter__.return_value = fake_resp
+
+    with patch("urllib.request.urlopen", return_value=fake_resp), patch(
+        "cocli.application.engagement_service.EngagementService.list_form_submissions",
+        return_value=[],
+    ), patch(
+        "cocli.application.telemetry_service.GoogleTelemetryProvider.query_recent_errors",
+        return_value=[],
+    ):
+        res = runner.invoke(app, ["check", "--campaign", "roadmap"])
+        assert res.exit_code == 0
+        assert "Telemetry & Web Landing Health" in res.output
+        assert "HEALTHY" in res.output
 
 

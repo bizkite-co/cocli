@@ -798,6 +798,9 @@ cocli
         sync - Sync the task index with the filesystem (discovering active/pending/draft).
         tree - Show a visual dependency tree of tasks.
     telemetry - Telemetry and web landing page signal ingestion.
+        check - Verify health and operational readiness of landing pages, intake endpoints, and telemetry.
+            --campaign/-c (text)
+            --alert/-a (boolean)
         deploy - Deploy GTM container IaC manifest via Google Tag Manager REST API v2 or browser automation.
             --container-id/-c (text)
             --mode/-m (text)
