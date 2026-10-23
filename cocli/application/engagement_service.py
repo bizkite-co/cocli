@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -36,6 +38,118 @@ def _collapse_form_submissions(items: list[dict[str, Any]]) -> list[dict[str, An
 USV_HEADER = (
     "timestamp\x1fcampaign\x1fcompany_slug\x1fevent_type\x1fsource\x1futm_content\x1fdetails\n"
 )
+
+
+def _tracking_markdown(event: EngagementEvent) -> str:
+    ts = event.timestamp.isoformat(timespec="seconds").replace("+00:00", "Z")
+    details = event.details or {}
+    page = str(details.get("page_path") or "")
+    who = event.utm_term or event.company_slug or "someone"
+    where = page or "a page"
+    lines = [
+        "---",
+        f"recorded_at: {ts}",
+        f"event_type: {event.event_type}",
+        f"source: {event.source}",
+        f"company_slug: {event.company_slug or ''}",
+        f"utm_campaign: {event.utm_campaign or ''}",
+        f"utm_source: {event.utm_source or ''}",
+        f"utm_medium: {event.utm_medium or ''}",
+        f"utm_content: {event.utm_content or ''}",
+        f"utm_term: {event.utm_term or ''}",
+        "---",
+        "",
+        f"{who} — {event.event_type} on {where}.",
+        "",
+    ]
+    if event.source == "ga4":
+        lines.extend(
+            [
+                "recorded_at is when cocli stored this GA4 row, not when the visit happened.",
+                "sessions and screen_page_views are totals for that UTM and page in the pull window.",
+                "",
+            ]
+        )
+    for key in (
+        "page_path",
+        "sessions",
+        "screen_page_views",
+        "active_users",
+        "button_label",
+        "event_count",
+        "link_label",
+    ):
+        if key in details:
+            lines.append(f"{key}: {details[key]}")
+    if lines[-1] != "":
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _response_filename(item: dict[str, Any]) -> str:
+    from datetime import UTC, datetime
+
+    received = item.get("received_at")
+    if isinstance(received, (int, float)):
+        ts = datetime.fromtimestamp(received, UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+    else:
+        ts = "unknown-time"
+    ident = str(item.get("id") or "")
+    if not ident:
+        import json
+
+        ident = hashlib.sha256(
+            json.dumps(item, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:12]
+    else:
+        ident = ident.split("-", 1)[0]
+    who = str(item.get("name") or item.get("email") or "anonymous")
+    who_slug = re.sub(r"[^A-Za-z0-9._-]+", "-", who).strip("-")[:40] or "anonymous"
+    return f"{ts}__{who_slug}__{ident}.md"
+
+
+def _response_markdown(item: dict[str, Any]) -> str:
+    from datetime import UTC, datetime
+
+    received = item.get("received_at")
+    if isinstance(received, (int, float)):
+        received_s = datetime.fromtimestamp(received, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    else:
+        received_s = ""
+    status = str(item.get("_status") or "")
+    message = str(item.get("message") or "")
+    name = str(item.get("name") or "")
+    email = str(item.get("email") or "")
+    page_url = str(item.get("page_url") or "")
+    lines = [
+        "---",
+        f"id: {item.get('id') or ''}",
+        f"status: {status}",
+        f"received_at: {received_s}",
+        f"name: {name}",
+        f"firm: {item.get('firm') or ''}",
+        f"email: {email}",
+        f"permission_to_quote: {item.get('permission_to_quote') or ''}",
+        f"utm_campaign: {item.get('utm_campaign') or ''}",
+        f"utm_term: {item.get('utm_term') or ''}",
+        f"page_url: {page_url}",
+        "---",
+        "",
+    ]
+    if not any((name, email, message, page_url)):
+        lines.extend(
+            [
+                "Empty intake object. The testimonials form always sends a page URL,",
+                "a utm_source, a utm_campaign, and a Yes/No permission. This file is",
+                "an empty POST to the intake endpoint, not a completed form.",
+                "",
+            ]
+        )
+    elif message:
+        lines.extend([message, ""])
+    else:
+        lines.extend(["(no message)", ""])
+    return "\n".join(lines)
 
 
 class EngagementService:
@@ -74,7 +188,81 @@ class EngagementService:
             slug or "unknown",
             self.campaign_name,
         )
+        self.write_tracking_file(event)
         return path
+
+    def _initiative_dir(self, initiative: str) -> Optional[Path]:
+        """Existing initiatives/<name>/ directory. Tracking and responses
+        files are witnesses inside an initiative that already exists.
+        They are not a reason to create a new initiative folder."""
+        name = initiative.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\" in name:
+            return None
+        base = paths.campaign(self.campaign_name).path / "initiatives" / name
+        if not base.is_dir():
+            return None
+        return base
+
+    def _event_initiative(self, event: EngagementEvent) -> Optional[str]:
+        for candidate in (event.utm_campaign, event.campaign_name):
+            if candidate and self._initiative_dir(candidate):
+                return candidate.strip()
+        return None
+
+    def write_tracking_file(self, event: EngagementEvent) -> Optional[Path]:
+        """One markdown file per engagement event under
+        initiatives/<initiative>/tracking/, so the same signal the TUI
+        reads from the USV log is browsable in Yazi. The USV log stays
+        the record `list_events` reads. Missing initiative dirs are
+        skipped rather than created."""
+        initiative = self._event_initiative(event)
+        if not initiative:
+            return None
+        dest = self._initiative_dir(initiative)
+        assert dest is not None
+        tracking = dest / "tracking"
+        tracking.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(event.to_usv_row().encode("utf-8")).hexdigest()[:8]
+        who = event.company_slug or event.utm_term or "anonymous"
+        who_slug = re.sub(r"[^A-Za-z0-9._-]+", "-", who).strip("-")[:60] or "anonymous"
+        ts = event.timestamp.strftime("%Y-%m-%dT%H-%M-%SZ")
+        path = tracking / f"{ts}__{who_slug}__{event.event_type}__{digest}.md"
+        path.write_text(_tracking_markdown(event), encoding="utf-8")
+        return path
+
+    def publish_tracking_files(self, initiative: str) -> list[Path]:
+        """Rewrite tracking files for one initiative from the engagement log."""
+        if self._initiative_dir(initiative) is None:
+            return []
+        written: list[Path] = []
+        for event in self.list_events():
+            if self._event_initiative(event) != initiative:
+                continue
+            path = self.write_tracking_file(event)
+            if path is not None:
+                written.append(path)
+        return written
+
+    def mirror_response_files(
+        self, initiative: str, submissions: Optional[list[dict[str, Any]]] = None
+    ) -> list[Path]:
+        """Write one markdown file per form submission under
+        initiatives/<initiative>/responses/. Does not move or delete the
+        S3 queue objects. Pass `submissions` to avoid a second S3 list
+        when the caller already has them."""
+        base = self._initiative_dir(initiative)
+        if base is None:
+            return []
+        if submissions is None:
+            submissions, _warnings = self.collect_form_submissions((initiative,))
+        dest = base / "responses"
+        dest.mkdir(parents=True, exist_ok=True)
+        written: list[Path] = []
+        for item in submissions:
+            path = dest / _response_filename(item)
+            path.write_text(_response_markdown(item), encoding="utf-8")
+            written.append(path)
+        return written
 
     def ingest_telemetry(self, payload: dict[str, Any]) -> EngagementEvent:
         """

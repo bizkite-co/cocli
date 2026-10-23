@@ -820,9 +820,15 @@ class _ResponsesPane(RemotePullMixin, Horizontal):
         app = cast("CocliApp", self.app)
         eng_service = EngagementService(app.services.campaign_name)
 
-        submissions, warnings = await asyncio.to_thread(
-            eng_service.collect_form_submissions, (self.initiative,)
-        )
+        def _load() -> tuple[list[dict[str, Any]], list[str]]:
+            loaded, load_warnings = eng_service.collect_form_submissions((self.initiative,))
+            try:
+                eng_service.mirror_response_files(self.initiative, loaded)
+            except Exception as exc:
+                logger.warning("Could not mirror %s responses to disk: %s", self.initiative, exc)
+            return loaded, load_warnings
+
+        submissions, warnings = await asyncio.to_thread(_load)
         pending = sum(1 for s in submissions if s.get("_status") == "pending")
         completed = sum(1 for s in submissions if s.get("_status") == "completed")
         summary = f"Pending: {pending}   Completed: {completed}   Total: {len(submissions)}"

@@ -47,6 +47,82 @@ def test_record_event_writes_usv_and_updates_company_tags(
     assert "engagement:email_reply" in updated_company.tags
 
 
+def test_record_event_writes_a_tracking_file_when_the_initiative_exists(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    initiative = tmp_path / "campaigns" / "roadmap" / "initiatives" / "testimonials"
+    initiative.mkdir(parents=True)
+
+    service = EngagementService("roadmap")
+    event = EngagementEvent(
+        campaign_name="testimonials",
+        company_slug="higginbotham-financial-matt-woodard",
+        event_type="link_click",
+        source="ga4",
+        utm_campaign="testimonials",
+        utm_term="matt-woodard-cfp-clu",
+        utm_content="higginbotham-financial-matt-woodard",
+        details={"page_path": "/testimonials/", "sessions": 1, "screen_page_views": 0},
+    )
+    service.record_event(event)
+
+    files = list((initiative / "tracking").glob("*.md"))
+    assert len(files) == 1
+    text = files[0].read_text(encoding="utf-8")
+    assert "higginbotham-financial-matt-woodard" in text
+    assert "link_click" in text
+    assert "screen_page_views: 0" in text
+    assert files[0].name.startswith("202") or "link_click" in files[0].name
+
+    again = service.publish_tracking_files("testimonials")
+    assert len(again) == 1
+    assert list((initiative / "tracking").glob("*.md")) == files
+
+
+def test_mirror_response_files_writes_message_and_flags_empty_posts(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from cocli.core.paths import paths
+
+    monkeypatch.setattr(paths, "root", tmp_path)
+    initiative = tmp_path / "campaigns" / "roadmap" / "initiatives" / "testimonials"
+    initiative.mkdir(parents=True)
+
+    service = EngagementService("roadmap")
+    written = service.mirror_response_files(
+        "testimonials",
+        [
+            {
+                "id": "abc-123",
+                "_status": "pending",
+                "received_at": 1792635020,
+                "name": "Jake Dukart",
+                "email": "jake@example.com",
+                "message": "Loved the spend-down tables",
+                "page_url": "https://getretirementtaxanalyzer.com/testimonials/",
+                "utm_campaign": "testimonials",
+            },
+            {
+                "id": "empty-1",
+                "_status": "pending",
+                "received_at": 1792634036,
+                "name": "",
+                "email": "",
+                "message": "",
+                "page_url": "",
+            },
+        ],
+    )
+    assert len(written) == 2
+    filled = next(p for p in written if "Jake" in p.name or "jake" in p.name.lower())
+    assert "Loved the spend-down tables" in filled.read_text(encoding="utf-8")
+    blank = next(p for p in written if p != filled)
+    assert "Empty intake object" in blank.read_text(encoding="utf-8")
+
+
 def test_ingest_telemetry_links_utm_content_to_company(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
