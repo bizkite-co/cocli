@@ -773,6 +773,8 @@ class ResponsePreview(VerticalScroll):
         if message:
             lines.append("")
             lines.append(f"[bold green]Message:[/]\n{message}")
+        lines.append("")
+        lines.append("[dim]c: copy message   C: copy full   p: pull S3   r: refresh   h: back[/dim]")
         body.update("\n".join(lines))
 
 
@@ -786,6 +788,9 @@ class _ResponsesPane(RemotePullMixin, Horizontal):
 
     BINDINGS = [
         Binding("p", "pull_remote", "Pull", show=True),
+        Binding("c", "copy_response", "Copy Msg", show=True),
+        Binding("y", "copy_response", "Copy Msg", show=False),
+        Binding("C", "copy_full_response", "Copy Full", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("h", "navigate_back", "Back", show=False),
@@ -857,6 +862,33 @@ class _ResponsesPane(RemotePullMixin, Horizontal):
 
     def action_refresh_responses(self) -> None:
         self.run_worker(self._load_responses(True), exclusive=True)
+
+    def action_copy_response(self) -> None:
+        """Copy the message text of the selected response to the clipboard."""
+        item = self.entry_list.highlighted_child
+        if isinstance(item, ResponseListItem):
+            message = (item.submission.get("message") or "").strip()
+            if not message:
+                message = (item.submission.get("email") or "").strip()
+            if message:
+                self.app.copy_to_clipboard(message)
+                self.notify("Copied testimonial message to clipboard.")
+            else:
+                self.notify("No message content to copy.", severity="warning")
+
+    def action_copy_full_response(self) -> None:
+        """Copy full formatted response details to the clipboard."""
+        item = self.entry_list.highlighted_child
+        if isinstance(item, ResponseListItem):
+            s = item.submission
+            name = s.get("name") or "(anonymous)"
+            firm = s.get("firm") or "N/A"
+            email = s.get("email") or "N/A"
+            msg = s.get("message") or ""
+            quote = s.get("permission_to_quote") or "N/A"
+            formatted = f"Name: {name}\nFirm: {firm}\nEmail: {email}\nPermission to quote: {quote}\n\n{msg}"
+            self.app.copy_to_clipboard(formatted.strip())
+            self.notify("Copied full response details to clipboard.")
 
     def action_cursor_down(self) -> None:
         self.entry_list.action_cursor_down()

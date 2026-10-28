@@ -141,7 +141,7 @@ class DataSyncService:
         aws_config = config.get("aws", {})
         bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{self.campaign_name}"
         
-        target_queues = [queue_name] if queue_name else ["gm-list", "gm-details", "enrichment"]
+        target_queues = [queue_name] if queue_name else ["gm-list", "gm-details", "enrichment", "testimonials", "signups"]
         
         for q in target_queues:
             try:

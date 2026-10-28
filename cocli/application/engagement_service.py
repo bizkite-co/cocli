@@ -817,6 +817,11 @@ class EngagementService:
                         "it will be reprocessed as a duplicate on the next run: %s",
                         task_name, key, exc,
                     )
+            if new_events:
+                try:
+                    self.mirror_response_files(initiative or "testimonials")
+                except Exception as exc:
+                    logger.debug("Could not mirror response files: %s", exc)
             return new_events
 
         # Local-only fallback: no S3 access this session, so just drain
@@ -837,6 +842,11 @@ class EngagementService:
             new_events.append(event)
             task_file.replace(completed_dir / task_file.name)
 
+        if new_events:
+            try:
+                self.mirror_response_files(initiative or "testimonials")
+            except Exception as exc:
+                logger.debug("Could not mirror response files: %s", exc)
         return new_events
 
     def process_unsubscribe_requests(self) -> list[str]:
@@ -1037,6 +1047,16 @@ class EngagementService:
                                     logger.warning("Could not read/parse %s: %s", key, exc)
                                     continue
                                 _keep(item, queue_name, status)
+                                # Cache downloaded item locally so it is preserved on disk
+                                task_filename = key.rsplit("/", 1)[-1]
+                                local_task_dir = paths.campaign(self.campaign_name).path / "queues" / queue_name / status
+                                local_task_file = local_task_dir / task_filename
+                                if not local_task_file.exists():
+                                    try:
+                                        local_task_dir.mkdir(parents=True, exist_ok=True)
+                                        local_task_file.write_bytes(body if isinstance(body, bytes) else body.encode("utf-8"))
+                                    except Exception as write_exc:
+                                        logger.debug("Could not cache local queue item %s: %s", local_task_file, write_exc)
                     except Exception as exc:
                         message = f"{queue_name}/{status}: {exc}"
                         logger.warning("Could not list S3 queue %s", message)

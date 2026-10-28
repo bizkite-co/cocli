@@ -974,6 +974,20 @@ async def test_responses_pane_shows_raw_form_submissions_with_message(mock_cocli
         assert "Loved the 30-year spend-down tables!" in text
         assert "Higginbotham" in text
 
+        from unittest.mock import patch
+
+        with patch.object(app, "copy_to_clipboard") as mock_copy, patch.object(app, "notify") as mock_notify:
+            pane.action_copy_response()
+            mock_copy.assert_called_once_with("Loved the 30-year spend-down tables!")
+            assert any("Copied testimonial message" in str(call) for call in mock_notify.call_args_list)
+
+            mock_copy.reset_mock()
+            pane.action_copy_full_response()
+            assert mock_copy.call_count == 1
+            copied_text = mock_copy.call_args[0][0]
+            assert "Jake Dukart" in copied_text
+            assert "Loved the 30-year spend-down tables!" in copied_text
+
 
 @pytest.mark.asyncio
 async def test_responses_pull_refreshes_from_s3_and_reports_list_failures(
