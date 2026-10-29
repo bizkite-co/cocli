@@ -516,7 +516,16 @@ class CampaignService:
         return items
 
     @staticmethod
-    def create_campaign(name: str, company: str) -> Path:
+    def create_campaign(
+        name: str,
+        company: str,
+        domain: Optional[str] = None,
+        promotional_sites: Optional[list[str]] = None,
+        email: Optional[str] = None,
+        workflows: Optional[list[str]] = None,
+        enable_video: bool = False,
+        enable_prospecting: bool = True,
+    ) -> Path:
         """
         Bootstrap a new campaign under data_home.
 
@@ -525,10 +534,85 @@ class CampaignService:
         """
         from ..core.config import get_cocli_base_dir
         from ..models.campaigns.campaign import Campaign
+        from ..core.text_utils import slugify
 
         data_home = get_cocli_base_dir()
-        Campaign.create(name, company, data_home)
-        return get_campaign_dir(name) or (data_home / "campaigns" / name)
+        create_kwargs: dict[str, Any] = {}
+        if domain is not None:
+            create_kwargs["domain"] = domain
+        if promotional_sites is not None:
+            create_kwargs["promotional_sites"] = promotional_sites
+        if email is not None:
+            create_kwargs["email"] = email
+        if workflows is not None:
+            create_kwargs["workflows"] = workflows
+        if enable_video:
+            create_kwargs["enable_video"] = enable_video
+        if not enable_prospecting:
+            create_kwargs["enable_prospecting"] = enable_prospecting
+
+        Campaign.create(
+            name,
+            company,
+            data_home,
+            **create_kwargs,
+        )
+        return get_campaign_dir(name) or (data_home / "campaigns" / slugify(name))
+
+    def enable_video_pipeline(
+        self,
+        loudness_i: float = -14.0,
+        denoise_nr: int = 10,
+        transcription_provider: str = "whisper",
+    ) -> bool:
+        """Enable video pipeline: creates video queue directories and [video] config."""
+        if not self.campaign_dir:
+            return False
+        video_root = self.campaign_dir / "video"
+        for sub in ("raw", "normalized", "packaged", "uploaded", "job_runs"):
+            (video_root / sub).mkdir(parents=True, exist_ok=True)
+
+        config = self.get_config()
+        workflows = config.setdefault("campaign", {}).get("workflows", [])
+        if "video" not in workflows:
+            workflows.append("video")
+            config["campaign"]["workflows"] = workflows
+
+        video_cfg = config.setdefault("video", {})
+        video_cfg.setdefault("loudness", {"I": loudness_i, "TP": -1.5, "LRA": 11.0})
+        video_cfg.setdefault("denoise", {"nr": denoise_nr})
+        video_cfg.setdefault(
+            "transcription",
+            {
+                "provider": transcription_provider,
+                "model": "gemini-2.0-flash",
+                "whisper_model": "small",
+            },
+        )
+        self.save_config(config)
+        return True
+
+    def set_promotional_sites(self, sites: list[str]) -> bool:
+        """Set or update promotional sites in campaign config."""
+        config = self.get_config()
+        config.setdefault("campaign", {})["promotional-sites"] = sites
+        self.save_config(config)
+        return True
+
+    def configure_email(
+        self,
+        from_address: str,
+        reply_to: Optional[str] = None,
+        backend: str = "m365",
+    ) -> bool:
+        """Configure outbound email for campaign."""
+        config = self.get_config()
+        email_cfg = config.setdefault("email", {})
+        email_cfg["from_address"] = from_address
+        email_cfg["reply_to"] = reply_to or from_address
+        email_cfg.setdefault("backend", backend)
+        self.save_config(config)
+        return True
 
     @staticmethod
     def clear_context() -> None:

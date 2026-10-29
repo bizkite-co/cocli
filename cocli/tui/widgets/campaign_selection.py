@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from textual.widgets import ListView, ListItem, Label, Static
 from textual.app import ComposeResult
@@ -47,6 +49,7 @@ class CampaignSelection(Static):
 
     def compose(self) -> ComposeResult:
         yield Label("Select a Campaign", classes="sidebar-title")
+        yield Label("[dim]a: new campaign[/dim]", classes="sidebar-hint")
         with VerticalScroll():
             yield ListView(id="campaign_list_view")
 
@@ -68,6 +71,36 @@ class CampaignSelection(Static):
             self.call_after_refresh(populate)
         except Exception as e:
             logger.error(f"Failed to load campaigns: {e}")
+
+    async def reload_campaigns(self, select_name: Optional[str] = None) -> None:
+        """Reload list items and optionally select a newly created campaign."""
+        try:
+            campaign_dirs = await asyncio.to_thread(get_all_campaign_dirs)
+            campaign_names = sorted([d.name for d in campaign_dirs])
+
+            list_view = self.query_one("#campaign_list_view", ListView)
+            await list_view.clear()
+            items = [CampaignListItem(name) for name in campaign_names]
+            await list_view.mount_all(items)
+
+            if select_name:
+                for idx, item in enumerate(items):
+                    if item.campaign_name == select_name:
+                        list_view.index = idx
+                        self.post_message(self.CampaignSelected(select_name))
+                        break
+        except Exception as e:
+            logger.error(f"Failed to reload campaigns: {e}")
+
+    def action_add_campaign(self) -> None:
+        """Open the Add Campaign modal."""
+        from .campaign_add_modal import CampaignAddModal
+
+        def on_dismiss(created_name: Optional[str]) -> None:
+            if created_name:
+                self.run_worker(self.reload_campaigns(created_name))
+
+        self.app.push_screen(CampaignAddModal(), callback=on_dismiss)
 
     @on(ListView.Selected, "#campaign_list_view")
     def handle_select(self, event: ListView.Selected) -> None:
@@ -93,6 +126,9 @@ class CampaignSelection(Static):
             event.prevent_default()
         elif event.key == "l" or event.key == "enter":
             list_view.action_select_cursor()
+            event.prevent_default()
+        elif event.key in ("a", "n"):
+            self.action_add_campaign()
             event.prevent_default()
 
     def focus(self, scroll_visible: bool = True) -> "CampaignSelection":

@@ -203,3 +203,73 @@ def test_add_query_roundtrip(tmp_path: Path) -> None:
             saved = save.call_args[0][0]
             assert "fabricators" in saved["prospecting"]["queries"]
             assert service.add_query("welders") is False
+
+
+def test_create_campaign_with_features() -> None:
+    with patch(
+        "cocli.models.campaigns.campaign.Campaign.create"
+    ) as create, patch(
+        "cocli.core.config.get_cocli_base_dir", return_value=Path("/data")
+    ), patch(
+        "cocli.application.campaign_service.get_campaign_dir", return_value=Path("/data/campaigns/handex")
+    ):
+        path = CampaignService.create_campaign(
+            "Handex",
+            "Handex",
+            domain="handex.io",
+            promotional_sites=["handex.io", "handterm.com"],
+            email="mark@onehandmobilekeyboard.com",
+            enable_video=True,
+            enable_prospecting=False,
+        )
+    create.assert_called_once_with(
+        "Handex",
+        "Handex",
+        Path("/data"),
+        domain="handex.io",
+        promotional_sites=["handex.io", "handterm.com"],
+        email="mark@onehandmobilekeyboard.com",
+        enable_video=True,
+        enable_prospecting=False,
+    )
+    assert path == Path("/data/campaigns/handex")
+
+
+def test_enable_video_pipeline(tmp_path: Path) -> None:
+    camp = _campaign_dir(tmp_path)
+    with patch(
+        "cocli.application.campaign_service.get_campaign_dir", return_value=camp
+    ), patch(
+        "cocli.application.campaign_service.load_campaign_config",
+        return_value={"campaign": {"name": "road", "workflows": []}},
+    ):
+        service = CampaignService("road")
+        with patch.object(service, "save_config") as save:
+            assert service.enable_video_pipeline() is True
+            assert (camp / "video" / "raw").is_dir()
+            assert (camp / "video" / "normalized").is_dir()
+            assert (camp / "video" / "packaged").is_dir()
+            assert (camp / "video" / "uploaded").is_dir()
+            assert (camp / "video" / "job_runs").is_dir()
+            save.assert_called_once()
+            saved = save.call_args[0][0]
+            assert "video" in saved["campaign"]["workflows"]
+            assert "video" in saved
+            assert saved["video"]["loudness"]["I"] == -14.0
+
+
+def test_set_promotional_sites(tmp_path: Path) -> None:
+    camp = _campaign_dir(tmp_path)
+    with patch(
+        "cocli.application.campaign_service.get_campaign_dir", return_value=camp
+    ), patch(
+        "cocli.application.campaign_service.load_campaign_config",
+        return_value={"campaign": {"name": "road"}},
+    ):
+        service = CampaignService("road")
+        with patch.object(service, "save_config") as save:
+            assert service.set_promotional_sites(["handex.io", "handterm.com"]) is True
+            save.assert_called_once()
+            saved = save.call_args[0][0]
+            assert saved["campaign"]["promotional-sites"] == ["handex.io", "handterm.com"]
+
