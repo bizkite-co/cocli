@@ -4,6 +4,7 @@ import logging
 import asyncio
 from typing import TYPE_CHECKING, Any, Optional
 
+from textual.binding import Binding
 from textual.widgets import ListView, ListItem, Label, Static
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
@@ -28,6 +29,11 @@ class CampaignListItem(ListItem):
 class CampaignSelection(Static):
     """A widget to select a campaign."""
 
+    BINDINGS = [
+        Binding("a", "add_campaign", "New Campaign", show=True),
+        Binding("n", "add_campaign", "New Campaign", show=False),
+    ]
+
     class CampaignSelected(Message):
         """Triggered by ENTER/l - implies action (Activation)."""
 
@@ -48,8 +54,6 @@ class CampaignSelection(Static):
         self._initial_load = True
 
     def compose(self) -> ComposeResult:
-        yield Label("Select a Campaign", classes="sidebar-title")
-        yield Label("[dim]a: new campaign[/dim]", classes="sidebar-hint")
         with VerticalScroll():
             yield ListView(id="campaign_list_view")
 
