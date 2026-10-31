@@ -696,8 +696,13 @@ cocli
             --workers (integer)
             --full (boolean)
             --force (boolean)
-        all - Syncs everything for a campaign (Config, Prospects, Emails, and Queues).
+        all - Syncs everything for a campaign (Config, Prospects, Emails, and Queues), or all campaigns.
             --campaign/-c (text)
+            --all-campaigns/-a (boolean)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        all-campaigns - Syncs everything (Config, Prospects, Emails, and Queues) across all campaigns.
             --workers (integer)
             --full (boolean)
             --force (boolean)

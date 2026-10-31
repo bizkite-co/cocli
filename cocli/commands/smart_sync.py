@@ -4,7 +4,7 @@ import logging
 from rich.console import Console
 from typing import Optional
 
-from ..core.config import get_cocli_base_dir
+from ..core.config import get_all_campaign_dirs, get_campaign, get_cocli_base_dir
 from ..core.reporting import get_data_bucket_name
 
 console = Console()
@@ -258,15 +258,36 @@ def sync_campaign_config(
 @app.command("all")
 def sync_all(
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    all_campaigns: bool = typer.Option(False, "--all-campaigns", "-a", help="Sync all known campaigns."),
     workers: int = typer.Option(20, help="Number of concurrent download threads."),
     full: bool = typer.Option(False, "--full", help="Perform a full integrity check."),
     force: bool = typer.Option(False, "--force", help="Force download all files."),
 ) -> None:
-    """Syncs everything for a campaign (Config, Prospects, Emails, and Queues)."""
-    from ..core.config import get_campaign
+    """Syncs everything for a campaign (Config, Prospects, Emails, and Queues), or all campaigns."""
+    if all_campaigns:
+        campaign_dirs = get_all_campaign_dirs()
+        if not campaign_dirs:
+            console.print("[yellow]No campaigns found.[/yellow]")
+            return
+        campaign_names = sorted([d.name for d in campaign_dirs])
+        console.print(f"[bold cyan]Starting FULL sync across all {len(campaign_names)} campaigns...[/bold cyan]")
+        for name in campaign_names:
+            console.print(f"\n[bold cyan]=== Syncing Campaign: {name} ===[/bold cyan]")
+            try:
+                sync_campaign_config(name)
+                sync_prospects(name, workers, full, force)
+                sync_emails(name, workers, full, force)
+                sync_queues(name, workers, full, force)
+                console.print(f"[bold green]Sync complete for {name}![/bold green]")
+            except Exception as e:
+                logger.error("Failed to sync campaign %s: %s", name, e)
+                console.print(f"[bold red]Failed to sync {name}: {e}[/bold red]")
+        console.print("\n[bold green]All campaigns sync complete![/bold green]")
+        return
+
     campaign_name = campaign_name or get_campaign()
     if not campaign_name:
-        console.print("[bold red]No campaign specified.[/bold red]")
+        console.print("[bold red]No campaign specified. Use -c <name> or -a/--all-campaigns.[/bold red]")
         raise typer.Exit(1)
 
     console.print(f"[bold cyan]Starting FULL sync for campaign: {campaign_name}[/bold cyan]")
@@ -284,6 +305,16 @@ def sync_all(
     sync_queues(campaign_name, workers, full, force)
     
     console.print(f"[bold green]FULL campaign sync complete for {campaign_name}![/bold green]")
+
+
+@app.command("all-campaigns")
+def sync_all_campaigns(
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    """Syncs everything (Config, Prospects, Emails, and Queues) across all campaigns."""
+    sync_all(campaign_name=None, all_campaigns=True, workers=workers, full=full, force=force)
 
 if __name__ == "__main__":
     app()
