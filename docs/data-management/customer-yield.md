@@ -44,6 +44,8 @@ dashboard fetches it with a cache-busting query string.
 for inspection. Do not skip one and then export.
 
 ```bash
+# compile-yield copies only the three completed/ trees. This command is
+# the superset, including pending/, for stations inspect:
 uv run cocli sync pi-results --campaign turboship --force
 uv run cocli index sync-pi-emails --campaign turboship
 uv run cocli data compact-emails --campaign turboship
@@ -53,9 +55,13 @@ uv run cocli data export-enriched-emails --campaign turboship
 
 What each step is for:
 
-1. `sync pi-results` — gm-list, gm-details, and enrichment queue files
-   from each node. The prospect compact merges gm-list results into the
-   checkpoint from this local copy. Phone and category often arrive here.
+1. Completed queue sync — `gm-list/completed`, `gm-details/completed`,
+   and `enrichment/completed` from each node. `compile-yield` calls this
+   directly and does not copy `pending/` or `lease.json`. The prospect
+   compact merges gm-list results into the checkpoint from this local
+   copy. Phone and category often arrive here. `cocli sync pi-results`
+   still copies pending as well, for `stations inspect`, and excludes
+   `lease.json`.
 2. `index sync-pi-emails` — each worker's `indexes/emails/` merged into
    the local email index (`rsync -au`, no `--delete`). Enrichment writes
    those files only on the worker. Nothing else copies them.

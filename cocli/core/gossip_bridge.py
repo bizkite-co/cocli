@@ -397,6 +397,9 @@ class GossipBridge:
                         }
                         with open(lease_path, "w") as f:
                             json.dump(lease_data, f)
+                        from .queue.filesystem import ensure_lease_readable
+
+                        ensure_lease_readable(lease_path)
                             
                     elif q_record.status == "released":
                         if lease_path.exists():

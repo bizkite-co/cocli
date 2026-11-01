@@ -17,7 +17,23 @@ from .task_file_filter import is_valid_task_data_file
 
 logger = logging.getLogger(__name__)
 
+# os.open mode is masked by the process umask. A worker that once ran with
+# umask 077 left lease.json as mode 600 root:root, which rsync over SSH
+# (as the login user) cannot read. Force a world-readable mode after every
+# successful lease write so a later heartbeat rewrite cannot keep 600.
+LEASE_FILE_MODE = 0o644
+
 T = TypeVar("T", ScrapeTask, GmItemTask, QueueMessage)
+
+
+def ensure_lease_readable(path: Path) -> None:
+    """Make a lease file mode 644. No-op when the path is missing."""
+    if not path.is_file():
+        return
+    try:
+        os.chmod(path, LEASE_FILE_MODE)
+    except OSError as exc:
+        logger.warning("could not make lease readable %s: %s", path, exc)
 
 
 class FilesystemQueue(QueueEdgeAliasesMixin):
@@ -427,7 +443,7 @@ class FilesystemQueue(QueueEdgeAliasesMixin):
         lease_path = str(self._get_lease_path(task_id))
         lease_bytes = json.dumps(lease_data).encode("utf-8")
         try:
-            return acquire_lease(
+            created = acquire_lease(
                 self._local_path_backend(),
                 lease_path,
                 lease_bytes,
@@ -436,6 +452,9 @@ class FilesystemQueue(QueueEdgeAliasesMixin):
         except Exception as e:
             logger.error(f"Error creating local lease for {task_id}: {e}")
             return False
+        if created:
+            ensure_lease_readable(Path(lease_path))
+        return created
 
     def push(self, task_id: str, payload: dict[str, Any]) -> str:
         """Writes a task to the pending directory."""
@@ -753,6 +772,7 @@ class FilesystemQueue(QueueEdgeAliasesMixin):
 
                 with open(lease_path, "w") as f:
                     json.dump(data, f)
+                ensure_lease_readable(lease_path)
             except Exception as e:
                 logger.error(f"Error updating local heartbeat for {task_id}: {e}")
 

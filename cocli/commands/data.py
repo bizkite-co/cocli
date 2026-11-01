@@ -199,7 +199,8 @@ def compile_yield(
 ) -> None:
     """Fold worker output into the customer enriched-emails CSV/USV.
 
-    Runs, in order: ``sync pi-results --force``, ``index sync-pi-emails``,
+    Runs, in order: completed gm-list/gm-details/enrichment queue sync,
+    ``index sync-pi-emails``,
     ``data compact-emails``, ``index compact`` for google_maps_prospects,
     and ``data export-enriched-emails``. Stops before writing a count when
     a pull or compaction fails. Does not upload. Publish with

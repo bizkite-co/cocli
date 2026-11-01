@@ -7,7 +7,6 @@ compact counts the previous checkpoint. Publishing the CSV is separate:
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Callable
 from typing import Optional
 
@@ -34,26 +33,16 @@ def compile_customer_yield(
             log_callback(msg)
 
     log(
-        "Syncing gm-list/gm-details/enrichment results from workers "
+        "Syncing completed gm-list/gm-details/enrichment results from workers "
         f"for {campaign_name}..."
     )
-    try:
-        subprocess.run(
-            [
-                "uv",
-                "run",
-                "cocli",
-                "sync",
-                "pi-results",
-                "--campaign",
-                campaign_name,
-                "--force",
-            ],
-            check=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        log(f"Pi results sync failed: {exc}")
-        raise RuntimeError(f"Pi results sync failed: {exc}") from exc
+    queue_ok, queue_detail = describe_sync_results(
+        PiSyncService(campaign_name).sync_completed()
+    )
+    if not queue_ok:
+        log(f"Completed queue sync failed: {queue_detail}")
+        raise RuntimeError(f"Completed queue sync failed: {queue_detail}")
+    log(f"Completed queue sync complete ({queue_detail})")
 
     log(f"Syncing email indexes from workers for {campaign_name}...")
     email_ok, email_detail = describe_sync_results(

@@ -33,6 +33,13 @@ _SYNC_QUEUES: list[tuple[str, str, Callable[[QueuePaths], Path]]] = [
     ("enrichment", "completed/", lambda q: q / "completed"),
     ("enrichment", "pending/",   lambda q: q / "pending"),
 ]
+# Customer yield reads finished work. A live lease is not an input to the CSV.
+_COMPLETED_QUEUES: list[tuple[str, str, Callable[[QueuePaths], Path]]] = [
+    item for item in _SYNC_QUEUES if item[1] == "completed/"
+]
+# Stall timeout: no bytes for this long means the connection died.
+# A large completed tree may transfer for longer than this and must be allowed to finish.
+_RSYNC_STALL_TIMEOUT_S = 60
 
 
 @dataclass
@@ -93,16 +100,22 @@ class PiSyncService:
         self.nodes = cluster_service.get_nodes()
         self.results: list[SyncResult] = []
 
-    def sync_node(self, host: str) -> SyncResult:
+    def sync_node(
+        self,
+        host: str,
+        queues: list[tuple[str, str, Callable[[QueuePaths], Path]]] | None = None,
+    ) -> SyncResult:
         """
-        Sync results from a single node across all configured queues.
+        Sync results from a single node across the given queues.
 
         Args:
             host: The hostname of the Pi (e.g., "cocli5x1.pi")
+            queues: Queue trees to copy. Defaults to completed and pending.
 
         Returns:
             SyncResult with total files synced across all queues.
         """
+        selected = queues if queues is not None else _SYNC_QUEUES
         try:
             node_info = next((n for n in self.nodes if n.hostname == host), None)
             target = (
@@ -111,8 +124,9 @@ class PiSyncService:
 
             total_files = 0
             queue_results: dict[str, int] = {}
+            errors: list[str] = []
 
-            for queue_name, remote_subpath, local_subpath_fn in _SYNC_QUEUES:
+            for queue_name, remote_subpath, local_subpath_fn in selected:
                 # queue_name alone isn't unique now that a queue can appear
                 # twice (completed/ and pending/) - keying by name alone
                 # would let the second entry silently clobber the first's
@@ -130,16 +144,17 @@ class PiSyncService:
                 cmd = [
                     "rsync",
                     "-avzu",
+                    "--exclude=lease.json",
+                    f"--timeout={_RSYNC_STALL_TIMEOUT_S}",
                     remote_path,
                     local_path + "/",
                 ]
 
-                logger.info(f"  Syncing {queue_name} from {host}...")
+                logger.info(f"  Syncing {queue_name}/{remote_subpath} from {host}...")
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=300,
                 )
 
                 if result.returncode == 0:
@@ -152,25 +167,49 @@ class PiSyncService:
                     queue_results[result_key] = synced
                     total_files += synced
                 else:
-                    error_msg = result.stderr.strip() or "Unknown error"
+                    error_msg = result.stderr.strip() or f"rsync exited {result.returncode}"
                     logger.warning(f"  {host}/{queue_name}: Failed - {error_msg}")
                     queue_results[result_key] = -1  # mark as failed
+                    errors.append(f"{result_key}: {error_msg}")
 
-            all_ok = all(v >= 0 for v in queue_results.values())
+            all_ok = not errors
             logger.info(f"  {host}: {'Success' if all_ok else 'Partial'} ({total_files} files)")
             return SyncResult(
                 host=host,
                 success=all_ok,
                 files_synced=total_files,
+                error="\n".join(errors) or None,
                 queue_results=queue_results,
             )
 
-        except subprocess.TimeoutExpired:
-            logger.warning(f"  {host}: Timeout (>5 minutes)")
-            return SyncResult(host=host, success=False, files_synced=0, error="Timeout")
         except Exception as e:
             logger.warning(f"  {host}: Error - {e}")
             return SyncResult(host=host, success=False, files_synced=0, error=str(e))
+
+    def sync_completed(self) -> list[SyncResult]:
+        """Pull gm-list, gm-details, and enrichment completed/ from every node.
+
+        This is the worker copy ``compile-yield`` needs. Pending claims stay
+        on ``sync_all_nodes`` for stations inspect.
+        """
+        return self._sync_nodes(_COMPLETED_QUEUES)
+
+    def _sync_nodes(
+        self, queues: list[tuple[str, str, Callable[[QueuePaths], Path]]]
+    ) -> list[SyncResult]:
+        self.results = []
+        if not self.nodes:
+            logger.warning("No Pi nodes configured")
+            return []
+
+        with ThreadPoolExecutor(max_workers=len(self.nodes)) as executor:
+            futures = {
+                executor.submit(self.sync_node, node.hostname, queues): node.hostname
+                for node in self.nodes
+            }
+            for future in as_completed(futures):
+                self.results.append(future.result())
+        return self.results
 
     def sync_all_nodes(self, blocking: bool = True) -> list[SyncResult]:
         """
@@ -182,29 +221,13 @@ class PiSyncService:
         Returns:
             List of SyncResult for each node.
         """
-        self.results = []
-
-        if not self.nodes:
-            logger.warning("No Pi nodes configured")
-            return []
-
-        with ThreadPoolExecutor(max_workers=len(self.nodes)) as executor:
-            futures = {
-                executor.submit(self.sync_node, node.hostname): node.hostname
+        if not blocking:
+            self.results = [
+                SyncResult(host=node.hostname, success=True, files_synced=0)
                 for node in self.nodes
-            }
-
-            if blocking:
-                for future in as_completed(futures):
-                    result = future.result()
-                    self.results.append(result)
-            else:
-                for host in futures.values():
-                    self.results.append(
-                        SyncResult(host=host, success=True, files_synced=0)
-                    )
-
-        return self.results
+            ]
+            return self.results
+        return self._sync_nodes(_SYNC_QUEUES)
 
     def get_summary(self) -> dict[str, int]:
         """Get a summary of sync results."""
