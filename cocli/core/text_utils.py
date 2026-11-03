@@ -23,44 +23,94 @@ def slugify(text: str, max_length: Optional[int] = None) -> str:
         s = s[:max_length]
     return s
 
-def parse_address_components(full_address: Optional[str]) -> dict[str, Optional[str]]:
-    """
-    Conservatively extracts street, city, state, and zip from a full address string.
-    Format: '123 Main St, City, ST 12345'
+def parse_postal_address(full_address: Optional[str]) -> dict[str, Optional[str]]:
+    """Conservative postal-address parser (US + international).
+
+    Replaces the US-only heuristics in the old parse_address_components and
+    Company.parse_full_address so every caller shares one parser and the two
+    cannot diverge (task-agent: international-location-data-from-google-maps-
+    detail-scrapes).
+
+    Rules:
+    - Last comma piece that is a known English country name or alpha-2 code
+      becomes ``country`` stored as the alpha-2 code (``Denmark`` -> ``DK``).
+      An unknown last piece stays in the text and country stays empty.
+    - A remaining ``ST 12345`` piece keeps the US split (state + zip).
+    - A remaining ``1870 Frederiksberg`` piece peels a leading postal code
+      off the locality. Never writes a postal code alone into ``city``.
+    - Anything else (e.g. UK ``London SW1A 2AA``) leaves city and postal
+      code empty; the full address string remains the record of truth.
+
+    Keys: street_address, city, state, zip, country (None when unknown).
     """
     components: dict[str, Optional[str]] = {
         "street_address": None,
         "city": None,
         "state": None,
-        "zip": None
+        "zip": None,
+        "country": None,
     }
-    
+
     if not full_address or "," not in full_address:
         return components
-        
-    parts = [p.strip() for p in full_address.split(",")]
-    
-    # Heuristic for US Addresses:
-    # Last part usually contains State and ZIP: 'TX 75094'
-    if len(parts) >= 2:
-        last_part = parts[-1]
-        zip_match = re.search(r'(\d{5})', last_part)
-        if zip_match:
-            components["zip"] = zip_match.group(1)
-            # State is usually the word before the zip
-            state_match = re.search(r'([A-Z]{2})', last_part)
-            if state_match:
-                components["state"] = state_match.group(1)
-        
-        # If we have 3 parts: [Street, City, State Zip]
-        if len(parts) >= 3:
-            components["street_address"] = parts[0]
-            components["city"] = parts[1]
-        # If we only have 2 parts: [Street/City Mix, State Zip]
-        elif len(parts) == 2:
-            components["street_address"] = parts[0]
+
+    from cocli.core.countries import country_code_for
+
+    parts = [p.strip() for p in str(full_address).split(",") if p.strip()]
+    if len(parts) < 2:
+        return components
+    # Drop empty between parts handled above.
+
+    # 1) Country: exact match on the last piece (English name or alpha-2).
+    code = country_code_for(parts[-1])
+    if code and (len(parts[-1]) <= 40):
+        components["country"] = code
+        parts.pop()
+
+    if len(parts) < 2:
+        return components
+
+    # 2) US state + ZIP: 'TX 75094' / 'TX 75094-1234'.
+    state_zip = re.fullmatch(r"([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?", parts[-1])
+    if state_zip:
+        components["state"] = state_zip.group(1)
+        components["zip"] = state_zip.group(2)
+        parts.pop()
+
+    if len(parts) < 2:
+        return components
+
+    # 3) Leading postal code glued to the locality: '1870 Frederiksberg'.
+    postal_city = re.fullmatch(r"(\d{4,6})(?:\s*-(?:\d{1,4}))?\s+(\D.*)", parts[-1])
+    if postal_city:
+        components["zip"] = postal_city.group(1)
+        components["city"] = postal_city.group(2).strip()
+        parts.pop()
+
+    if parts:
+        components["street_address"] = parts[0]
+
+    # 4) A remaining bare locality with no digits (no postal glue like
+    # "London SW1A 2AA" - that stays unparsed) is still a city.
+    if len(parts) >= 2 and not any(ch.isdigit() for ch in parts[-1]):
+        components["city"] = parts[-1]
 
     return components
+
+
+def parse_address_components(full_address: Optional[str]) -> dict[str, Optional[str]]:
+    """Legacy US-oriented component slice over parse_postal_address.
+
+    Kept for the quarantined legacy models (turboship_legacy,
+    legacy_prospect); live callers use parse_postal_address directly.
+    """
+    full = parse_postal_address(full_address)
+    return {
+        "street_address": full["street_address"],
+        "city": full["city"],
+        "state": full["state"],
+        "zip": full["zip"],
+    }
 
 def calculate_company_hash(name: Optional[str], street: Optional[str], zip_code: Optional[str]) -> Optional[str]:
     """

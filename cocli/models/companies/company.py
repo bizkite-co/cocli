@@ -1,5 +1,4 @@
 from __future__ import annotations
-import re
 from pathlib import Path
 from typing import Optional, Any, Iterator
 import logging
@@ -198,22 +197,31 @@ class Company(BaseModel):
 
     @model_validator(mode="after")
     def parse_full_address(self) -> "Company":
-        if self.full_address and (not self.city or not self.state or not self.zip_code):
-            # Regex to capture city, state, and zip from a standard US address
+        if self.full_address and (
+            not self.city or not self.state or not self.zip_code or not self.country
+        ):
+            # Shared conservative parser (same one GoogleMapsPlace hydrates
+            # with, so the two models cannot diverge on the same string).
             full_addr_str = str(self.full_address) if self.full_address else None
             if full_addr_str:
-                match = re.search(
-                    r"([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)", full_addr_str
-                )
-                if match:
-                    city, state, zip_code = match.groups()
-                    if not self.city:
-                        self.city = city.strip()
-                    if not self.state:
-                        self.state = state.strip()
-                    if not self.zip_code:
-                        self.zip_code = zip_code.strip()
+                from ...core.text_utils import parse_postal_address
+
+                addr = parse_postal_address(full_addr_str)
+                if not self.city:
+                    self.city = addr["city"]
+                if not self.state:
+                    self.state = addr["state"]
+                if not self.zip_code:
+                    self.zip_code = addr["zip"]
+                if not self.country:
+                    self.country = addr["country"]
         return self
+
+    @property
+    def postal_code(self) -> Optional[str]:
+        """One spelling for the company's post code (the Maps models spell
+        it ``zip``; companies spell it ``zip_code``)."""
+        return self.zip_code
 
     @classmethod
     def get_all(cls) -> Iterator[Optional["Company"]]:

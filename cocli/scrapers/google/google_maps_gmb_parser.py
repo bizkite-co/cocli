@@ -4,7 +4,7 @@ from typing import Any, Optional
 from .google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 from .google_maps_parsers.extract_website import extract_website
 
-def parse_gmb_page(html: str, debug: bool = False) -> dict[str, Any]:
+def parse_gmb_page(html: str, witness_url: Optional[str] = None, debug: bool = False) -> dict[str, Any]:
     """
     Parses the HTML of a Google My Business page to extract additional information.
     """
@@ -105,6 +105,19 @@ def parse_gmb_page(html: str, debug: bool = False) -> dict[str, Any]:
     address_element = soup.find("button", {"data-item-id": "address"})
     if address_element:
         data["Full_Address"] = address_element.get_text(strip=True).replace("", "")
+
+
+    # --- EXTRACT COORDINATES from the page URL itself ---
+    # The witness URL is this scrape's own page, so its @lat,lon (camera) or
+    # !3d/!4d (pin) is not a foreign hint - see build_raw_result_from_details
+    # on the recover-dropped-fields rule.
+    from .google_maps_parsers.maps_coordinates import maps_coordinates
+
+    point = maps_coordinates(witness_url)
+    if point:
+        data["Latitude"] = point.latitude
+        data["Longitude"] = point.longitude
+        data["Coordinates"] = f"{point.latitude},{point.longitude}"
 
     # --- EXTRACT REVIEWS ---
     reviews = []

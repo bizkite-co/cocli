@@ -51,6 +51,16 @@ def import_prospect(
         existing_company.state = prospect_data.state or existing_company.state
         existing_company.country = prospect_data.country or existing_company.country
         existing_company.timezone = prospect_data.timezone or existing_company.timezone
+        existing_company.latitude = (
+            prospect_data.latitude
+            if prospect_data.latitude is not None
+            else existing_company.latitude
+        )
+        existing_company.longitude = (
+            prospect_data.longitude
+            if prospect_data.longitude is not None
+            else existing_company.longitude
+        )
         existing_company.phone_1 = prospect_data.phone or existing_company.phone_1
         existing_company.website_url = prospect_data.website or existing_company.website_url
         existing_company.place_id = prospect_data.place_id or existing_company.place_id
@@ -85,6 +95,8 @@ def import_prospect(
             "state": prospect_data.state,
             "country": prospect_data.country,
             "timezone": prospect_data.timezone,
+            "latitude": prospect_data.latitude,
+            "longitude": prospect_data.longitude,
             "phone_1": prospect_data.phone,
             "website_url": prospect_data.website,
             "categories": prospect_data.first_category.split(';') if prospect_data.first_category else [],
@@ -148,6 +160,9 @@ def apply_prospect_to_company_if_empty(prospect_data: GoogleMapsProspect) -> boo
     fill("zip_code", prospect_data.zip)
     fill("state", prospect_data.state)
     fill("country", prospect_data.country)
+    fill("timezone", prospect_data.timezone)
+    fill("latitude", prospect_data.latitude)
+    fill("longitude", prospect_data.longitude)
     fill("phone_1", prospect_data.phone)
     fill("phone_number", prospect_data.phone)
     fill("place_id", prospect_data.place_id)

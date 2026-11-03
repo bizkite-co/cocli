@@ -312,6 +312,7 @@ def resolve_company_place(
     longitude: Optional[float] = None,
     address_text: Optional[str] = None,
     phone_numbers: Optional[list[str]] = None,
+    country: Optional[str] = None,
 ) -> CompanyPlace:
     """Best-effort place: explicit TZ, then zip/city/phone-area-code/state/
     coords/address, then local.
@@ -359,7 +360,22 @@ def resolve_company_place(
         and latitude is not None
         and longitude is not None
     ):
-        zname = _lng_to_us_zone(float(latitude), float(longitude))
+        # Global offline lookup first (any country), US-box heuristic kept as
+        # a last resort for points in US waters where timezonefinder disagrees.
+        from cocli.utils.timezone_geo import timezone_at
+
+        zname = timezone_at(float(latitude), float(longitude)) or _lng_to_us_zone(
+            float(latitude), float(longitude)
+        )
+        zone = _zoneinfo(zname) if zname else None
+
+    if zone is None and country:
+        # A country code is not a zone - only unambiguous one-zone countries
+        # may stand in for a missing point. Multi-zone countries (US/CA/AU)
+        # are deliberately not in that map.
+        from cocli.utils.timezone_geo import ONE_ZONE_COUNTRIES
+
+        zname = ONE_ZONE_COUNTRIES.get(country.strip().upper())
         zone = _zoneinfo(zname) if zname else None
 
     is_fallback = zone is None

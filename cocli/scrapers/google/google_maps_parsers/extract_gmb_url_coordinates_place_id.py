@@ -2,6 +2,8 @@ import re
 from bs4 import BeautifulSoup
 import logging
 
+from .maps_coordinates import maps_coordinates
+
 logger = logging.getLogger(__name__)
 
 def extract_gmb_url_coordinates_place_id(soup: BeautifulSoup, debug: bool = False) -> dict[str, str]:
@@ -27,11 +29,12 @@ def extract_gmb_url_coordinates_place_id(soup: BeautifulSoup, debug: bool = Fals
             logger.debug(f"Extracted GMB_URL (HTML): {gmb_url}")
 
         # Attempt to extract Latitude, Longitude, Coordinates, Place_ID from GMB_URL
-        match = re.search(r"!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)", gmb_url)
-        if match:
-            latitude = match.group(1)
-            longitude = match.group(2)
-            coordinates = f"{match.group(1)},{match.group(2)}"
+        # via the shared URL-coordinate parser (pin !3d/!4d, then camera @lat,lon).
+        point = maps_coordinates(gmb_url)
+        if point:
+            latitude = str(point.latitude)
+            longitude = str(point.longitude)
+            coordinates = f"{point.latitude},{point.longitude}"
             if debug:
                 logger.debug(f"Extracted Coordinates (HTML): {coordinates}")
         else:

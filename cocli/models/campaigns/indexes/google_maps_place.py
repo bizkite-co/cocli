@@ -62,6 +62,8 @@ class GoogleMapsPlaceProtocol(Protocol):
     city: Optional[str]
     zip: Optional[str]
     state: Optional[str]
+    country: Optional[str]
+    timezone: Optional[str]
     website: Optional[str]
     domain: Optional[str]
     first_category: Optional[str]
@@ -162,6 +164,12 @@ class GoogleMapsPlace(GoogleMapsIdx):
     # cross-station mapping is by field name, not position.
     category: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
 
+    @property
+    def postal_code(self) -> Optional[str]:
+        """One spelling for the place's post code (companies spell it
+        ``zip_code``; this model spells it ``zip``)."""
+        return self.zip
+
     @model_validator(mode='after')
     def extract_domain(self) -> 'GoogleMapsPlace':
         if self.website and not self.domain:
@@ -225,8 +233,8 @@ class GoogleMapsPlace(GoogleMapsIdx):
             
         full_addr = values.get("full_address")
         if full_addr and not values.get("street_address"):
-            from ....core.text_utils import parse_address_components
-            addr_data = parse_address_components(full_addr)
+            from ....core.text_utils import parse_postal_address
+            addr_data = parse_postal_address(full_addr)
             for key, val in addr_data.items():
                 if val and not values.get(key):
                     values[key] = val
