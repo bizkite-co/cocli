@@ -1,6 +1,7 @@
-import yaml
 import logging
 from pathlib import Path
+
+import yaml
 from rich.console import Console
 from rich.progress import Progress
 

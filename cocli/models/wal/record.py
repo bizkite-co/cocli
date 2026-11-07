@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Optional
+
 from pydantic import BaseModel
 
 # USV Control Characters
@@ -27,7 +29,7 @@ class DatagramRecord(BaseModel):
         return US.join(parts) + RS
 
     @classmethod
-    def from_usv(cls, usv_record: str) -> "DatagramRecord":
+    def from_usv(cls, usv_record: str) -> DatagramRecord:
         parts = usv_record.rstrip(RS).split(US)
         if len(parts) == 6:
             # Backward compatible: timestamp, node_id, target, field, value, causality
@@ -84,7 +86,7 @@ class QueueDatagram(BaseModel):
         return US.join(parts) + RS
 
     @classmethod
-    def from_usv(cls, usv_record: str) -> Optional["QueueDatagram"]:
+    def from_usv(cls, usv_record: str) -> Optional[QueueDatagram]:
         parts = usv_record.rstrip(RS).split(US)
         if not parts or parts[0] != "Q":
             return None
@@ -137,7 +139,7 @@ class HeartbeatDatagram(BaseModel):
         return US.join(parts) + RS
 
     @classmethod
-    def from_usv(cls, usv_record: str) -> Optional["HeartbeatDatagram"]:
+    def from_usv(cls, usv_record: str) -> Optional[HeartbeatDatagram]:
         parts = usv_record.rstrip(RS).split(US)
         if not parts or parts[0] != "H":
             return None
@@ -190,7 +192,7 @@ class ConfigDatagram(BaseModel):
         return US.join(parts) + RS
 
     @classmethod
-    def from_usv(cls, usv_record: str) -> Optional["ConfigDatagram"]:
+    def from_usv(cls, usv_record: str) -> Optional[ConfigDatagram]:
         parts = usv_record.rstrip(RS).split(US)
         if not parts or parts[0] != "C":
             return None

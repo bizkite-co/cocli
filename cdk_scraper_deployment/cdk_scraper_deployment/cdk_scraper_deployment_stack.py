@@ -1,25 +1,54 @@
 from aws_cdk import (
-    Stack,
-    aws_ecr as ecr,
-    aws_ecs as ecs,
-    aws_ec2 as ec2,
-    aws_iam as iam,
-    aws_s3 as s3,
-    aws_sqs as sqs,
-    aws_route53 as route53,
-    aws_route53_targets as targets,
-    aws_cloudfront as cloudfront,
-    aws_cloudfront_origins as origins,
-    aws_certificatemanager as acm,
-    aws_logs as logs,
-    aws_cognito as cognito,
-    aws_iot as iot,
-    Duration,
     CfnOutput,
+    Duration,
     RemovalPolicy,
+    Stack,
     Tags,
 )
+from aws_cdk import (
+    aws_certificatemanager as acm,
+)
+from aws_cdk import (
+    aws_cloudfront as cloudfront,
+)
+from aws_cdk import (
+    aws_cloudfront_origins as origins,
+)
+from aws_cdk import (
+    aws_cognito as cognito,
+)
+from aws_cdk import (
+    aws_ec2 as ec2,
+)
+from aws_cdk import (
+    aws_ecr as ecr,
+)
+from aws_cdk import (
+    aws_ecs as ecs,
+)
+from aws_cdk import (
+    aws_iam as iam,
+)
+from aws_cdk import (
+    aws_iot as iot,
+)
+from aws_cdk import (
+    aws_logs as logs,
+)
+from aws_cdk import (
+    aws_route53 as route53,
+)
+from aws_cdk import (
+    aws_route53_targets as targets,
+)
+from aws_cdk import (
+    aws_s3 as s3,
+)
+from aws_cdk import (
+    aws_sqs as sqs,
+)
 from constructs import Construct
+
 
 class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 

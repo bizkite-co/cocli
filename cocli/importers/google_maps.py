@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import csv
+import logging
 from pathlib import Path
 from typing import Any, Optional
-import logging
 
-from ..models.companies.company import Company
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files
+
 from ..core.config import get_companies_dir
+from ..models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 

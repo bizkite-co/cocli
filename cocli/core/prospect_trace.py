@@ -196,7 +196,9 @@ class ProspectDomainIndex:
     """
 
     def __init__(self, checkpoint_path: Path, wal_root: Optional[Path] = None) -> None:
-        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from cocli.models.campaigns.indexes.google_maps_prospect import (
+            GoogleMapsProspect,
+        )
         from cocli.utils.usv_utils import USVDictReader
 
         fieldnames = list(GoogleMapsProspect.model_fields.keys())

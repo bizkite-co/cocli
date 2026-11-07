@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
-import asyncio
+
 import boto3
 from botocore.config import Config
+
 from cocli.core.config import load_campaign_config
 from cocli.core.text_utils import slugdotify
 

@@ -1,15 +1,17 @@
 from __future__ import annotations
+
 import csv
+import logging
+import random
 import re
-from pathlib import Path
-from typing import Optional
-from playwright.sync_api import sync_playwright, Page, Playwright
-from bs4 import BeautifulSoup
+import time
 import uuid
 from datetime import datetime
-import time
-import random
-import logging
+from pathlib import Path
+from typing import Optional
+
+from bs4 import BeautifulSoup
+from playwright.sync_api import Page, Playwright, sync_playwright
 
 from cocli.core.config import get_scraped_data_dir
 

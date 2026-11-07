@@ -1,19 +1,19 @@
 from __future__ import annotations
-from typing import Any, Optional
-from pathlib import Path
+
 import datetime
-import re
-
-from ..models.companies.company import Company
-from ..models.people.person import Person
-from ..models.companies.note import Note
-from ..models.companies.meeting import Meeting
-from ..models.companies.activity import CompanyActivity
-from ..core.website_cache import WebsiteCache  # Corrected import
-
-from ..models.companies.website import Website
-from ..core.s3_company_manager import S3CompanyManager
 import logging
+import re
+from pathlib import Path
+from typing import Any, Optional
+
+from ..core.s3_company_manager import S3CompanyManager
+from ..core.website_cache import WebsiteCache  # Corrected import
+from ..models.companies.activity import CompanyActivity
+from ..models.companies.company import Company
+from ..models.companies.meeting import Meeting
+from ..models.companies.note import Note
+from ..models.companies.website import Website
+from ..models.people.person import Person
 
 logger = logging.getLogger(__name__)
 
@@ -1025,7 +1025,7 @@ def find_company_by_phone(
         match_keys.add(raw_digits[1:])
 
     # 1. Index-First: Search company_cache.usv
-    from ..core.cache import get_cache_path, CACHE_FILE_NAME
+    from ..core.cache import CACHE_FILE_NAME, get_cache_path
     from ..core.constants import UNIT_SEP
     from ..core.paths import paths
 

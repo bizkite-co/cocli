@@ -7,9 +7,10 @@ from typing import Any, Optional
 
 import typer
 
+
 def _get_wizard_cmds() -> tuple[Any, Any, Any, Any]:
     try:
-        from gtm_telemetry_wizard.cli import sync_cmd, verify_cmd, wizard_cmd, ping_cmd
+        from gtm_telemetry_wizard.cli import ping_cmd, sync_cmd, verify_cmd, wizard_cmd
         return sync_cmd, verify_cmd, wizard_cmd, ping_cmd
     except ImportError:
         typer.echo("Error: gtm_telemetry_wizard package is not installed.", err=True)
@@ -103,9 +104,10 @@ def deploy_telemetry(
     headful: bool = typer.Option(True, "--headful/--headless", help="Run browser visibly when using browser mode"),
 ) -> None:
     """Deploy GTM container IaC manifest via Google Tag Manager REST API v2 or browser automation."""
+    from rich.console import Console
+
     from cocli.application.telemetry_service import GoogleTelemetryProvider
     from cocli.core.paths import paths
-    from rich.console import Console
 
     console = Console()
     provider = GoogleTelemetryProvider()
@@ -347,6 +349,7 @@ def report_telemetry(
     not-yet-processed (pending/) - so this always reflects reality even
     if `process-testimonials` hasn't been run yet."""
     from datetime import datetime
+
     from rich.console import Console
     from rich.table import Table
 
@@ -469,6 +472,7 @@ def check_telemetry(
     """Verify health and operational readiness of landing pages, intake endpoints, and telemetry."""
     import time
     import urllib.request
+
     from rich.console import Console
     from rich.table import Table
 

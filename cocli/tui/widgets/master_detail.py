@@ -1,6 +1,7 @@
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Container
+from textual.containers import Container, Horizontal
 from textual.widget import Widget
+
 
 class MasterDetailView(Container):
     """A container that displays a master list and a detail view."""

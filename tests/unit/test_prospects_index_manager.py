@@ -1,9 +1,11 @@
-import pytest
 import logging
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+
+import pytest
+
 from cocli.core.constants import UNIT_SEP
 from cocli.core.paths import paths
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 # Setup logging for tests
 logger = logging.getLogger(__name__)

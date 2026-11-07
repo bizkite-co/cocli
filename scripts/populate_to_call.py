@@ -1,11 +1,11 @@
 import argparse
 from typing import Any
 
-from cocli.utils.usv_utils import USVReader
-from cocli.models.campaigns.queues.to_call import ToCallTask
 from cocli.core.constants import UNIT_SEP
-from cocli.core.text_utils import extract_domain
 from cocli.core.paths import paths
+from cocli.core.text_utils import extract_domain
+from cocli.models.campaigns.queues.to_call import ToCallTask
+from cocli.utils.usv_utils import USVReader
 
 
 def get_base_domain(url_or_domain: str) -> str:

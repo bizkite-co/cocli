@@ -20,7 +20,7 @@ from cocli.models.wal.record import ConfigDatagram
 importlib.reload(_gossip_bridge_module)
 GossipBridge = _gossip_bridge_module.GossipBridge
 
-from unittest.mock import patch as _module_patch  # noqa: E402
+from unittest.mock import patch as _module_patch
 
 _mock_bridge = MagicMock()
 _mock_bridge.heartbeats = {}

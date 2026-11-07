@@ -7,9 +7,10 @@ symlinks. The journal segments are left in place.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import Callable, Optional
 
 from cocli.application.relationships import FoldPolicy, Predicate, fold_policy
 from cocli.core.relationship_log import (

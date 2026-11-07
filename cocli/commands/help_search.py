@@ -24,6 +24,7 @@ def help_search(
     dumps.
     """
     from typer.main import get_command
+
     from ..main import app as main_app
 
     click_command = get_command(main_app)

@@ -79,8 +79,7 @@ def _build_self_healing_sixel_class() -> type[Any]:
     from textual_image._pixeldata import PixelData
     from textual_image._terminal import CellSize
     from textual_image.widget.sixel import Image as SixelImage
-    from textual_image.widget.sixel import _ImageSixelImpl
-    from textual_image.widget.sixel import _NoopRenderable
+    from textual_image.widget.sixel import _ImageSixelImpl, _NoopRenderable
 
     class SelfHealingSixelImpl(_ImageSixelImpl):
         _heal_in_flight: bool = False

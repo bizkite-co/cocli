@@ -1,6 +1,7 @@
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
 import logging
 from itertools import islice
+
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
 
 logging.basicConfig(level=logging.INFO)
 

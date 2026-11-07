@@ -1,5 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import pytest
+
 from cocli.application.search_service import (
     get_fuzzy_search_results,
     get_template_counts,

@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 
+
 def install_hooks() -> None:
     """Installs a pre-commit hook that runs 'make test'."""
     try:

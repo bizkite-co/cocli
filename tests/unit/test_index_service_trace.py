@@ -9,7 +9,6 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-
 from cocli.application.index_service import IndexService, ProspectTraceResult
 from cocli.core.paths import paths
 from cocli.models.campaigns.worker_config import PiNodeConfig

@@ -1,15 +1,16 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import logging
+
 import json
-from datetime import datetime, UTC
+import logging
+from datetime import UTC, datetime
 from typing import Any, Optional
 
-from ...models.campaigns.queues.gm_list import ScrapeTask
-from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ...core.paths import paths
 from ...core.sharding import get_geo_shard, get_grid_tile_id
 from ...core.text_utils import slugify
+from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from ...models.campaigns.queues.gm_list import ScrapeTask
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, Optional
 
-from .base import QueueMessage
 from ....core.ordinant import QueueIdentity, QueueName
+from .base import QueueMessage
 
 
 class ScrapedEmailInvalidTask(QueueMessage):

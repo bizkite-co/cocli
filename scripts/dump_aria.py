@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 
+
 def dump_semantic(name: str) -> None:
     print("Semantic Classes for " + name)
     path = ".logs/repro_" + name + ".html"

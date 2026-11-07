@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cocli.core.sync_tracker import SyncTracker
 from cocli.application.pi_sync_service import PiSyncService
+from cocli.core.sync_tracker import SyncTracker
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -38,7 +38,7 @@ def main() -> None:
     if args.status:
         last_sync = tracker.get_last_sync()
         if last_sync:
-            from datetime import datetime, UTC
+            from datetime import UTC, datetime
 
             age = datetime.now(UTC) - last_sync
             age_minutes = age.total_seconds() / 60

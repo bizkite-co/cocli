@@ -6,10 +6,10 @@ lease.json files that are either expired (past heartbeat_at timeout) or
 optionally forces removal of all leases for testing/reset scenarios.
 """
 
-import logging
 import json
+import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, UTC, timedelta
 
 logger = logging.getLogger(__name__)
 

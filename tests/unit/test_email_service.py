@@ -438,6 +438,7 @@ def test_m365_smtp_sender_message_formatting_and_headers(mocker) -> None:
 
 def test_m365_smtp_sender_xoauth2_auth_command(mocker) -> None:
     import base64
+
     from cocli.application.email_service import M365SmtpSender
 
     mock_smtp = mocker.MagicMock()
@@ -470,7 +471,9 @@ def test_m365_smtp_sender_xoauth2_auth_command(mocker) -> None:
 def test_m365_smtp_sender_xoauth2_failure_raises_error(mocker) -> None:
     import base64
     import smtplib
+
     import pytest
+
     from cocli.application.email_service import M365SmtpSender
 
     mock_smtp = mocker.MagicMock()
@@ -521,6 +524,7 @@ def test_m365_smtp_sender_password_login(mocker) -> None:
 
 def test_m365_graph_sender_send(mocker) -> None:
     import json
+
     from cocli.application.email_service import M365GraphSender
 
     mock_resp = mocker.MagicMock()
@@ -562,7 +566,12 @@ def test_m365_graph_sender_send(mocker) -> None:
 
 
 def test_email_service_backend_selection(mocker) -> None:
-    from cocli.application.email_service import Boto3SesSender, EmailService, M365GraphSender, M365SmtpSender
+    from cocli.application.email_service import (
+        Boto3SesSender,
+        EmailService,
+        M365GraphSender,
+        M365SmtpSender,
+    )
 
     # SES backend
     ses_settings = EmailSettings(backend="ses", from_address="outreach@example.com")

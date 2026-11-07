@@ -113,9 +113,8 @@ def test_write_datapackage_propagates_schema_conflict(tmp_path: Path) -> None:
     )
     with patch.object(
         IndexService, "index_model_map", return_value={"domains": mock_model}
-    ):
-        with pytest.raises(SchemaConflictError) as exc:
-            service.write_datapackage("domains")
+    ), pytest.raises(SchemaConflictError) as exc:
+        service.write_datapackage("domains")
     assert "field a -> b" in exc.value.diff
 
 

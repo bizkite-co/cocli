@@ -1,7 +1,8 @@
+from cocli.core.ordinant import Ordinant
 from cocli.core.paths import paths
 from cocli.models.companies.company import Company
 from cocli.models.people.person import Person
-from cocli.core.ordinant import Ordinant
+
 
 def test_hierarchical_paths():
     # Test dot-notation for campaigns

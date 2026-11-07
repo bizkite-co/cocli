@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from typing import ClassVar, Optional
-from ..base import BaseUsvModel
+
 from pydantic import Field
+
 from ...core.geo_types import LatScale1, LonScale1
+from ..base import BaseUsvModel
 
 
 class TileRecord(BaseUsvModel):

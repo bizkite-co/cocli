@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import re
 from typing import Optional
+
 
 def slugify(text: str, max_length: Optional[int] = None) -> str:
     """
@@ -238,8 +240,7 @@ def extract_domain(url: Optional[str]) -> Optional[str]:
             return None
             
         # Strip www.
-        if domain.startswith("www."):
-            domain = domain[4:]
+        domain = domain.removeprefix("www.")
             
         # Strip common ports if present
         if ":" in domain:

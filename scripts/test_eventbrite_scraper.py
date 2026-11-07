@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from cocli.scrapers.eventbrite_scraper import EventbriteScraper
+
 from cocli.core.config import set_campaign
+from cocli.scrapers.eventbrite_scraper import EventbriteScraper
 
 logging.basicConfig(level=logging.INFO)
 

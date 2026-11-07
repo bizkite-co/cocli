@@ -368,6 +368,7 @@ class IndexService:
         without the service depending on Rich.
         """
         from botocore.exceptions import BotoCoreError, ClientError
+
         from cocli.core.compact import CompactManager
 
         manager: Optional[CompactManager] = None
@@ -639,7 +640,10 @@ class IndexService:
         making a campaign with a near-total compaction failure look almost
         entirely healthy.
         """
-        from cocli.core.prospect_trace import CheckpointPresenceCheck, GmListResultsCheck
+        from cocli.core.prospect_trace import (
+            CheckpointPresenceCheck,
+            GmListResultsCheck,
+        )
         from cocli.core.prospects_csv_manager import ProspectsIndexManager
 
         campaign_paths = paths.campaign(self.campaign_name)
@@ -1488,11 +1492,14 @@ class IndexService:
         Same backup + CompactManager.commit_remote() pattern as
         purge_invalid_place_ids - see that method's docstring for why.
         """
+        import re
+
         from cocli.core.compact import CompactManager
         from cocli.core.prospects_csv_manager import ProspectsIndexManager
-        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from cocli.models.campaigns.indexes.google_maps_prospect import (
+            GoogleMapsProspect,
+        )
         from cocli.utils.backup_utils import timestamped_backup_path
-        import re
 
         checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
         if not checkpoint_path.exists():
@@ -1826,13 +1833,13 @@ def setup_index_log_file(campaign_name: str, index_name: str) -> Path:
 
 # Re-export for command-layer exception handling
 __all__ = [
-    "IndexService",
-    "IndexStatusReport",
-    "IndexLockStatus",
-    "IndexCheckpointStatus",
     "CompactResult",
     "DomainBackfillResult",
+    "IndexCheckpointStatus",
+    "IndexLockStatus",
+    "IndexService",
+    "IndexStatusReport",
+    "SchemaConflictError",
     "WriteDatapackageResult",
     "setup_index_log_file",
-    "SchemaConflictError",
 ]

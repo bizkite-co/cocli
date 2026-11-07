@@ -1,20 +1,21 @@
 from __future__ import annotations
-import typer
+
 import logging
-from typing import Optional
-from rich.console import Console
-from rich.table import Table
-from rich.live import Live
-from rich.panel import Panel
-from rich.layout import Layout
 import sys
 import termios
 import tty
+from typing import Optional
 
-from ...services.event_service import EventService
+import typer
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+
 from ...core.config import get_campaign
-
 from ...models.campaigns.events import Event
+from ...services.event_service import EventService
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()

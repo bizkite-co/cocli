@@ -1,4 +1,5 @@
-from pytest_bdd import scenario, given, when, then, parsers
+from pytest_bdd import given, parsers, scenario, then, when
+
 
 @scenario('../features/sanity.feature', 'Basic addition')
 def test_basic_addition():

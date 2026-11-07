@@ -1,5 +1,6 @@
 from cocli.application.task_service import TaskService
 
+
 def test_task_service_create_and_sync(tmp_path):
     issues_root = tmp_path / "issues"
     service = TaskService(issues_root=issues_root)

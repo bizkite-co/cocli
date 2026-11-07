@@ -1,6 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import duckdb
 import logging
+
+import duckdb
+
 from cocli.core.paths import paths
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')

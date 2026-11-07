@@ -272,7 +272,10 @@ def test_view_lists_website_emails_in_contacts(
 def test_list_known_contacts_includes_company_email_and_personnel(
     sandboxed_companies_dir: Path,
 ) -> None:
-    from cocli.application.company_service import format_contact_line, list_known_contacts
+    from cocli.application.company_service import (
+        format_contact_line,
+        list_known_contacts,
+    )
 
     slug = "aquila-financial-tax-services"
     company_dir = sandboxed_companies_dir / slug
@@ -344,6 +347,7 @@ def test_hydrate_fills_empty_domain_without_overwriting(
 
 def test_get_company_activity(sandboxed_companies_dir: Path) -> None:
     from datetime import UTC, datetime, timedelta
+
     from cocli.application.company_service import get_company_activity
     from cocli.models.companies.call_note import CallNote
     from cocli.models.companies.email_note import EmailNote

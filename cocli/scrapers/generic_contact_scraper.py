@@ -1,6 +1,6 @@
 import asyncio
-import re
 import logging
+import re
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright

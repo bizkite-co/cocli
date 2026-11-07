@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from stations.segments import collect_phases, collect_shard
 
 from cocli.core.paths import paths
 from cocli.station_defs.campaigns.indexes.emails import EMAIL_INBOX
@@ -16,7 +17,6 @@ from cocli.station_defs.path_helpers import (
     queue_pending_item_path,
     queue_pending_relative,
 )
-from stations.segments import collect_phases, collect_shard
 
 
 def test_email_inbox_phase_ref_not_magic_string() -> None:

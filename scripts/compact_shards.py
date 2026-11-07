@@ -1,12 +1,13 @@
-import sys
-import logging
 import argparse
+import logging
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from rich.console import Console
+
 from cocli.core.config import get_campaign
 
 console = Console()

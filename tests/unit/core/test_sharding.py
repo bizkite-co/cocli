@@ -1,9 +1,10 @@
+from stations.segments import shard_by_char_index
+
 from cocli.core.sharding import (
     get_place_id_shard,
     get_place_id_shard_from_last_character_of_place_id,
     get_shard_id,
 )
-from stations.segments import shard_by_char_index
 
 
 def test_get_shard_id_variability():

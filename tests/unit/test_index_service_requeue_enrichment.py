@@ -17,7 +17,7 @@ from cocli.models.campaigns.worker_config import PiNodeConfig
 US = "\x1f"
 
 
-def _all_ok_response(cmd: list, **kwargs) -> "subprocess.CompletedProcess":  # type: ignore[no-untyped-def,type-arg]
+def _all_ok_response(cmd: list, **kwargs) -> subprocess.CompletedProcess:  # type: ignore[no-untyped-def,type-arg]
     """Fakes a successful remote write: emits a COCLI_OK marker for every
     domain the real script would have tried to push (parsed straight out
     of the generated `echo COCLI_OK:<domain>; else echo COCLI_FAIL` lines),

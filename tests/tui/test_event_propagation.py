@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import ListView, ListItem, Label
+from textual.widgets import Label, ListItem, ListView
+
 from cocli.tui.widgets.confirm_screen import ConfirmScreen
 
 

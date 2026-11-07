@@ -1,6 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import duckdb
 import logging
+
+import duckdb
+
 from cocli.core.constants import UNIT_SEP
 
 # Setup logging

@@ -1,9 +1,11 @@
-import pytest
-from unittest.mock import MagicMock, patch
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from cocli.core.campaign_workflow import CampaignWorkflow
+import pytest
+
 from cocli.commands.campaign.workflow import next_step as campaign_next_step
+from cocli.core.campaign_workflow import CampaignWorkflow
+
 
 class TestCampaignWorkflow:
     @pytest.fixture

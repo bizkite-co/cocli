@@ -1,14 +1,17 @@
 from __future__ import annotations
-import json
-import math
-import logging
+
 import csv
-from datetime import datetime, timedelta, UTC
-from typing import Optional, NamedTuple, Iterator, Any
+import json
+import logging
+import math
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, NamedTuple, Optional
+
+from cocli.core.text_utils import slugify
 
 from .config import get_scraped_areas_index_dir, get_wilderness_tiles_index_dir
-from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

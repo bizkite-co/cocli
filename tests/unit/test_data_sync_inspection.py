@@ -270,9 +270,8 @@ def test_search_usv_unknown_column(tmp_path: Path) -> None:
     ), patch(
         "cocli.utils.duckdb_utils.validate_query_columns",
         return_value=["not_a_col"],
-    ):
-        with pytest.raises(UnknownColumnError) as exc:
-            service.search_usv(usv, query="not_a_col = 'x'")
+    ), pytest.raises(UnknownColumnError) as exc:
+        service.search_usv(usv, query="not_a_col = 'x'")
     assert "not_a_col" in str(exc.value)
     assert "place_id" in exc.value.valid_preview
 
@@ -301,9 +300,8 @@ def test_inspect_row_missing(tmp_path: Path) -> None:
         "cocli.utils.duckdb_utils.find_datapackage", return_value=dp
     ), patch(
         "cocli.utils.duckdb_utils.match_resource_path", return_value=True
-    ):
-        with pytest.raises(ValueError, match="Row 99 not found"):
-            service.inspect_row(usv, row_number=99)
+    ), pytest.raises(ValueError, match="Row 99 not found"):
+        service.inspect_row(usv, row_number=99)
 
 
 def test_compact_queue_unknown() -> None:

@@ -2,12 +2,12 @@
 import argparse
 import configparser
 import json
-from pathlib import Path
 import sys
-
+from pathlib import Path
 from typing import Any
 
 from cocli.core.reporting import get_boto3_session
+
 
 def get_limited_policy(bucket_name: str) -> dict[str, Any]:
     return {

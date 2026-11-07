@@ -1,16 +1,16 @@
 import pytest
 from textual.app import App, ComposeResult
 from textual.containers import Container
-from textual.widgets import Header, Footer
+from textual.widgets import Footer, Header
 
+from cocli.application.services import ServiceContainer
 from cocli.tui.base import CocliPanel
 from cocli.tui.widgets.company_detail import DetailPanel, QuadrantTable
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.company_preview import CompanyPreview
-from cocli.tui.widgets.template_list import TemplateList
 from cocli.tui.widgets.person_detail import PersonDetail
 from cocli.tui.widgets.person_list import PersonList
-from cocli.application.services import ServiceContainer
+from cocli.tui.widgets.template_list import TemplateList
 
 
 class HeaderPreventionApp(App[None]):

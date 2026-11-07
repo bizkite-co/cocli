@@ -8,6 +8,7 @@ import boto3
 
 from cocli.core.reporting import get_boto3_session
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deploy AWS credentials for a specific profile to a Raspberry Pi.")
     parser.add_argument("--profile", help="Local AWS profile name to extract.")

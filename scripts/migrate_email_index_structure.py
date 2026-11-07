@@ -1,9 +1,11 @@
-import typer
 import json
 import shutil
 from pathlib import Path
+
+import typer
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_campaign_dir
 from cocli.core.text_utils import slugdotify
 

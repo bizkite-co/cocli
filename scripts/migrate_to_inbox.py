@@ -1,9 +1,13 @@
 from __future__ import annotations
+
 import csv
 import shutil
-import typer
 from typing import Optional
-from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
+
+import typer
+
+from cocli.core.config import get_campaign, get_campaign_scraped_data_dir
+
 
 def migrate(campaign_name: str) -> None:
     data_dir = get_campaign_scraped_data_dir(campaign_name)

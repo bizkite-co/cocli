@@ -1,10 +1,12 @@
 from __future__ import annotations
-from typing import Any, Optional, Protocol, runtime_checkable, Annotated
+
 import re
-from pydantic import GetCoreSchemaHandler, BeforeValidator
-from pydantic_core import CoreSchema, core_schema
+from typing import Annotated, Any, Optional, Protocol, runtime_checkable
+
 import phonenumbers
 from phonenumbers import NumberParseException
+from pydantic import BeforeValidator, GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
 
 
 @runtime_checkable
@@ -29,7 +31,7 @@ class PhoneNumberProtocol(Protocol):
         ...
 
     @classmethod
-    def model_validate(cls, v: Any) -> Optional["PhoneNumber"]:
+    def model_validate(cls, v: Any) -> Optional[PhoneNumber]:
         """Pydantic validation."""
         ...
 
@@ -87,7 +89,7 @@ class PhoneNumber:
         )
 
     @classmethod
-    def validate(cls, v: Any) -> Optional["PhoneNumber"]:
+    def validate(cls, v: Any) -> Optional[PhoneNumber]:
         """
         Validate and parse a phone number using libphonenumber.
 
@@ -134,7 +136,7 @@ class PhoneNumber:
         return cls._parse_lenient(v, extension)
 
     @classmethod
-    def _parse_with_phonenumbers(cls, phone_str: str) -> Optional["PhoneNumber"]:
+    def _parse_with_phonenumbers(cls, phone_str: str) -> Optional[PhoneNumber]:
         """
         Use libphonenumber to parse the phone number.
         This handles all valid E.164 formats and common formats.
@@ -198,7 +200,7 @@ class PhoneNumber:
     @classmethod
     def _parse_lenient(
         cls, phone_str: str, extension: Optional[str]
-    ) -> "PhoneNumber":
+    ) -> PhoneNumber:
         """
         Fallback lenient parser for edge cases.
         Used when libphonenumber can't parse it but we still have digits.
@@ -285,7 +287,7 @@ class PhoneNumber:
         elif pattern == "digits":
             return str(self)
         elif pattern == "e164":
-            return f"+{str(self)}"
+            return f"+{self!s}"
 
         # Custom pattern replacement
         res = pattern.replace("{cc}", cc).replace("{ndc}", ndc).replace("{sn}", sn)
@@ -301,7 +303,7 @@ class PhoneNumber:
         return str(self)
 
     @classmethod
-    def model_validate(cls, v: Any) -> Optional["PhoneNumber"]:
+    def model_validate(cls, v: Any) -> Optional[PhoneNumber]:
         """Compatibility with Pydantic v2 API."""
         return cls.validate(v)
 

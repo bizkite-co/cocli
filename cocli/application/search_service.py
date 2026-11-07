@@ -1,27 +1,30 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 from __future__ import annotations
-import duckdb
-import os
-import logging
-import time
-import threading
+
 import json
+import logging
+import os
 import tempfile
+import threading
+import time
 from pathlib import Path
-from typing import Optional, Any, cast
-from cocli.core.cache import get_cache_path, CACHE_FILE_NAME
+from typing import Any, Optional, cast
+
+import duckdb
+
+from cocli.core.cache import CACHE_FILE_NAME, get_cache_path
 from cocli.core.config import get_campaign
 from cocli.core.exclusions import list_all_exclusions
-from cocli.models.search import SearchResult
-from cocli.models.company_name import CompanyName
+from cocli.models.campaigns.indexes.email import EmailEntry
+from cocli.models.campaigns.indexes.google_maps_place import GoogleMapsPlace
 from cocli.models.company_address import CompanyAddress
+from cocli.models.company_name import CompanyName
 from cocli.models.phone import PhoneNumber
+from cocli.models.search import SearchResult
 from cocli.utils.duckdb_utils import (
     get_duckdb_schema_from_datapackage,
     load_usv_to_duckdb,
 )
-from cocli.models.campaigns.indexes.google_maps_place import GoogleMapsPlace
-from cocli.models.campaigns.indexes.email import EmailEntry
 
 logger = logging.getLogger(__name__)
 
@@ -294,8 +297,8 @@ def get_fuzzy_search_results(
         _last_filter_out_mtime, \
         _last_campaign
 
+    from cocli.core.cache import build_cache, is_cache_valid
     from cocli.core.paths import paths
-    from cocli.core.cache import is_cache_valid, build_cache
 
     campaign = campaign_name or get_campaign()
     if campaign == "None":
@@ -352,8 +355,8 @@ def get_fuzzy_search_results(
                         with _lock:
                             global _last_cache_mtime
                             _last_cache_mtime = -1.0
-                            if campaign in _counts_cache:
-                                del _counts_cache[campaign]
+                            if campaign:
+                                _counts_cache.pop(campaign, None)
                         get_fuzzy_search_results._building.remove(campaign)  # type: ignore
 
                 threading.Thread(target=bg_rebuild, daemon=True).start()
@@ -607,7 +610,9 @@ def get_fuzzy_search_results(
                     # Records, not bare slugs: parse through the model so a
                     # future field never silently becomes part of the slug
                     # (or drops the row) the way naive line.strip() would.
-                    from cocli.models.campaigns.indexes.lead_filter import LeadFilterEntry
+                    from cocli.models.campaigns.indexes.lead_filter import (
+                        LeadFilterEntry,
+                    )
 
                     if not path or not path.exists():
                         return []
@@ -774,8 +779,8 @@ def get_fuzzy_search_results(
                 _last_filter_in_mtime = current_filter_in_mtime
                 _last_filter_out_mtime = current_filter_out_mtime
                 _last_campaign = campaign
-                if campaign in _counts_cache:
-                    del _counts_cache[campaign]
+                if campaign:
+                    _counts_cache.pop(campaign, None)
 
             # 3. Build Query
             sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched, to_call_callback_at, to_call_priority FROM items WHERE 1=1"

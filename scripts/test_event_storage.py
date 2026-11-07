@@ -1,7 +1,9 @@
-from cocli.models.campaigns.events import Event
+import shutil
 from datetime import datetime
 from pathlib import Path
-import shutil
+
+from cocli.models.campaigns.events import Event
+
 
 def test_event_dir_saving() -> None:
     test_wal = Path("temp/test_events_wal")

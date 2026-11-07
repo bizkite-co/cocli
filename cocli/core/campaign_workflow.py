@@ -1,11 +1,12 @@
-from transitions import Machine
 from pathlib import Path
 from typing import Any, cast
+
 import toml
 import typer
-
-from ..core.config import set_campaign, get_campaign_dir
 from rich.console import Console
+from transitions import Machine
+
+from ..core.config import get_campaign_dir, set_campaign
 
 console = Console()
 
@@ -84,10 +85,12 @@ class CampaignWorkflow:
         self.start_prospecting()  # type: ignore
 
     def run_prospecting_scrape(self) -> None:
+        import asyncio
+
+        import toml
+
         from ..commands.campaign.prospecting import pipeline
         from ..core.location_prospects_index import LocationProspectsIndex
-        import asyncio
-        import toml
 
         console.print(f"[bold blue]Running prospecting scrape for campaign: {self.name}[/bold blue]")
 
@@ -151,7 +154,9 @@ class CampaignWorkflow:
             self.fail_campaign()  # type: ignore
 
     def run_prospecting_ingest(self) -> None:
-        from ..commands.ingest_google_maps_csv import google_maps_csv_to_google_maps_cache
+        from ..commands.ingest_google_maps_csv import (
+            google_maps_csv_to_google_maps_cache,
+        )
         console.print(f"[bold blue]Running prospecting ingest for campaign: {self.name}[/bold blue]")
         try:
             google_maps_csv_to_google_maps_cache(campaign_name=self.name)

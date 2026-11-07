@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import csv
 import json
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Optional
 
 import duckdb
 from pydantic import BaseModel, Field
@@ -198,8 +200,9 @@ class DataSyncService:
     def compact_index(self) -> dict[str, Any]:
         """Runs the email index compaction (Hot Inbox -> Shards)."""
         try:
-            from ..core.email_index_manager import EmailIndexManager
             from cocli.core.compaction_coverage import count_usv_records, coverage_for
+
+            from ..core.email_index_manager import EmailIndexManager
 
             manager = EmailIndexManager(self.campaign_name)
             inbox_n = count_usv_records(manager.inbox_dir)
@@ -229,6 +232,7 @@ class DataSyncService:
         Corresponds to 'make push-queue' / 'scripts/push_queue.py'.
         """
         import boto3
+
         from ..core.paths import paths
         
         config = load_campaign_config(self.campaign_name)

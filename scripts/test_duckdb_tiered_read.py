@@ -1,5 +1,7 @@
-import duckdb
 from pathlib import Path
+
+import duckdb
+
 
 def query_tiered_index(index_dir: Path) -> None:
     con = duckdb.connect(database=':memory:')

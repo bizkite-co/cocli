@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
+
 from ...models.campaigns.queues.base import QueueMessage
+
 
 class QueueManager(ABC):
     """
@@ -9,7 +11,6 @@ class QueueManager(ABC):
     @abstractmethod
     def push(self, message: QueueMessage) -> str:
         """Push a message to the queue. Returns the message ID."""
-        pass
 
     @abstractmethod
     def poll(self, batch_size: int = 1) -> list[QueueMessage]:
@@ -17,18 +18,15 @@ class QueueManager(ABC):
         Retrieve a batch of messages from the queue.
         These messages should be considered 'locked' or 'invisible' to other consumers.
         """
-        pass
 
     @abstractmethod
     def ack(self, message: QueueMessage) -> None:
         """
         Acknowledge successful processing. The message should be removed.
         """
-        pass
 
     @abstractmethod
     def nack(self, message: QueueMessage, is_http_500: bool = False) -> None:
         """
         Negative acknowledgement. The message should be returned to the queue for retry.
         """
-        pass

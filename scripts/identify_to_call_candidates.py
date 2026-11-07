@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
-from cocli.models.companies.company import Company
+
 from cocli.core.config import set_campaign
+from cocli.models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +62,8 @@ def identify_candidates() -> None:
     for c in candidates:
         print(f"- {c.name} ({c.slug}) | Phone: {c.phone_number or c.phone_1}")
         # Add directly to queue
-        from cocli.models.campaigns.queues.to_call import ToCallTask
         from cocli.core.config import get_campaign
+        from cocli.models.campaigns.queues.to_call import ToCallTask
 
         task = ToCallTask(
             company_slug=c.slug,

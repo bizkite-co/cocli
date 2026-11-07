@@ -1,9 +1,12 @@
 import logging
-import duckdb
 from typing import Any
-from .reporting import get_boto3_session
-from .config import load_campaign_config
+
+import duckdb
+
 from cocli.core.constants import UNIT_SEP
+
+from .config import load_campaign_config
+from .reporting import get_boto3_session
 
 logger = logging.getLogger(__name__)
 

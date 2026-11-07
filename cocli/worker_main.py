@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 from cocli.core.bootstrap import setup_environment
 
 setup_environment()
 
 import os
 from typing import Optional
+
 import typer
 from rich.console import Console
 
@@ -24,7 +26,7 @@ def main_callback(
     if campaign:
         os.environ["COCLI_CAMPAIGN"] = campaign
 
-    from cocli.core.environment import get_environment, Environment
+    from cocli.core.environment import Environment, get_environment
     from cocli.core.paths import paths
 
     env = get_environment()
@@ -37,7 +39,7 @@ def main_callback(
 
 
 # Register only the worker commands, audit, and campaign rollout subcommands
-from cocli.commands import worker, audit
+from cocli.commands import audit, worker
 from cocli.commands.campaign import rollout
 
 app.add_typer(worker.app, name="worker", help="Manage background scrape/details/enrichment workers.")

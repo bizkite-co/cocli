@@ -1,4 +1,5 @@
 import duckdb
+
 from cocli.core.paths import paths
 from cocli.utils.duckdb_utils import load_usv_to_duckdb
 from cocli.utils.usv_utils import USVWriter

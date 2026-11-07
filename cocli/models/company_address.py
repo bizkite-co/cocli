@@ -1,8 +1,8 @@
-from typing import Any, Optional, Protocol, runtime_checkable
 import re
-from pydantic import GetCoreSchemaHandler, BeforeValidator
+from typing import Annotated, Any, Optional, Protocol, runtime_checkable
+
+from pydantic import BeforeValidator, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing_extensions import Annotated
 from rich.text import Text
 
 
@@ -106,7 +106,7 @@ class CompanyAddress:
     def __repr__(self) -> str:
         return f"CompanyAddress({self.value!r})"
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Support comparison with strings and other CompanyAddress objects."""
         if isinstance(other, CompanyAddress):
             return self.value == other.value

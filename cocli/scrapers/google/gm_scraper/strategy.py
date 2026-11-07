@@ -1,5 +1,7 @@
 import logging
-from typing import Iterator, Any
+from collections.abc import Iterator
+from typing import Any
+
 from .utils import calculate_new_coords
 
 logger = logging.getLogger(__name__)

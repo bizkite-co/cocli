@@ -38,7 +38,8 @@ gm-details.
 from __future__ import annotations
 
 import json
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import aws_cdk as cdk
 from aws_cdk import aws_iam as iam

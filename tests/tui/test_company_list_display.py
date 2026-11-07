@@ -1,10 +1,13 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+from conftest import wait_for_widget
+from textual.widgets import Label, ListView
+
+from cocli.models.search import SearchResult
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
-from cocli.models.search import SearchResult
-from textual.widgets import ListView, Label
-from conftest import wait_for_widget
+
 
 @pytest.mark.asyncio
 async def test_company_list_no_extra_quotes():
@@ -70,7 +73,7 @@ async def test_company_list_no_extra_quotes():
         # So ListItem has a 'name' attribute we set!
         
         if hasattr(first_item, "name"):
-            displayed_text = getattr(first_item, "name")
+            displayed_text = first_item.name
 
         assert displayed_text == lead_name
         assert not displayed_text.startswith('"')

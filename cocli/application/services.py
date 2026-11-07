@@ -1,52 +1,54 @@
 from __future__ import annotations
-from typing import Optional, Any, cast
-from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
-import logging
 
+import logging
+from typing import Any, Optional, cast
+
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+
+from cocli.application.audit_cluster_service import AuditClusterService
+from cocli.application.audit_codebase_service import AuditCodebaseService
+from cocli.application.audit_queue_service import AuditQueueService
+from cocli.application.audit_service import AuditService
+from cocli.application.campaign_service import CampaignService
+from cocli.application.company_service import get_company_details_for_view
+from cocli.application.data_sync_service import DataSyncService
+from cocli.application.deployment_service import DeploymentService
+from cocli.application.email_service import EmailService
+from cocli.application.event_service import EventService
+from cocli.application.index_service import IndexService
+from cocli.application.meeting_service import MeetingService
+from cocli.application.reporting_service import ReportingService
 from cocli.application.search_service import (
     get_fuzzy_search_results,
     get_template_counts,
 )
-from cocli.application.campaign_service import CampaignService
-from cocli.application.worker_service import WorkerService
-from cocli.application.reporting_service import ReportingService
-from cocli.application.audit_service import AuditService
-from cocli.application.audit_codebase_service import AuditCodebaseService
-from cocli.application.audit_queue_service import AuditQueueService
-from cocli.application.audit_cluster_service import AuditClusterService
-from cocli.application.data_sync_service import DataSyncService
-from cocli.application.deployment_service import DeploymentService
-from cocli.application.company_service import get_company_details_for_view
-from cocli.application.event_service import EventService
-from cocli.application.meeting_service import MeetingService
-from cocli.application.email_service import EmailService
-from cocli.application.web_service import WebService
 from cocli.application.task_service import TaskService
-from cocli.application.index_service import IndexService
+from cocli.application.web_service import WebService
+from cocli.application.worker_service import WorkerService
+from cocli.core.config import get_campaign
 from cocli.core.secrets import get_secret_provider
 from cocli.models.search import SearchResult
-from cocli.core.config import get_campaign
 
 from .protocols import (
-    SearchProvider,
-    CompanyServiceProvider,
-    TemplateCountsProvider,
-    CampaignServiceProvider,
-    WorkerServiceProvider,
-    ReportingServiceProvider,
-    AuditServiceProvider,
+    AuditClusterServiceProvider,
     AuditCodebaseServiceProvider,
     AuditQueueServiceProvider,
-    AuditClusterServiceProvider,
+    AuditServiceProvider,
+    CampaignServiceProvider,
+    CompanyServiceProvider,
     DataSyncServiceProvider,
     DeploymentServiceProvider,
-    OperationServiceProvider,
     EventServiceProvider,
-    SecretServiceProvider,
-    MeetingServiceProvider,
-    WebServiceProvider,
     IndexServiceProvider,
+    MeetingServiceProvider,
+    OperationServiceProvider,
+    ReportingServiceProvider,
+    SearchProvider,
+    SecretServiceProvider,
     TaskServiceProvider,
+    TemplateCountsProvider,
+    WebServiceProvider,
+    WorkerServiceProvider,
 )
 
 logger = logging.getLogger(__name__)

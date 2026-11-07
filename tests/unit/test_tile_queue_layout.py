@@ -6,13 +6,14 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from stations.segments import collect_phases, collect_shard
+
 from cocli.core.queue.filesystem import FilesystemTileQueue
 from cocli.station_defs.campaigns.queues import (
     MAP_TILE_PENDING_LAYOUT,
     MAP_TILE_QUEUE_STATION,
     station_for_queue,
 )
-from stations.segments import collect_phases, collect_shard
 
 
 def test_map_tile_station_phases_and_no_shard() -> None:

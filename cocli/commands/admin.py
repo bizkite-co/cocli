@@ -1,10 +1,11 @@
-import typer
 import os
 from pathlib import Path
+
+import typer
 from rich.console import Console
 from rich.prompt import Confirm
-from cocli.core.environment import get_environment, Environment
 
+from cocli.core.environment import Environment, get_environment
 from cocli.services.sync_service import SyncService
 
 app = typer.Typer(help="Administrative commands for system management.", no_args_is_help=True)
@@ -117,7 +118,10 @@ def refresh_dev(
                     if c_dir.is_dir() and (c_dir / "config.toml").exists():
                         campaign_name = c_dir.name
                         console.print(f"  Refilling S3 for campaign: {campaign_name}...")
-                        from cocli.core.reporting import get_data_bucket_name, load_campaign_config
+                        from cocli.core.reporting import (
+                            get_data_bucket_name,
+                            load_campaign_config,
+                        )
                         config = load_campaign_config(campaign_name)
                         bucket = get_data_bucket_name(config, campaign_name)
                         

@@ -1,10 +1,12 @@
 
+import logging
 import subprocess
+from datetime import datetime
+
 import httpx
 import typer
 from rich.console import Console
-from datetime import datetime
-import logging
+
 from cocli.core.config import get_enrichment_service_url
 
 logger = logging.getLogger(__name__)

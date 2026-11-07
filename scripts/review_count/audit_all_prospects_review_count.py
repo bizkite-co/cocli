@@ -1,6 +1,7 @@
 import re
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
+
 from cocli.core.config import get_campaign
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
 
 campaign = get_campaign() or "roadmap"
 manager = ProspectsIndexManager(campaign)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import sys
@@ -13,8 +14,8 @@ from rich.progress import track
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.logging_config import setup_file_logging
-from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.paths import paths
+from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 
 app = typer.Typer()
 console = Console()

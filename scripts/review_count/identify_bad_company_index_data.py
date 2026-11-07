@@ -1,7 +1,8 @@
-from cocli.utils.usv_utils import USVReader, USVWriter
+import re
+
 from cocli.core.paths import paths
 from cocli.models.companies.company import Company
-import re
+from cocli.utils.usv_utils import USVReader, USVWriter
 
 campaign_name = "roadmap"
 

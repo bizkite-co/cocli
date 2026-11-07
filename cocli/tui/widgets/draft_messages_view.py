@@ -32,20 +32,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from ..app import CocliApp
-    from cocli.models.campaigns.queues.follow_up import FollowUpTask
     from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+    from cocli.models.campaigns.queues.follow_up import FollowUpTask
+
+    from ..app import CocliApp
 
 from textual import events, on
 from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import ListView
 
-from .master_detail import MasterDetailView
 from .follow_up_queue_view import FollowUpQueueListItem, FollowUpQueuePreview
+from .master_detail import MasterDetailView
 from .target_batches_view import PendingBatchListItem, PendingBatchPreview
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,9 @@ class DraftMessagesView(MasterDetailView):
 
     def refresh_drafts(self) -> None:
         from cocli.application.follow_up_service import FollowUpService
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -131,11 +134,13 @@ class DraftMessagesView(MasterDetailView):
             self.follow_up_preview.display = True
             self.batch_preview.display = False
 
-    def _update_batch_preview(self, entry: "PendingBatchEntry") -> None:
+    def _update_batch_preview(self, entry: PendingBatchEntry) -> None:
         """Mirrors TargetBatchesView._update_entry_preview exactly (same
         rendered-HTML-vs-raw-markdown logic, same terminal-width-aware
         render)."""
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
         from cocli.utils.terminal_preview import render_html_for_terminal
 
         app = cast("CocliApp", self.app)
@@ -195,13 +200,7 @@ class DraftMessagesView(MasterDetailView):
     # ------------------------------------------------------------------
 
     def on_key(self, event: events.Key) -> None:
-        if event.key in ("G", "shift+g") or event.character == "G":
-            if self.draft_list.children:
-                self.draft_list.index = len(self.draft_list.children) - 1
-                self.draft_list.scroll_end(animate=False)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "end":
+        if event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
             if self.draft_list.children:
                 self.draft_list.index = len(self.draft_list.children) - 1
                 self.draft_list.scroll_end(animate=False)
@@ -285,7 +284,9 @@ class DraftMessagesView(MasterDetailView):
         if not isinstance(item, PendingBatchListItem):
             self.app.notify(_NOT_APPLICABLE_HINTS["open"], severity="warning")
             return
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
         from cocli.utils.open_url import open_url
 
         entry = item.entry
@@ -323,7 +324,7 @@ class DraftMessagesView(MasterDetailView):
     # Workers - bodies adapted from FollowUpQueueView / TargetBatchesView
     # ------------------------------------------------------------------
 
-    async def _prepare_single_flow(self, task: "FollowUpTask") -> None:
+    async def _prepare_single_flow(self, task: FollowUpTask) -> None:
         from cocli.application.follow_up_service import FollowUpService
 
         app = cast("CocliApp", self.app)
@@ -364,10 +365,13 @@ class DraftMessagesView(MasterDetailView):
             )
         self.refresh_drafts()
 
-    async def _edit_and_prepare_flow(self, task: "FollowUpTask") -> None:
-        from .edit_pending_entry_modal import EditPendingEntryModal
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    async def _edit_and_prepare_flow(self, task: FollowUpTask) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        from .edit_pending_entry_modal import EditPendingEntryModal
 
         if task.format != "email":
             self.app.notify(
@@ -414,7 +418,7 @@ class DraftMessagesView(MasterDetailView):
             return
         edited_subject, edited_body = result
 
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         entry = PendingBatchEntry(
@@ -446,7 +450,7 @@ class DraftMessagesView(MasterDetailView):
         self.app.notify(f"Saved edited draft for {task.company_slug}")
         self.refresh_drafts()
 
-    async def _delete_task_flow(self, task: "FollowUpTask") -> None:
+    async def _delete_task_flow(self, task: FollowUpTask) -> None:
         from .confirm_screen import ConfirmScreen
 
         confirmed = await self.app.push_screen_wait(
@@ -465,9 +469,12 @@ class DraftMessagesView(MasterDetailView):
         self.app.notify(f"Deleted follow-up for {task.company_slug}")
         self.refresh_drafts()
 
-    async def _edit_entry_flow(self, entry: "PendingBatchEntry") -> None:
+    async def _edit_entry_flow(self, entry: PendingBatchEntry) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .edit_pending_entry_modal import EditPendingEntryModal
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -483,8 +490,11 @@ class DraftMessagesView(MasterDetailView):
         self.refresh_drafts()
 
     async def _send_batch_flow(self, batch_id: str) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .confirm_screen import ConfirmScreen
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -520,8 +530,11 @@ class DraftMessagesView(MasterDetailView):
         self.refresh_drafts()
 
     async def _send_all_batches_flow(self) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .confirm_screen import ConfirmScreen
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -568,8 +581,11 @@ class DraftMessagesView(MasterDetailView):
         self.refresh_drafts()
 
     async def _discard_batch_flow(self, batch_id: str) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .confirm_screen import ConfirmScreen
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         confirmed = await self.app.push_screen_wait(
             ConfirmScreen(f"Discard batch {batch_id} without sending?")
@@ -585,8 +601,11 @@ class DraftMessagesView(MasterDetailView):
         self.refresh_drafts()
 
     async def _new_batch_flow(self) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .new_batch_modal import NewBatchModal
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name

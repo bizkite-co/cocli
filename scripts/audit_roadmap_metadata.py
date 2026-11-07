@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from cocli.utils.usv_utils import USVDictReader
+
 
 def audit_sample(sample_dir: Path):
     print(f"Auditing metadata for {sample_dir}")

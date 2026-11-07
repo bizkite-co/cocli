@@ -1,6 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import duckdb
 import logging
+
+import duckdb
+
 from cocli.core.paths import paths
 from cocli.utils.duckdb_utils import load_usv_to_duckdb
 
@@ -37,8 +39,7 @@ def create_batch(campaign_name: str, limit: int = 200) -> None:
         
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
-            for r in results:
-                f.write(f"{r[0]}|{r[1]}|{r[2]}\n")
+            f.writelines(f"{r[0]}|{r[1]}|{r[2]}\n" for r in results)
                 
         logger.info(f"Successfully created recovery batch: {output_path}")
         logger.info(f"Found {len(results)} hollow prospects.")

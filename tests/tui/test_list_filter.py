@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from textual.widgets import Label, ListView
 
@@ -13,7 +15,6 @@ from cocli.tui.widgets.inputs import CocliSearchInput
 from cocli.tui.widgets.list_filter import ListFilterState, applied_header
 from cocli.tui.widgets.person_list import PersonList
 from tests.tui.test_person_list import PersonListTestApp
-from unittest.mock import MagicMock
 
 
 def _header_text(label: Label) -> str:

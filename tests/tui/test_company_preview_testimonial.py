@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 from cocli.models.companies.company import Company
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_preview import CompanyPreview

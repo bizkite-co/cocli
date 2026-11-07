@@ -1,16 +1,16 @@
-import os
-import sys
-import shutil
-import logging
 import argparse
+import logging
+import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.paths import paths
 from cocli.core.config import load_campaign_config
+from cocli.core.paths import paths
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)

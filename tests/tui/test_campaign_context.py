@@ -1,7 +1,8 @@
 import pytest
 from textual.app import App
-from cocli.application.services import ServiceContainer
 from textual.message import Message
+
+from cocli.application.services import ServiceContainer
 
 
 class MockCampaignMessage(Message):
@@ -33,7 +34,6 @@ async def test_campaign_context_does_not_leak_on_highlight(mocker):
 
     # If we trigger handle_campaign_highlight, it should NOT call set_campaign()
     # unless it's a 'Selected' event.
-    pass
 
 
 @pytest.mark.asyncio

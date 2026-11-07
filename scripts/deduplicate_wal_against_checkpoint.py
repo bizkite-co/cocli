@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.constants import UNIT_SEP
 
+
 def deduplicate_wal(execute: bool = False) -> None:
     index_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects")
     checkpoint_path = index_dir / "prospects.checkpoint.usv"

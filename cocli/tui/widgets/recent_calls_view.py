@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from ..app import CocliApp
     from cocli.models.companies.meeting import CompanyCall
+
+    from ..app import CocliApp
 
 from textual import events, on, work
 from textual.binding import Binding
@@ -18,7 +19,7 @@ from .master_detail import MasterDetailView
 
 
 class RecentCallListItem(ListItem):
-    def __init__(self, call: "CompanyCall") -> None:
+    def __init__(self, call: CompanyCall) -> None:
         super().__init__()
         self.call = call
 
@@ -43,7 +44,7 @@ class RecentCallPreview(VerticalScroll):
         )
         yield Static("", id="recent-call-preview-body")
 
-    def update_preview(self, call: "CompanyCall | None") -> None:
+    def update_preview(self, call: CompanyCall | None) -> None:
         empty = self.query_one("#recent-call-preview-empty", Label)
         body = self.query_one("#recent-call-preview-body", Static)
         if call is None:
@@ -136,13 +137,7 @@ class RecentCallsView(MasterDetailView):
             self.call_preview.update_preview(item.call)
 
     def on_key(self, event: events.Key) -> None:
-        if event.key in ("G", "shift+g") or event.character == "G":
-            if self.call_list.children:
-                self.call_list.index = len(self.call_list.children) - 1
-                self.call_list.scroll_end(animate=False)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "end":
+        if event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
             if self.call_list.children:
                 self.call_list.index = len(self.call_list.children) - 1
                 self.call_list.scroll_end(animate=False)

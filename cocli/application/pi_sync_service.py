@@ -11,9 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from cocli.core.config import get_campaign
+from cocli.core.paths import QueuePaths, paths
 from cocli.services.cluster_service import ClusterService
-from cocli.core.paths import paths, QueuePaths
-
 
 logger = logging.getLogger(__name__)
 

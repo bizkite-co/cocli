@@ -1,7 +1,8 @@
-import os
-import yaml
-import simplekml # type: ignore
 import logging
+import os
+
+import simplekml  # type: ignore
+import yaml
 
 logger = logging.getLogger(__name__)
 

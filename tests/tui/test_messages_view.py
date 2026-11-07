@@ -5,19 +5,19 @@ not a fresh re-render)."""
 from __future__ import annotations
 
 import pytest
+from textual.widgets import Label, ListView, Static
 
-from cocli.tui.app import CocliApp
 from cocli.application.services import ServiceContainer
-from cocli.tui.widgets.messages_view import MessagesView
+from cocli.tui.app import CocliApp
 from cocli.tui.widgets.draft_messages_view import DraftMessagesView
 from cocli.tui.widgets.follow_up_queue_view import FollowUpQueueView
+from cocli.tui.widgets.messages_view import MessagesView
 from cocli.tui.widgets.recent_calls_view import RecentCallListItem, RecentCallsView
-from cocli.tui.widgets.recent_emails_view import RecentEmailsView, RecentEmailListItem
+from cocli.tui.widgets.recent_emails_view import RecentEmailListItem, RecentEmailsView
 from cocli.tui.widgets.recent_messages_view import RecentMessagesView
+from cocli.tui.widgets.send_log_view import SendLogListItem, SendLogView
 from cocli.tui.widgets.target_batches_view import TargetBatchesView
-from cocli.tui.widgets.send_log_view import SendLogView, SendLogListItem
 from cocli.tui.widgets.unsubscribe_rate_view import UnsubscribeRateView
-from textual.widgets import ListView, Label, Static
 
 CAMPAIGN = "test/default"
 
@@ -139,7 +139,9 @@ async def test_draft_messages_s_on_a_follow_up_row_is_a_noop(mock_cocli_env, moc
     from datetime import UTC, datetime, timedelta
 
     from cocli.application.follow_up_service import FollowUpService
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     FollowUpService(CAMPAIGN).add_follow_up(
         company_slug="acme-financial",
@@ -166,7 +168,9 @@ async def test_draft_messages_s_on_a_follow_up_row_is_a_noop(mock_cocli_env, moc
 async def test_draft_messages_s_sends_a_selected_batch_row(mock_cocli_env, mocker) -> None:
     """'s' on a batch row still actually sends it - the merge must not
     have lost this capability."""
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     _write_pending_batch("batch-1", slug="acme-financial", recipient="bob@acme.test")
 
@@ -207,7 +211,9 @@ async def test_draft_messages_d_dispatches_delete_vs_discard_by_row_type(
     from datetime import UTC, datetime, timedelta
 
     from cocli.application.follow_up_service import FollowUpService
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     FollowUpService(CAMPAIGN).add_follow_up(
         company_slug="acme-financial",
@@ -541,6 +547,7 @@ async def test_target_batches_shows_full_rendered_body_on_selection(mock_cocli_e
 async def test_follow_up_queue_view_lists_pending_tasks(mock_cocli_env, mocker) -> None:
     """FollowUpQueueView should list items from queues/follow-up/pending/."""
     from datetime import UTC, datetime, timedelta
+
     from cocli.application.follow_up_service import FollowUpService
     from cocli.tui.widgets.follow_up_queue_view import FollowUpQueueListItem
 
@@ -591,6 +598,7 @@ async def test_follow_up_queue_view_prepare_due_follow_ups(mock_cocli_env, mocke
 async def test_follow_up_queue_view_prepare_selected_task(mock_cocli_env, mocker) -> None:
     """p key on FollowUpQueueView calls FollowUpService.process_task() for selected item."""
     from datetime import UTC, datetime, timedelta
+
     from cocli.application.follow_up_service import FollowUpService
 
     FollowUpService(CAMPAIGN).add_follow_up(
@@ -621,8 +629,10 @@ async def test_follow_up_queue_view_prepare_selected_task(mock_cocli_env, mocker
 
 @pytest.mark.asyncio
 async def test_send_batch_flow_sends_and_clears_pending(mock_cocli_env, mocker) -> None:
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
     from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     _write_pending_batch("batch-1", slug="acme-financial", recipient="bob@acme.test")
 
@@ -667,8 +677,10 @@ async def test_send_batch_flow_sends_and_clears_pending(mock_cocli_env, mocker) 
 
 @pytest.mark.asyncio
 async def test_send_all_batches_flow_sends_all_pending(mock_cocli_env, mocker) -> None:
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
     from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     _write_pending_batch("batch-1", slug="acme-1", recipient="bob1@acme.test")
     _write_pending_batch("batch-2", slug="acme-2", recipient="bob2@acme.test")
@@ -710,7 +722,9 @@ async def test_send_all_batches_flow_sends_all_pending(mock_cocli_env, mocker) -
 
 @pytest.mark.asyncio
 async def test_discard_batch_removes_without_sending(mock_cocli_env, mocker) -> None:
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     _write_pending_batch("batch-1")
 
@@ -774,8 +788,7 @@ async def test_unsubscribe_rate_shows_computed_rate(mock_cocli_env, mocker) -> N
         for i in range(4)
     ]
     with open(index_dir / "log.usv", "w", encoding="utf-8") as f:
-        for entry in entries:
-            f.write(entry.to_usv())
+        f.writelines(entry.to_usv() for entry in entries)
     ExclusionManager(CAMPAIGN).add_exclusion(
         slug="co-1", domain="co1@test.com", reason="unsubscribe:COMPLAINT"
     )
@@ -797,6 +810,7 @@ async def test_recent_emails_view_shows_inbound_and_outbound_with_content_and_no
     mock_cocli_env, mocker
 ) -> None:
     from datetime import UTC, datetime, timedelta
+
     from cocli.core.paths import paths
     from cocli.models.companies.company import Company
     from cocli.models.companies.email_note import EmailNote
@@ -870,6 +884,7 @@ async def test_recent_calls_view_shows_sms_and_calls_with_no_year(
     mock_cocli_env, mocker
 ) -> None:
     from datetime import UTC, datetime, timedelta
+
     from cocli.core.paths import paths
     from cocli.models.companies.company import Company
     from cocli.models.companies.meeting import Meeting
@@ -963,6 +978,7 @@ async def test_messages_view_drilldown_and_return_from_recent_messages(
     mock_cocli_env, mocker
 ) -> None:
     from datetime import UTC, datetime, timedelta
+
     from cocli.core.paths import paths
     from cocli.models.companies.company import Company
     from cocli.models.companies.email_note import EmailNote

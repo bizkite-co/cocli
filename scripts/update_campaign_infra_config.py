@@ -1,9 +1,12 @@
 from __future__ import annotations
-import typer
-import toml
+
 from typing import Optional
+
+import toml
+import typer
 from rich.console import Console
-from cocli.core.config import get_campaign, load_campaign_config, get_campaigns_dir
+
+from cocli.core.config import get_campaign, get_campaigns_dir, load_campaign_config
 from cocli.core.reporting import get_boto3_session
 
 app = typer.Typer()

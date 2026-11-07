@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
-from textual.widget import Widget
+
 import logging
+from typing import TYPE_CHECKING, Optional
+
+from textual.widget import Widget
 
 if TYPE_CHECKING:
     from .app import CocliApp
@@ -12,7 +14,7 @@ logger = logging.getLogger(__name__)
 class NavigationStateManager:
     """Centralized management for navigation and focus state."""
 
-    def __init__(self, app: "CocliApp") -> None:
+    def __init__(self, app: CocliApp) -> None:
         self.app = app
         self.last_focused_id: Optional[str] = None
 

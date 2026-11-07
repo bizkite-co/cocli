@@ -1,7 +1,8 @@
+import logging
 import os
 from pathlib import Path
+
 from cocli.utils.usv_utils import USVDictReader
-import logging
 
 # Configure logging to be quiet by default
 logging.basicConfig(level=logging.ERROR)

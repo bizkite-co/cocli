@@ -1,8 +1,13 @@
 import shutil
+
 import typer
 from rich.console import Console
 
-from cocli.core.config import get_scraped_data_dir, get_campaign_scraped_data_dir, get_all_campaign_dirs
+from cocli.core.config import (
+    get_all_campaign_dirs,
+    get_campaign_scraped_data_dir,
+    get_scraped_data_dir,
+)
 
 app = typer.Typer()
 console = Console()

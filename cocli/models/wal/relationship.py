@@ -75,7 +75,7 @@ class RelationshipRecord(BaseModel):
         return US.join(parts) + "\n"
 
     @classmethod
-    def from_usv(cls, line: str) -> "RelationshipRecord":
+    def from_usv(cls, line: str) -> RelationshipRecord:
         parts = line.rstrip("\n").split(US)
         if len(parts) != len(_COLUMNS):
             raise ValueError(

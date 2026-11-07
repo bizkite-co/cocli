@@ -1,14 +1,23 @@
 from __future__ import annotations
-import typer
+
 import logging
 from typing import Optional
+
+import typer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 from ...core.config import get_campaign
 from ...core.queue.factory import get_queue_manager
-from ...models.companies.company import Company
 from ...models.campaigns.queues.base import QueueMessage
+from ...models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 console = Console()

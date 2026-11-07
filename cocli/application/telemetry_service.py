@@ -430,7 +430,9 @@ class GoogleTelemetryProvider:
     ) -> bool:
         """Automate Playwright import of GTM JSON manifest into Google Tag Manager container using 1Password credentials."""
         import time
+
         from playwright.sync_api import sync_playwright
+
         from cocli.core.secrets import OnePasswordProvider
 
         op_provider = OnePasswordProvider()
@@ -621,8 +623,8 @@ class GoogleTelemetryProvider:
         an unpublished draft).
         """
         import os
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         # An unscoped `print-access-token` returns whatever scopes the
         # stored ADC/gcloud identity happens to already have - usually

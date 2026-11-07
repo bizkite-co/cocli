@@ -1,11 +1,12 @@
 import logging
 import re
 from typing import Any
+
 from textual import events
-from textual.widgets import Static, Input
-from textual.containers import Vertical, Horizontal
 from textual.app import ComposeResult
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.widgets import Input, Static
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@
 
 ## 1. Architecture Overview
 
-- **Token Management**: `cocli` uses public-client Microsoft OAuth (`cocli/application/mail_oauth.py`) caching tokens in `~/.local/share/cocli/email-tokens/<user>.json`. Supports `offline_access`, `IMAP.AccessAsUser.All`, and `SMTP.Send`.
+- **Token Management**: `cocli` uses public-client Microsoft OAuth (`cocli/application/mail_oauth.py`) caching tokens in `~/.local/share/cocli/email-tokens/<user>.json`. Supports `offline_access`, `IMAP.AccessAsUser.All`, and `SMTP.Send`. Each Microsoft 365 directory needs its own app registration. The Handex / GoDaddy setup, client id, and device-code sign-in are in `~/.local/share/cocli_data/campaigns/handex/infrastructure/m365-send.md`. `cocli email authorize` prints that path.
 - **Senders**:
   - `M365SmtpSender`: Authenticates via standard SMTP (`smtp.office365.com:587`, STARTTLS) with `AUTH XOAUTH2` using cached OAuth tokens, or standard login passwords.
   - `M365GraphSender`: Sends via Microsoft Graph API (`POST /v1.0/users/{user}/sendMail`).

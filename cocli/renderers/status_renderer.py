@@ -1,10 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
+
+from datetime import UTC, datetime
 from typing import Any, Optional
-from rich.table import Table
+
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
-from datetime import datetime, UTC
+
 
 def render_environment_panel(status_data: dict[str, Any]) -> Panel:
     """Renders the standard environment status panel."""

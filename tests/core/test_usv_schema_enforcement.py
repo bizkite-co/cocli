@@ -1,6 +1,8 @@
-import pytest
 import json
 from pathlib import Path
+
+import pytest
+
 from cocli.models.base import BaseUsvModel, SchemaConflictError
 
 

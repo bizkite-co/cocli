@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from cocli.application.icp_evaluator import IcpEvaluator
 from cocli.application.protocols import IcpEvaluatorProtocol
-from cocli.models.campaigns.campaign import IcpSettings, IcpQualityWeights
+from cocli.models.campaigns.campaign import IcpQualityWeights, IcpSettings
 
 
 def test_icp_evaluator_protocol_compliance() -> None:

@@ -1,26 +1,36 @@
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING, cast, Optional
-import logging
+
 import asyncio
+import logging
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+from pydantic import ValidationError
+from textual import events, on, work
 from textual.app import ComposeResult
-from textual.containers import Container, VerticalScroll, Horizontal, Vertical
-from textual.widgets import Label, ListView, ListItem, Static, Input, LoadingIndicator, Checkbox
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.widget import Widget
-from textual.binding import Binding
-from textual import on, work, events
-
-from .campaign_selection import CampaignSelection
-from .campaign_detail import CampaignDetail
-from .status_view import StatusView
-from .cluster_view import ClusterView
-from .queues_view import QueueSelection, QueueDetail
-from .indexes_view import IndexSelection, IndexDetail
-from .log_viewer import LogViewerModal, capture_logs
-from pydantic import ValidationError
+from textual.widgets import (
+    Checkbox,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    LoadingIndicator,
+    Static,
+)
 
 from cocli.models.campaigns.campaign import Campaign
+
+from .campaign_detail import CampaignDetail
+from .campaign_selection import CampaignSelection
+from .cluster_view import ClusterView
+from .indexes_view import IndexDetail, IndexSelection
+from .log_viewer import LogViewerModal, capture_logs
+from .queues_view import QueueDetail, QueueSelection
+from .status_view import StatusView
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -591,7 +601,6 @@ class ApplicationView(Container):
                 detail.update_detail(queue_id)
             except Exception as e:
                 logger.error(f"Error updating queue detail: {e}")
-                pass
 
     @on(ListView.Selected, "#sidebar_queues")
     def handle_queue_selection(self, event: ListView.Selected) -> None:

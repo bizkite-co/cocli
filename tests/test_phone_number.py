@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 import pytest
+
 from cocli.models.phone import PhoneNumber, format_us_phone
+
 
 def test_parse_nanp_basic():
     p = PhoneNumber.model_validate("5125551212")
@@ -90,6 +93,7 @@ def test_invalid_phone():
 def test_null_phone():
     # Test if it can be used with Optional
     from typing import Optional
+
     from pydantic import BaseModel
 
     class TestModel(BaseModel):

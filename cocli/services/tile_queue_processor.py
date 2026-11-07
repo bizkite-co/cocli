@@ -23,12 +23,18 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 
-from ..core.queue.factory import get_queue_manager
 from ..core.paths import paths
-from ..models.campaigns.tile import TileRecord as TileQueueRecord
+from ..core.queue.factory import get_queue_manager
 from ..models.campaigns.queues.gm_list import ScrapeTask
+from ..models.campaigns.tile import TileRecord as TileQueueRecord
 
 logger = logging.getLogger(__name__)
 

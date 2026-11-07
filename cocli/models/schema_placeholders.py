@@ -1,5 +1,7 @@
 import re
+
 from pydantic import BaseModel, Field
+
 
 class SchemaPlaceholders(BaseModel):
     CAMPAIGN_NAME: str = Field(..., min_length=2, pattern=r"^[a-z0-9-]+$")

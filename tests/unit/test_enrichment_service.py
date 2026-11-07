@@ -1,8 +1,11 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
-from cocli.services.enrichment_service.main import app
+
 from cocli.models.companies.website import Website
+from cocli.services.enrichment_service.main import app
+
 
 @pytest.fixture
 def client():

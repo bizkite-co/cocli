@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 

@@ -1,15 +1,18 @@
 from __future__ import annotations
+
 import csv
-from pathlib import Path
-from typing import Optional, Any, Iterable
-from datetime import datetime, UTC, timezone
 import json
 import logging
+from collections.abc import Iterable
+from datetime import UTC, datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
 
-from cocli.models.domain import Domain
 from cocli.models.companies.website import Website
-from .config import get_cocli_app_data_dir
+from cocli.models.domain import Domain
+
 from ..utils.usv_utils import USVDictReader, USVDictWriter
+from .config import get_cocli_app_data_dir
 
 logger = logging.getLogger(__name__)
 

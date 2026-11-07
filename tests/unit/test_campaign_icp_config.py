@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import toml
 from pathlib import Path
+
+import toml
+
 from cocli.models.campaigns.campaign import Campaign, IcpSettings
 
 

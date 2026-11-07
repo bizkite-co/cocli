@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from stations.segments import collect_shard
+
 from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.core.email_index_manager import EmailIndexManager, filter_safe_usv_paths
 from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
@@ -25,7 +27,6 @@ from cocli.station_defs.path_helpers import (
     email_shard_file_rel,
     email_shard_id,
 )
-from stations.segments import collect_shard
 
 
 def _legacy_domain_hash(domain: str) -> str:

@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from cocli.application.personalized_outreach_service import (
-    ProspectContactMatch,
     PersonalizedOutreachService,
+    ProspectContactMatch,
     extract_first_name,
 )
 from cocli.models.companies.company import Company
@@ -1361,8 +1361,7 @@ def test_compute_unsubscribe_rate(tmp_path: Any, monkeypatch: Any) -> None:
         )
     ]
     with open(index_dir / "log.usv", "w", encoding="utf-8") as f:
-        for entry in entries:
-            f.write(entry.to_usv())
+        f.writelines(entry.to_usv() for entry in entries)
 
     ExclusionManager("roadmap").add_exclusion(
         slug="co-1", domain="co1@test.com", reason="unsubscribe:COMPLAINT"

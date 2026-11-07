@@ -1,10 +1,13 @@
 from __future__ import annotations
+
+from typing import ClassVar, Optional
+
 from pydantic import Field
-from typing import Optional, ClassVar
+
 from ...base import BaseUsvModel, ResourcePathPolicy
-from ...phone import OptionalPhone
-from ...company_name import OptionalCompanyName
 from ...company_address import OptionalCompanyAddress
+from ...company_name import OptionalCompanyName
+from ...phone import OptionalPhone
 from ..queues.gm_details import GmItemTask
 
 

@@ -1,25 +1,28 @@
 from __future__ import annotations
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+
 import logging
 import os
-from playwright.async_api import async_playwright
-import toml 
-from typing import Optional, Any, cast
+import socket
 from contextlib import asynccontextmanager
+from typing import Any, Optional, cast
+
+import httpx
+import toml
+from fastapi import FastAPI, HTTPException
+from playwright.async_api import async_playwright
+from pydantic import BaseModel
+
+from cocli.core.config import get_campaign_dir
 
 # Adjust imports to be absolute from the project root
 from cocli.core.enrichment import enrich_company_website
-from cocli.models.companies.website import Website
-from cocli.models.companies.company import Company
-from cocli.models.company_name import CompanyName
-from cocli.models.campaigns.campaign import Campaign 
-from cocli.core.config import get_campaign_dir
 from cocli.core.exceptions import EnrichmentError, NavigationError
 from cocli.core.text_utils import slugify
+from cocli.models.campaigns.campaign import Campaign
+from cocli.models.companies.company import Company
+from cocli.models.companies.website import Website
+from cocli.models.company_name import CompanyName
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
-import socket
-import httpx
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -189,8 +192,8 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
 @app.get("/health")
 async def health_check() -> dict[str, Any]:
     if os.getenv("COCLI_RUNNING_IN_FARGATE") == "true":
-        import time
         import json
+        import time
         hb_path = "/tmp/cocli_heartbeat.json"
         if not os.path.exists(hb_path):
             raise HTTPException(status_code=503, detail="Worker orchestrator has not started yet.")

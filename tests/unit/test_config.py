@@ -1,9 +1,15 @@
-import pytest
 import os
+
+import pytest
 import tomli_w
+
 from cocli.core.config import (
-    load_campaign_config, get_campaign, set_campaign, is_campaign_overridden
+    get_campaign,
+    is_campaign_overridden,
+    load_campaign_config,
+    set_campaign,
 )
+
 
 @pytest.fixture
 def hierarchical_env(mock_cocli_env):

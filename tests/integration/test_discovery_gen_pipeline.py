@@ -8,9 +8,9 @@ These are functional tests focused on stage behavior, not full campaign integrat
 For end-to-end tests with real campaigns, run: cocli dev run-discovery-gen-stages
 """
 
-from cocli.models.campaigns.tiles import TileRecord
-from cocli.models.campaigns.mission import MissionTask
 from cocli.core.geo_types import LatScale1, LonScale1
+from cocli.models.campaigns.mission import MissionTask
+from cocli.models.campaigns.tiles import TileRecord
 
 
 class TestTileRecord:

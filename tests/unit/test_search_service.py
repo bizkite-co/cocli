@@ -2,8 +2,8 @@ import pytest
 from slugify import slugify
 
 from cocli.application.search_service import get_fuzzy_search_results
-from cocli.core.paths import paths
 from cocli.core.cache import build_cache
+from cocli.core.paths import paths
 
 
 @pytest.fixture
@@ -47,8 +47,8 @@ def test_get_fuzzy_search_results_basic(populated_env):
 
 def test_quoted_checkpoint_name_stripped_in_search(mock_cocli_env, mocker):
     """All Leads prefers checkpoint name over cache; quote policy must apply."""
+    from cocli.application import search_service
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-    import cocli.application.search_service as search_service
 
     search_service._con = None
     search_service._last_campaign = None

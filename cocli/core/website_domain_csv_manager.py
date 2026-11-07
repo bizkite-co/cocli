@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional
 
+from ..models.campaigns.campaign import Campaign
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from .domain_index_manager import DomainIndexManager
-from ..models.campaigns.campaign import Campaign
 
 CURRENT_SCRAPER_VERSION = 6
 

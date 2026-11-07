@@ -1,7 +1,9 @@
 from pathlib import Path
+
+from rich.console import Console
+
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.models.companies.company import Company
-from rich.console import Console
 
 console = Console()
 

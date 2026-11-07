@@ -1,12 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
 """Companies-tab TEMPLATES must query Frictionless indexes via DuckDB."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 
-import cocli.application.search_service as search_service
+from cocli.application import search_service
 from cocli.application.search_service import (
     get_fuzzy_search_results,
     get_template_counts,
@@ -16,7 +17,6 @@ from cocli.core.paths import paths
 from cocli.models.campaigns.indexes.email import EmailEntry
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.search import SearchResult
-
 
 CAMPAIGN = "test/templates"
 
@@ -141,8 +141,7 @@ def templates_env(
         ),
     ]
     with open(prospect_idx.checkpoint, "w", encoding="utf-8") as f:
-        for p in prospects:
-            f.write(p.to_usv())
+        f.writelines(p.to_usv() for p in prospects)
     GoogleMapsProspect.write_datapackage(CAMPAIGN)
 
     emails_root = campaign_node.index("emails").path

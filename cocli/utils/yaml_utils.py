@@ -1,10 +1,11 @@
-import yaml
 import re
 from typing import Any
 
+import yaml
+
+
 class ResilientLoader(yaml.SafeLoader):
     """A YAML loader that handles legacy cocli Python object tags."""
-    pass
 
 def construct_python_object(loader: yaml.SafeLoader, suffix: str, node: yaml.Node) -> Any:
     """Handles !!python/object/new:... tags by extracting the first element if it's a list."""

@@ -1,35 +1,36 @@
 from __future__ import annotations
-import os
-import logging
-import httpx
-import yaml
-import socket
+
 import asyncio
 import csv
+import logging
+import os
+import socket
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Optional, Iterator
-from typing_extensions import Annotated
-from rich.console import Console
-import typer
-import boto3
-from pydantic import ValidationError
+from typing import Annotated, Optional
 
-from cocli.core.paths import paths
+import boto3
+import httpx
+import typer
+import yaml
+from playwright.async_api import Browser, async_playwright
+from pydantic import ValidationError
+from rich.console import Console
+
+from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.config import (
-    get_campaign, 
+    get_campaign,
     get_enrichment_service_url,
 )
+from cocli.core.enrichment import enrich_company_website
+from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
+from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
+from cocli.core.text_utils import slugify
 from cocli.models.campaigns.queues.base import QueueMessage
 from cocli.models.companies.company import Company
 from cocli.models.companies.website import Website
 from cocli.models.hubspot import HubspotContactCsv
-from cocli.compilers.website_compiler import WebsiteCompiler
-from cocli.core.enrichment import enrich_company_website
-from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
-from cocli.core.text_utils import slugify
-
-from playwright.async_api import async_playwright, Browser
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -496,7 +497,7 @@ def tag_prospects_from_csv() -> None:
             tags = []
             if tags_path.exists():
                 with open(tags_path, 'r') as tags_file:
-                    tags = [line.strip() for line in tags_file.readlines()]
+                    tags = [line.strip() for line in tags_file]
             
             if campaign_name not in tags:
                 tags.append(campaign_name)

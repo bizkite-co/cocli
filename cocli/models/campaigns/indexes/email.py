@@ -1,10 +1,14 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from typing import Optional, Union, Any
+
+from datetime import UTC, datetime
+from typing import Any, Optional, Union
+
 from pydantic import Field, field_validator
-from datetime import datetime, UTC
-from ...email_address import EmailAddress
+
 from ...base import BaseUsvModel
+from ...email_address import EmailAddress
+
 
 class EmailEntry(BaseUsvModel):
     """

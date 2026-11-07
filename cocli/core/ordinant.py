@@ -1,7 +1,7 @@
-from enum import Enum
-from typing import Protocol, Literal, runtime_checkable
-from pathlib import Path
 import hashlib
+from enum import Enum
+from pathlib import Path
+from typing import Literal, Protocol, runtime_checkable
 
 # --- The Known Universe (Identities) ---
 

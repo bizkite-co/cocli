@@ -1,6 +1,9 @@
-from cocli.core.scrape_index import ScrapeIndex, _calculate_overlap_area
 from pathlib import Path
+
 import pytest
+
+from cocli.core.scrape_index import ScrapeIndex, _calculate_overlap_area
+
 
 @pytest.fixture
 def temp_scrape_index_dir(tmp_path: Path, mocker):

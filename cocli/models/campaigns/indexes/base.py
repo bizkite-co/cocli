@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Optional, ClassVar
-from ...base import BaseUsvModel
-from ....core.paths import paths
+from typing import Any, ClassVar, Optional
+
 from ....core.ordinant import IndexName, get_shard
+from ....core.paths import paths
+from ...base import BaseUsvModel
+
 
 class BaseIndexModel(BaseUsvModel):
     """

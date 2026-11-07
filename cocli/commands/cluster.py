@@ -1,15 +1,17 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import typer
+
 import asyncio
 import os
 from typing import Optional
+
+import typer
 from rich.console import Console
 from rich.table import Table
 
-from ..services.cluster_service import ClusterService
 from ..core.config import get_campaign
 from ..core.logging_config import setup_file_logging
+from ..services.cluster_service import ClusterService
 
 console = Console()
 app = typer.Typer(name="cluster", help="Manage the Raspberry Pi worker cluster.", no_args_is_help=True)
@@ -106,8 +108,9 @@ def sync_clocks(
     """
     Synchronizes clocks across the cluster using the Hub as the authority.
     """
-    from ..services.cluster_service import ClusterService
     import subprocess
+
+    from ..services.cluster_service import ClusterService
     
     # 1. Get current time from authority
     try:

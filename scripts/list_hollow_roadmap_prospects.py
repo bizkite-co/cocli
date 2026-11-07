@@ -1,15 +1,16 @@
-import sys
-import os
 import csv
+import os
+import sys
 from io import StringIO
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from cocli.utils.usv_utils import USVDictReader
 
+
 def list_hollow_prospects(campaign_name: str, bucket: str, prefix: str, output_path: str) -> None:
-    from cocli.core.reporting import get_boto3_session
     from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session
     
     config = load_campaign_config(campaign_name)
     session = get_boto3_session(config)
@@ -67,6 +68,7 @@ def list_hollow_prospects(campaign_name: str, bucket: str, prefix: str, output_p
 
 if __name__ == "__main__":
     import sys
+
     from cocli.core.config import load_campaign_config
     CAMPAIGN = sys.argv[1] if len(sys.argv) > 1 else "roadmap"
     config = load_campaign_config(CAMPAIGN)

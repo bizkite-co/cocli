@@ -8,12 +8,18 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 
+from cocli.application.follow_up_service import FollowUpService
 from cocli.core.paths import paths
 from cocli.models.companies.company import Company
 from cocli.models.people.person import Person
-from cocli.application.follow_up_service import FollowUpService
 
 logger = logging.getLogger("enqueue_testimonials_follow_up")
 

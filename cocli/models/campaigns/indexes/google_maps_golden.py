@@ -1,12 +1,16 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from typing import ClassVar, Optional
+
 from pathlib import Path
+from typing import ClassVar, Optional
+
 from pydantic import Field
-from ...phone import OptionalPhone
-from ...company_name import OptionalCompanyName
+
 from ...company_address import OptionalCompanyAddress
+from ...company_name import OptionalCompanyName
+from ...phone import OptionalPhone
 from .base import BaseIndexModel
+
 
 class GoogleMapsGoldenItem(BaseIndexModel):
     """

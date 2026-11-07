@@ -1,8 +1,10 @@
 from rich.progress import track
+
 from cocli.core.config import get_cocli_base_dir
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
+
 
 def relink(campaign: str = "turboship"):
     manager = ProspectsIndexManager(campaign)

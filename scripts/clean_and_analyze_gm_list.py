@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from cocli.utils.usv_utils import normalize_usv_record_separators
 
 results_dir = Path(

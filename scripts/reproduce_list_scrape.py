@@ -1,14 +1,16 @@
 import asyncio
 import os
 import sys
+
 from playwright.async_api import async_playwright
 
 # Ensure we can import from cocli
 sys.path.append(os.getcwd())
 
-from cocli.scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
 from cocli.application.processors.gm_list import GmListProcessor
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
+from cocli.scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
+
 
 async def reproduce_list_scrape() -> None:
     campaign = "roadmap"

@@ -1,6 +1,9 @@
 from unittest.mock import AsyncMock
+
 import pytest
+
 from cocli.tui.app import CocliApp
+
 
 @pytest.mark.asyncio
 async def test_cluster_dashboard_navigation(mock_cocli_env, mocker):

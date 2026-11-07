@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -135,8 +135,8 @@ def ingest_sms_message(
         local_tz = UTC
 
     try:
-        from cocli.core.config import get_campaign
         from cocli.application.meeting_service import MeetingService
+        from cocli.core.config import get_campaign
         from cocli.models.companies.meeting import CompanyCall
 
         camp = campaign_name or get_campaign() or "default"

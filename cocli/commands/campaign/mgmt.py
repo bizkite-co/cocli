@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 from rich.console import Console
@@ -17,7 +17,6 @@ from rich.progress import (
     TextColumn,
 )
 from rich.table import Table
-from typing_extensions import Annotated
 
 from ...application.campaign_service import CampaignService
 from ...core.campaign_workflow import CampaignWorkflow

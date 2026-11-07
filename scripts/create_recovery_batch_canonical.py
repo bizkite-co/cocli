@@ -1,5 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
+
 from cocli.core.paths import paths
 from cocli.utils.usv_utils import USVReader
 
@@ -40,8 +41,7 @@ def create_canonical_batch(campaign_name: str, limit: int = 50) -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        for t in targets:
-            f.write(f"{t}\n")
+        f.writelines(f"{t}\n" for t in targets)
             
     logger.info(f"Successfully created canonical recovery batch: {output_path}")
     logger.info(f"Found {len(targets)} targets with canonical URLs.")

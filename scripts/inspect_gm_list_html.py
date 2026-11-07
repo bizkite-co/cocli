@@ -1,6 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-from bs4 import BeautifulSoup
 from pathlib import Path
+
+from bs4 import BeautifulSoup
+
 
 def inspect_html_witnesses(directory: str) -> None:
     root = Path(directory)

@@ -3,8 +3,7 @@ published into the void" gap - subscribed to an existing SNS topic
 without duplicating it."""
 
 import aws_cdk as cdk
-import aws_cdk.assertions as assertions
-
+from aws_cdk import assertions
 from cdk_scraper_deployment.constructs.email_events_queue import CocliEmailEventsQueue
 
 

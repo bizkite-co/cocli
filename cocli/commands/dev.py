@@ -3,15 +3,16 @@ Development utilities for testing and debugging pipeline stages.
 """
 from __future__ import annotations
 
-import typer
 import logging
-from typing import Optional, Annotated, Any
 from pathlib import Path
+from typing import Annotated, Any, Optional
+
+import typer
 from rich.console import Console
 
-from cocli.core.paths import paths
 from cocli.core.config import get_campaign, get_campaign_dir
 from cocli.core.frictionless_validation import validate_stage_outputs
+from cocli.core.paths import paths
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -37,12 +38,12 @@ def validate_usv_against_schema(usv_path: Path, model_class: type[Any]) -> tuple
                     try:
                         model_class.from_usv(line)
                     except Exception as e:
-                        errors.append(f"Line {line_num}: {str(e)}")
+                        errors.append(f"Line {line_num}: {e!s}")
                         if len(errors) > 5:  # Limit error output
                             errors.append("... (truncated)")
                             break
     except Exception as e:
-        return False, 0, [f"Failed to read file: {str(e)}"]
+        return False, 0, [f"Failed to read file: {e!s}"]
 
     return len(errors) == 0, record_count, errors
 
@@ -188,8 +189,8 @@ def run_discovery_gen_stages(
       cocli dev run-discovery-pipeline turboship
     """
     from cocli.commands.campaign.discovery_gen_stages import (
-        generate_tiles,
         expand_phrases,
+        generate_tiles,
         populate_tile_queue,
     )
 

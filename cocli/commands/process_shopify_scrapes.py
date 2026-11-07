@@ -13,7 +13,7 @@ def process_shopify_scrapes(
     """
     Compiles and deduplicates scraped Shopify data from multiple CSV files into a single index file.
     """
-    import pandas as pd # Lazy import
+    import pandas as pd  # Lazy import
     
     shopify_csv_dir = get_scraped_data_dir() / "shopify_csv"
     if not shopify_csv_dir.exists():

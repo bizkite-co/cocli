@@ -1,7 +1,10 @@
 from __future__ import annotations
-import typer
+
 from typing import Optional
+
+import typer
 from rich.console import Console
+
 from cocli.core.config import get_campaign, get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.campaigns.queues.gm_details import GmItemTask

@@ -1,9 +1,11 @@
 from pathlib import Path
-import typer
-from cocli.utils.usv_utils import USVReader, USVWriter
-from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
-from rich.console import Console
+
 import duckdb
+import typer
+from rich.console import Console
+
+from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
+from cocli.utils.usv_utils import USVReader, USVWriter
 
 console = Console()
 
@@ -226,16 +228,17 @@ def run_html_audit(
         Path to the audit results USV file
     """
     import random
+
     from bs4 import BeautifulSoup
 
     from cocli.core.paths import paths
     from cocli.models.campaigns.indexes.gm_list_audit_item import GmListAuditItem
-    from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_list import (
-        extract_rating_reviews_gm_list,
-    )
-    from cocli.scrapers.google.google_maps_parsers.extract_name import extract_name
     from cocli.scrapers.google.google_maps_parsers.extract_gmb_url_coordinates_place_id import (
         extract_gmb_url_coordinates_place_id,
+    )
+    from cocli.scrapers.google.google_maps_parsers.extract_name import extract_name
+    from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_list import (
+        extract_rating_reviews_gm_list,
     )
 
     campaign_paths = paths.campaign(campaign)

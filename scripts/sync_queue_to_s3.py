@@ -1,5 +1,6 @@
-import boto3
 from pathlib import Path
+
+import boto3
 
 TARGET_IDS = [
     "ChIJ---N6Un5a4cR_bKL7SjsQbI",

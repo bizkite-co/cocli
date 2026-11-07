@@ -104,8 +104,7 @@ def mark_discovery_gen_completed(run: ScrapeJobRun, identities: list[str]) -> Sc
     ids_path = _identities_path(run.campaign_name, run.id)
     ids_path.parent.mkdir(parents=True, exist_ok=True)
     with open(ids_path, "w", encoding="utf-8") as f:
-        for identity in unique_sorted:
-            f.write(identity + "\n")
+        f.writelines(identity + "\n" for identity in unique_sorted)
 
     updated = run.model_copy(
         update={

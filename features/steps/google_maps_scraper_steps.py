@@ -1,10 +1,11 @@
 import csv
-import re
-import tempfile
-import shutil # Import shutil for rmtree
-from pathlib import Path
-from behave import given, when, then
 import logging
+import re
+import shutil  # Import shutil for rmtree
+import tempfile
+from pathlib import Path
+
+from behave import given, then, when
 
 from cocli.scrapers.google.google_maps import scrape_google_maps
 from cocli.scrapers.google.google_maps_parser import GOOGLE_MAPS_HEADERS

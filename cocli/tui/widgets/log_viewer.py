@@ -1,11 +1,14 @@
-import sys
-import io
 import contextlib
-from typing import Iterator, Callable
+import io
+import sys
+from collections.abc import Iterator
+from typing import Callable
+
 from textual.app import ComposeResult
-from textual.widgets import Static, Button
 from textual.containers import Container, VerticalScroll
 from textual.screen import ModalScreen
+from textual.widgets import Button, Static
+
 
 class LogCapture(io.StringIO):
     """A StringIO subclass that posts a message whenever data is written."""

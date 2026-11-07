@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from stations.segments import collect_phases, collect_shard
 
 from cocli.core.queue.filesystem import (
     FilesystemEnrichmentQueue,
@@ -24,7 +25,6 @@ from cocli.station_defs.campaigns.queues import (
     GM_LIST_RESULTS_STATION,
     station_for_queue,
 )
-from stations.segments import collect_phases, collect_shard
 
 
 def test_station_for_queue_mapping() -> None:

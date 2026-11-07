@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Optional
-from .models import TilePath
+
 from ..paths import paths
+from .models import TilePath
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +55,6 @@ class ScrapedTilesStore:
         """Rapid sync via rsync for local cluster or aws s3 sync for cloud."""
         # This would integrate with existing sync logic
         # For now, placeholder for the protocol
-        pass
 
     @property
     def wasi_hash(self) -> Optional[str]:
@@ -86,6 +87,7 @@ class ScrapedTilesStore:
         Verifies the directory identity via datapackage.json sentinel.
         """
         import json
+
         from ..ordinant import IndexIdentity
         sentinel_path = self.root / "datapackage.json"
         if not sentinel_path.exists():

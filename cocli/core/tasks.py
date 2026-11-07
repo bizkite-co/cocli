@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Optional
+
 from ..models.tasks import MissionTask, TaskStatus
 
 __all__ = ["TaskIndexManager", "TaskStatus"]
@@ -70,8 +72,7 @@ class TaskIndexManager:
         
         with open(self.index_path, "w", encoding="utf-8") as f:
             # NO HEADER as per datapackage.json
-            for task in active_queue:
-                f.write(task.to_usv())
+            f.writelines(task.to_usv() for task in active_queue)
 
     def sync(self) -> int:
         """

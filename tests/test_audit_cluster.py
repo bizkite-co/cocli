@@ -1,9 +1,9 @@
 from cocli.commands.audit import (
-    _parse_cluster_audit_sections,
-    _node_health_verdict,
-    _log_line_age_seconds,
-    _format_age,
     _aggregate_worker_counts_by_content_type,
+    _format_age,
+    _log_line_age_seconds,
+    _node_health_verdict,
+    _parse_cluster_audit_sections,
 )
 
 

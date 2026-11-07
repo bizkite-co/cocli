@@ -1,7 +1,8 @@
+import logging
 import re
 from typing import Any
+
 from bs4 import BeautifulSoup
-import logging
 
 logger = logging.getLogger(__name__)
 

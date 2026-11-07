@@ -5,21 +5,22 @@ import json
 import logging
 import os
 import shlex
+from datetime import UTC, datetime
 from typing import Any, Optional, cast
 
 import boto3
 from rich.console import Console
-from datetime import datetime, UTC
 
 from cocli.core.config import load_campaign_config
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.exclusions import ExclusionManager
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
+
 from .paths import paths
 
 logger = logging.getLogger(__name__)
 console = Console()
 
-__all__ = ["get_campaign_stats", "get_boto3_session", "get_s3_client", "get_data_bucket_name", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
+__all__ = ["get_boto3_session", "get_campaign_stats", "get_data_bucket_name", "get_exclusions_data", "get_locations_data", "get_queries_data", "get_s3_client", "load_campaign_config"]
 
 
 def _aws_config_path() -> str:
@@ -146,7 +147,7 @@ def get_s3_client(session: Optional[boto3.Session] = None, session_config: Optio
             kwargs["endpoint_url"] = endpoint_url
         
         # Verify connectivity if in DEV mode
-        from .environment import get_environment, Environment
+        from .environment import Environment, get_environment
         if get_environment() != Environment.PROD:
             try:
                 import socket
@@ -311,8 +312,9 @@ def get_locations_data(campaign_name: str) -> dict[str, Any]:
 
 def get_campaign_stats(campaign_name: str) -> dict[str, Any]:
     """Collects statistics for a campaign, including local file counts and cloud status."""
-    from cocli.core.text_utils import slugify
     import duckdb
+
+    from cocli.core.text_utils import slugify
     
     stats: dict[str, Any] = {}
     config = load_campaign_config(campaign_name)

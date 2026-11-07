@@ -5,7 +5,9 @@ Provides audit operations focusing on cluster nodes, infrastructure, and paths.
 from __future__ import annotations
 
 from typing import Any, Optional
+
 from .audit_service import AuditService
+
 
 class AuditClusterService:
     """Service exposing only cluster‑related audit methods."""

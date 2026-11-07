@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from cocli.core.exclusions import ExclusionManager
 from cocli.core.paths import paths
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_detail import CompanyDetail
-from cocli.core.exclusions import ExclusionManager
 
 
 @pytest.fixture

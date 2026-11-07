@@ -10,15 +10,15 @@ callers that want it as a real subcommand.
 from __future__ import annotations
 
 import logging
-import typer
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import typer
 from rich.console import Console
 
-from cocli.core.config import get_campaign
 from cocli.application.lead_export_service import export_enriched_emails
+from cocli.core.config import get_campaign
 
 app = typer.Typer()
 console = Console()

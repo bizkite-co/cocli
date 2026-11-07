@@ -1,5 +1,6 @@
 import typer
 from rich.console import Console
+
 from ...application.event_generator_service import EventGeneratorService
 from ...core.config import get_campaign
 

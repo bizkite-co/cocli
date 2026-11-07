@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.ingest_testimonials_to_call import (
+    ingest_testimonials,
     is_target_user,
     resolve_profile,
-    ingest_testimonials,
 )
 
 

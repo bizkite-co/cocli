@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import csv
-from typing import Iterable, Iterator, Any, Optional
+from collections.abc import Iterable, Iterator
+from typing import Any, Optional
 
 from cocli.core.constants import UNIT_SEP
 

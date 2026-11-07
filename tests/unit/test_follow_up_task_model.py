@@ -5,7 +5,7 @@ path is keyed by company_slug alone (one pending file per company)."""
 from __future__ import annotations
 
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from cocli.models.campaigns.queues.follow_up import FollowUpTask
 

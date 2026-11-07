@@ -1,6 +1,7 @@
+import argparse
 import csv
 import os
-import argparse
+
 
 def create_batches(input_csv: str, output_dir: str, batch_size: int = 20) -> None:
     if not os.path.exists(input_csv):

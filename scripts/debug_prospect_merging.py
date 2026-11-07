@@ -1,6 +1,7 @@
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 
+
 def test_merging() -> None:
     print("--- Testing Prospect Merging ---")
     

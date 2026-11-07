@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
+
+from cocli.application.protocols import EmailNoteProtocol, NoteProtocol
 from cocli.models.companies.email_note import EmailNote
 from cocli.models.companies.note import Note
-from cocli.application.protocols import NoteProtocol, EmailNoteProtocol
 
 
 def test_email_note_to_file_and_from_file(tmp_path: Path) -> None:

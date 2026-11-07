@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import math
@@ -90,8 +91,8 @@ class ReportingService:
 
         queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL")
         
-        from ..core.paths import paths
         from ..core.config import load_campaign_config
+        from ..core.paths import paths
         
         s3_bucket = "N/A"
         if campaign_name:
@@ -148,8 +149,9 @@ class ReportingService:
 
     def get_index_stats(self, campaign_name: Optional[str] = None) -> dict[str, Any]:
         """Returns record counts and paths for core system indexes."""
-        from ..core.paths import paths
         import subprocess
+
+        from ..core.paths import paths
         
         target_campaign = campaign_name or self.campaign_name
         campaign_node = paths.campaign(target_campaign)
@@ -226,7 +228,7 @@ class ReportingService:
 
     def save_cached_report(self, campaign_name: str, report_type: str, data: dict[str, Any]) -> None:
         """Saves a report to the local reports cache and the campaign exports dir."""
-        from ..core.config import get_cocli_app_data_dir, get_campaigns_dir
+        from ..core.config import get_campaigns_dir, get_cocli_app_data_dir
         
         # 1. Save to User App Data Cache (Hidden fallback)
         report_dir = get_cocli_app_data_dir() / "reports" / campaign_name
@@ -244,8 +246,9 @@ class ReportingService:
 
     def load_cached_report(self, campaign_name: str, report_type: str) -> Optional[dict[str, Any]]:
         """Loads a report from the campaign exports dir or the user cache fallback."""
-        from ..core.config import get_cocli_app_data_dir, get_campaigns_dir
         import json
+
+        from ..core.config import get_campaigns_dir, get_cocli_app_data_dir
 
         # 1. Try Campaign Exports first
         report_file = get_campaigns_dir() / campaign_name / "exports" / f"{report_type}.json"

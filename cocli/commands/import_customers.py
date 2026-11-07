@@ -1,22 +1,24 @@
 from __future__ import annotations
-import typer
+
 import csv
+import logging
 from pathlib import Path
 from typing import Optional
-import logging
 
-from ..core.config import get_companies_dir, get_people_dir
+import typer
+
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files, create_person_files
-from ..models.people.person import Person
-from ..models.companies.company import Company
-from ..models.phone import PhoneNumber
-from ..models.company_name import CompanyName
-from ..models.company_address import CompanyAddress
-from ..models.campaigns.indexes.domains import WebsiteDomainCsv
+
+from ..core.config import get_campaign, get_companies_dir, get_people_dir
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
+from ..models.campaigns.indexes.domains import WebsiteDomainCsv
+from ..models.companies.company import Company
+from ..models.company_address import CompanyAddress
+from ..models.company_name import CompanyName
 from ..models.email_address import EmailAddress
-from ..core.config import get_campaign
+from ..models.people.person import Person
+from ..models.phone import PhoneNumber
 
 logger = logging.getLogger(__name__)
 

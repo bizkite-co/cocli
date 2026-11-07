@@ -10,6 +10,7 @@ from textual.widgets import Checkbox, Label, Static
 
 from cocli.application.campaign_service import CampaignService
 from cocli.models.campaigns.campaign import Campaign
+
 from .inputs import CocliInput
 
 logger = logging.getLogger(__name__)

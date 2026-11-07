@@ -1,15 +1,18 @@
 from __future__ import annotations
-import logging
+
 import asyncio
+import logging
 import os
-from typing import Optional
 from pathlib import Path
-from rich.console import Console
+from typing import Optional
 
 import typer
+from rich.console import Console
+
 from ..application.worker_service import WorkerService
+from ..core.config import get_campaign, load_campaign_config
 from ..core.logging_config import setup_file_logging
-from ..core.config import load_campaign_config, get_campaign
+
 
 # Load Version
 def get_version() -> str:
@@ -214,8 +217,9 @@ def gossip(
     """
     Starts the Gossip Bridge to propagate WAL datagrams across the cluster.
     """
-    from ..core.gossip_bridge import GossipBridge
     import time
+
+    from ..core.gossip_bridge import GossipBridge
     
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("gossip_bridge", console_level=log_level)

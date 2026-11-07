@@ -1,13 +1,14 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import logging
-from typing import Optional
-from datetime import datetime, UTC
 
-from cocli.models.companies.company import Company
-from cocli.models.campaigns.queues.to_call import ToCallTask
+import logging
+from datetime import UTC, datetime
+from typing import Optional
+
 from cocli.core.config import get_campaign, set_campaign
 from cocli.core.paths import paths
+from cocli.models.campaigns.queues.to_call import ToCallTask
+from cocli.models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 

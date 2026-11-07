@@ -1,7 +1,9 @@
 import argparse
 import subprocess
 import sys
+
 from rich.console import Console
+
 from cocli.application.services import ServiceContainer
 
 console = Console()

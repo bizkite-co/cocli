@@ -1,15 +1,18 @@
 from __future__ import annotations
-import typer
-import dateparser
+
 import datetime
+import logging
 import subprocess
 from typing import Optional
+
+import dateparser
+import typer
 from pytz import timezone
 from tzlocal import get_localzone
-import logging
+
+from cocli.core.text_utils import slugify
 
 from ..core.config import get_companies_dir
-from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()

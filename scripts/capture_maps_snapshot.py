@@ -1,6 +1,8 @@
 import asyncio
-from playwright.async_api import async_playwright
 import os
+
+from playwright.async_api import async_playwright
+
 
 async def capture() -> None:
     async with async_playwright() as p:

@@ -6,13 +6,13 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from cocli.application.company_service import get_company_details_for_view
 from cocli.core.exclusions import ExclusionManager
 from cocli.core.paths import paths
-from cocli.models.companies.company import Company
 from cocli.core.text_utils import slugify
+from cocli.models.companies.company import Company
 from cocli.utils.utm import append_utm_params
 
 if TYPE_CHECKING:
@@ -770,7 +770,7 @@ class PersonalizedOutreachService:
         send_guid: str,
         cc_addresses: Optional[list[str]] = None,
         bcc_addresses: Optional[list[str]] = None,
-    ) -> "SendMailRequest":
+    ) -> SendMailRequest:
         """Render `match` into a SendMailRequest with the send-time GUID
         tracking token appended to every outbound link - the one place
         both send_batch() and a test-copy send build the actual mail
@@ -844,7 +844,7 @@ class PersonalizedOutreachService:
         matches: list[ProspectContactMatch],
         *,
         template_id: str,
-        email_service: "EmailService",
+        email_service: EmailService,
         initiative: str = "rta",
         cc_addresses: Optional[list[str]] = None,
         bcc_addresses: Optional[list[str]] = None,
@@ -865,7 +865,7 @@ class PersonalizedOutreachService:
         entry is sent through (`send-pending`), not intended for routine
         bulk `send-batch` use.
         """
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
         from cocli.models.send_record import SendRecord
@@ -946,8 +946,7 @@ class PersonalizedOutreachService:
                 result.failed += 1
 
         with open(log_path, "a", encoding="utf-8") as f:
-            for entry in entries:
-                f.write(entry.to_usv())
+            f.writelines(entry.to_usv() for entry in entries)
         SendLogEntry.save_datapackage(index_dir, "email_send_log", "log.usv")
 
         return result
@@ -958,7 +957,7 @@ class PersonalizedOutreachService:
         *,
         template_id: str,
         initiative: str,
-        email_service: "EmailService",
+        email_service: EmailService,
         recipient_email: Optional[str] = None,
         subject: Optional[str] = None,
         body: Optional[str] = None,
@@ -1032,7 +1031,7 @@ class PersonalizedOutreachService:
 
         Returns the new batch_id.
         """
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
@@ -1059,7 +1058,7 @@ class PersonalizedOutreachService:
         self.append_pending_batch_entries(entries)
         return batch_id
 
-    def append_pending_batch_entries(self, entries: list["PendingBatchEntry"]) -> None:
+    def append_pending_batch_entries(self, entries: list[PendingBatchEntry]) -> None:
         """Shared tail of freeze_batch() - also used by FollowUpService
         to queue a single due email follow-up as a "batch of one" that
         shows up in TargetBatchesView for review like any other batch."""
@@ -1068,11 +1067,10 @@ class PersonalizedOutreachService:
         index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
         index_dir.mkdir(parents=True, exist_ok=True)
         with open(index_dir / "pending.usv", "a", encoding="utf-8") as f:
-            for entry in entries:
-                f.write(entry.to_usv())
+            f.writelines(entry.to_usv() for entry in entries)
         PendingBatchEntry.save_datapackage(index_dir, "email_pending_batch", "pending.usv")
 
-    def upsert_pending_batch_entries(self, entries: list["PendingBatchEntry"]) -> None:
+    def upsert_pending_batch_entries(self, entries: list[PendingBatchEntry]) -> None:
         """Idempotently add or update pending batch entries in pending.usv, keyed by (company_slug, template_id, initiative)."""
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
@@ -1096,7 +1094,7 @@ class PersonalizedOutreachService:
         index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
         PendingBatchEntry.save_datapackage(index_dir, "email_pending_batch", "pending.usv")
 
-    def list_pending_batches(self) -> list["PendingBatchEntry"]:
+    def list_pending_batches(self) -> list[PendingBatchEntry]:
         """All rows across all not-yet-sent-or-discarded batches, current
         state only (a sent/discarded batch's rows are removed, not kept)."""
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
@@ -1132,7 +1130,7 @@ class PersonalizedOutreachService:
             return None
         return str(subject), parts[2].strip()
 
-    def entry_to_match(self, entry: "PendingBatchEntry") -> ProspectContactMatch:
+    def entry_to_match(self, entry: PendingBatchEntry) -> ProspectContactMatch:
         """PendingBatchEntry.to_usv() sanitizes newlines to '<br>' (the
         same lossy encoding every USV string field uses, base.py's
         to_usv()) - reversed here, once, so both the review preview and
@@ -1188,7 +1186,7 @@ class PersonalizedOutreachService:
             person_slug=person_slug,
         )
 
-    def ensure_rendered_outreach_draft(self, entry: "PendingBatchEntry") -> Path:
+    def ensure_rendered_outreach_draft(self, entry: PendingBatchEntry) -> Path:
         """The rendered-outreach/<slug>/<template>.md path for this pending
         entry, creating it from the frozen batch row if it doesn't exist
         yet. A batch frozen via freeze_batch()/"New Batch" in the TUI
@@ -1308,7 +1306,7 @@ class PersonalizedOutreachService:
         self,
         batch_id: str,
         *,
-        email_service: "EmailService",
+        email_service: EmailService,
         cc_addresses: Optional[list[str]] = None,
         bcc_addresses: Optional[list[str]] = None,
     ) -> SendBatchResult:
@@ -1341,7 +1339,7 @@ class PersonalizedOutreachService:
         batch_id: str,
         company_slug: str,
         *,
-        email_service: "EmailService",
+        email_service: EmailService,
         cc_addresses: Optional[list[str]] = None,
         bcc_addresses: Optional[list[str]] = None,
     ) -> SendBatchResult:
@@ -1382,7 +1380,7 @@ class PersonalizedOutreachService:
         remaining = [e for e in self.list_pending_batches() if e.batch_id != batch_id]
         self._rewrite_pending(remaining)
 
-    def _rewrite_pending(self, entries: list["PendingBatchEntry"]) -> None:
+    def _rewrite_pending(self, entries: list[PendingBatchEntry]) -> None:
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
 
         index_dir = PendingBatchEntry.get_index_dir(self.campaign_name)
@@ -1390,7 +1388,7 @@ class PersonalizedOutreachService:
         pending_path = index_dir / "pending.usv"
         pending_path.write_text("".join(e.to_usv() for e in entries), encoding="utf-8")
 
-    def list_send_log(self, initiative: Optional[str] = None) -> list["SendLogEntry"]:
+    def list_send_log(self, initiative: Optional[str] = None) -> list[SendLogEntry]:
         """Every attempt (sent or failed) across every batch, newest first -
         the Messages screen's per-initiative Tracking pane's data source.
         Rows written before `initiative` existed default to "rta" (the
@@ -1411,7 +1409,7 @@ class PersonalizedOutreachService:
             entries = [e for e in entries if e.initiative == initiative]
         return sorted(entries, key=lambda e: e.sent_at, reverse=True)
 
-    def list_ses_events(self, initiative: Optional[str] = None) -> list["SesEventLogEntry"]:
+    def list_ses_events(self, initiative: Optional[str] = None) -> list[SesEventLogEntry]:
         """Bounce/complaint events (EmailEventsService.poll()'s output),
         newest first. The event log itself doesn't record which
         initiative a message belonged to (see ses_event_log.py) - joined

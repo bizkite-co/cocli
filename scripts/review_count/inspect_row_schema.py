@@ -1,6 +1,7 @@
-from pathlib import Path
-from cocli.utils.usv_utils import USVReader
 import json
+from pathlib import Path
+
+from cocli.utils.usv_utils import USVReader
 
 # Setup
 usv_path = Path(

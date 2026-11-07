@@ -1,8 +1,11 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field
-from datetime import datetime, UTC
-from typing import Optional, Any
+
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
 
 class RawWitness(BaseModel):
     """

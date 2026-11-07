@@ -1,16 +1,18 @@
-import logging
 import asyncio
+import logging
 from typing import TYPE_CHECKING, cast
 
-from textual.binding import Binding
-from textual.widgets import ListView, ListItem, Label, Input
-from textual.app import ComposeResult
-from textual.message import Message
 from textual import events, on, work
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.message import Message
+from textual.widgets import Input, Label, ListItem, ListView
 
 if TYPE_CHECKING:
     from ..app import CocliApp
 from cocli.models.search import SearchResult
+
+from ..base import CocliPanel
 from .inputs import CocliSearchInput
 from .list_filter import (
     ListFilterState,
@@ -19,7 +21,6 @@ from .list_filter import (
     clear_filter,
     commit_filter,
 )
-from ..base import CocliPanel
 
 logger = logging.getLogger(__name__)
 

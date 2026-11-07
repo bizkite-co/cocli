@@ -1,8 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
 import pytest
 from textual.widgets import Input
+
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
+
 
 @pytest.mark.asyncio
 async def test_search_input_not_hijacked_by_shortcuts():

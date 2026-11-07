@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import json
 import logging
 from typing import Optional
+
 from botocore.exceptions import ClientError
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
@@ -17,8 +19,8 @@ class ScrapeSQSQueue:
         self.queue_url = queue_url
         
         try:
+            from ..config import get_campaign, load_campaign_config
             from ..reporting import get_boto3_session
-            from ..config import load_campaign_config, get_campaign
             
             campaign_name = get_campaign()
             config = load_campaign_config(campaign_name) if campaign_name else {}

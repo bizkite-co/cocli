@@ -1,10 +1,17 @@
 from __future__ import annotations
+
 import csv
 import sys
-import typer
 from typing import Optional
+
+import typer
 from rich.console import Console
-from cocli.core.config import get_campaign_scraped_data_dir, get_campaign, get_campaigns_dir
+
+from cocli.core.config import (
+    get_campaign,
+    get_campaign_scraped_data_dir,
+    get_campaigns_dir,
+)
 
 app = typer.Typer()
 console = Console()

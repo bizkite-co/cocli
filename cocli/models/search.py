@@ -1,9 +1,13 @@
 from __future__ import annotations
+
+from typing import Any, Optional
+
 from pydantic import BaseModel
-from typing import Optional, Any
-from .phone import OptionalPhone
-from .company_name import OptionalCompanyName
+
 from .company_address import OptionalCompanyAddress
+from .company_name import OptionalCompanyName
+from .phone import OptionalPhone
+
 
 def strip_quotes(v: Any) -> str:
     if isinstance(v, str):

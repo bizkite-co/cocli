@@ -1,6 +1,7 @@
-from textual.widgets import ListView, ListItem, Label
-from textual.containers import Container
 from textual.app import ComposeResult
+from textual.containers import Container
+from textual.widgets import Label, ListItem, ListView
+
 
 class MainMenu(Container):
     """The main menu widget."""

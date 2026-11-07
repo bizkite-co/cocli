@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
+
 from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+
 
 def check_fidelity(file_path: str) -> None:
     path = Path(file_path)

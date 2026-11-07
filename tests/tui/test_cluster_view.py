@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+from unittest.mock import patch
+
 import pytest
 from textual.widgets import DataTable
-from cocli.tui.widgets.cluster_view import ClusterView
+
 from cocli.core.gossip_bridge import bridge
-from unittest.mock import patch
-from datetime import datetime, UTC
+from cocli.tui.widgets.cluster_view import ClusterView
+
 
 @pytest.mark.asyncio
 async def test_cluster_view_population():

@@ -1,6 +1,7 @@
 import pytest
 from playwright.async_api import expect
 
+
 @pytest.mark.asyncio
 async def test_dashboard_login_flow(page, auth_creds, visible_locator):
     """Verifies that the user can log in via Cognito and reach the dashboard."""

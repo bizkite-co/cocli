@@ -1,11 +1,27 @@
 import typer
-from cocli.commands.campaign import mgmt, workflow, planning, viz, prospecting, enrichment, rollout, curation, events, audit, initiatives
-from cocli.commands import prospects, exclude
+
+from cocli.commands import exclude, prospects
+from cocli.commands.campaign import (
+    audit,
+    curation,
+    enrichment,
+    events,
+    initiatives,
+    mgmt,
+    planning,
+    prospecting,
+    rollout,
+    viz,
+    workflow,
+)
+from cocli.commands.campaign.workflow import next_step as next_step
 
 # Re-export core functions for backward compatibility and testing
-from cocli.core.config import get_campaign as get_campaign, get_campaign_dir as get_campaign_dir, get_cocli_base_dir as get_cocli_base_dir, get_editor_command as get_editor_command
+from cocli.core.config import get_campaign as get_campaign
+from cocli.core.config import get_campaign_dir as get_campaign_dir
+from cocli.core.config import get_cocli_base_dir as get_cocli_base_dir
+from cocli.core.config import get_editor_command as get_editor_command
 from cocli.core.utils import run_fzf as run_fzf
-from cocli.commands.campaign.workflow import next_step as next_step
 
 app = typer.Typer(no_args_is_help=True, help="Manage campaigns.")
 

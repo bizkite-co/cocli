@@ -4,8 +4,10 @@ Provides audit operations focusing on static codebase and filesystem.
 """
 
 from typing import Any
-from .audit_service import AuditService
+
 from ..models.cli_help import CliCommandMatch
+from .audit_service import AuditService
+
 
 class AuditCodebaseService:
     """Service exposing only code‑base‑related audit methods."""

@@ -1,17 +1,19 @@
 from __future__ import annotations
+
 import logging
 import os
-import boto3
-from typing import Optional, Any
 from datetime import datetime, timezone
+from typing import Any, Optional
+
+import boto3
 from botocore.config import Config
 
 from ..models.campaigns.campaign import Campaign
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..models.index_manifest import IndexManifest, IndexShard
 from ..station_defs.path_helpers import domain_inbox_leaf, domain_shard_id
-from .text_utils import slugdotify
 from .config import get_cocli_base_dir
+from .text_utils import slugdotify
 
 logger = logging.getLogger(__name__)
 
@@ -320,13 +322,15 @@ class DomainIndexManager:
         Populates the domain inbox by scanning company directories for website enrichment.
         Uses a generator to keep memory usage low.
         """
+        import re
+        import time
         from pathlib import Path
+
+        import yaml
+
+        from ..utils.yaml_utils import resilient_safe_load
         from .config import get_companies_dir
         from .text_utils import parse_frontmatter
-        from ..utils.yaml_utils import resilient_safe_load
-        import re
-        import yaml
-        import time
 
         # Setup internal logging for backfill
         logs_dir = Path(".logs")

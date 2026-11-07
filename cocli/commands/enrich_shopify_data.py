@@ -1,10 +1,11 @@
-import typer
-from rich.console import Console
-import yaml
 import asyncio
-from playwright.async_api import async_playwright
 
-from cocli.core.config import get_scraped_data_dir, get_companies_dir
+import typer
+import yaml
+from playwright.async_api import async_playwright
+from rich.console import Console
+
+from cocli.core.config import get_companies_dir, get_scraped_data_dir
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files
 from cocli.enrichment.website_scraper import WebsiteScraper
@@ -24,7 +25,7 @@ def enrich_shopify_data(
     """
     Enriches company data from a list of Shopify domains.
     """
-    import pandas as pd # Lazy import
+    import pandas as pd  # Lazy import
     shopify_csv_dir = get_scraped_data_dir() / "shopify_csv"
     input_path = shopify_csv_dir / input_filename
     if not input_path.exists():

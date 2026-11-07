@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import sys
 from typing import Optional
+
 from cocli.application.services import ServiceContainer
 from cocli.core.reporting import get_boto3_session
+
 
 def main() -> None:
     if len(sys.argv) < 2:

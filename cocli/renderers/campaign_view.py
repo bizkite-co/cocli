@@ -5,6 +5,7 @@ from rich.panel import Panel
 
 from ..models.campaigns.campaign import Campaign
 
+
 def _render_campaign_details(campaign: Campaign) -> Panel:
     """Renders campaign details."""
     output = ""

@@ -75,7 +75,6 @@ async def setup_optimized_context(
     No-op for maximum fidelity. 
     Efficiency considerations are strictly prohibited during this troubleshooting phase.
     """
-    pass
 
 
 # SPA shells often survive the window `load` event as a white page plus a

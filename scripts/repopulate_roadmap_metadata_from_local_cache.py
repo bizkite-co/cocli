@@ -1,17 +1,19 @@
 from __future__ import annotations
-import sys
-import os
+
 import argparse
-from typing import Any, Optional
-from pathlib import Path
+import os
+import sys
 from io import StringIO
+from pathlib import Path
+from typing import Any, Optional
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.utils.usv_utils import USVDictReader
+
 
 def load_google_maps_usv_cache(cache_path: Path) -> dict[str, dict[str, Any]]:
     """Loads the local USV cache as a dictionary indexed by Place ID."""
@@ -82,8 +84,8 @@ def main():
     parser.add_argument("--campaign", default="roadmap", help="Campaign name.")
     args = parser.parse_args()
 
-    from cocli.core.reporting import get_boto3_session
     from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session
     
     config = load_campaign_config(args.campaign)
     aws_config = config.get("aws", {})

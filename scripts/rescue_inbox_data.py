@@ -1,11 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import sys
+
 from cocli.core.paths import paths
-from cocli.utils.usv_utils import USVDictReader, USVWriter
-from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+from cocli.utils.usv_utils import USVDictReader, USVWriter
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')

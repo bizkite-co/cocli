@@ -1,7 +1,8 @@
-import boto3
 import argparse
 import logging
 from typing import Any
+
+import boto3
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

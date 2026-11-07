@@ -4,7 +4,6 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-
 from textual.containers import VerticalScroll
 
 from cocli.core.exclusions import ExclusionManager

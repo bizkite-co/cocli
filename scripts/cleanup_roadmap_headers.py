@@ -1,5 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
+
 from cocli.core.paths import paths
 
 # Setup logging according to the new standard

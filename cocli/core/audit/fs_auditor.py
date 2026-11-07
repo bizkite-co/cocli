@@ -1,12 +1,16 @@
 from __future__ import annotations
+
 import json
 import logging
-from pathlib import Path
-from typing import Optional, Any
-from pydantic import BaseModel, Field
 from enum import Enum
-from cocli.core.paths import paths
+from pathlib import Path
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
 from cocli.core.constants import UNIT_SEP
+from cocli.core.paths import paths
+
 from .schema_source import SchemaSource
 
 logger = logging.getLogger(__name__)
@@ -23,7 +27,7 @@ class AuditNode(BaseModel):
     path: Path
     status: AuditStatus
     is_dir: bool
-    children: list['AuditNode'] = Field(default_factory=list)
+    children: list[AuditNode] = Field(default_factory=list)
     message: Optional[str] = None
     stats: dict[str, Any] = Field(default_factory=dict)
 
@@ -158,13 +162,12 @@ class FsAuditor:
         This report can be fed into scripts/execute_cleanup.py for distributed removal.
         """
         with open(output_path, "w", encoding="utf-8") as f:
-            for p in orphans:
-                f.write(f"{p.absolute()}\n")
+            f.writelines(f"{p.absolute()}\n" for p in orphans)
 
 def dump_audit_tree(node: AuditNode, console: Optional[Any] = None, tree: Optional[Any] = None) -> Any:
     """Renders the audit tree using Rich's Tree widget."""
-    from rich.tree import Tree
     from rich.text import Text
+    from rich.tree import Tree
     
     colors = {
         AuditStatus.VALID: "green",

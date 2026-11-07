@@ -2,10 +2,10 @@
 
 import pytest
 
-from cocli.models.campaigns.queues.to_call import ToCallTask
-from cocli.core.paths import paths
-from cocli.core.config import set_campaign
 from cocli.application.search_service import get_fuzzy_search_results
+from cocli.core.config import set_campaign
+from cocli.core.paths import paths
+from cocli.models.campaigns.queues.to_call import ToCallTask
 
 
 @pytest.fixture
@@ -212,7 +212,7 @@ def test_a_future_scheduled_task_is_visible_and_sorted_before_never_scheduled(
     "due now" in the sense that matters for calling priority. An actual
     scheduled callback (future or, especially, overdue) represents a real
     commitment and must outrank a never-scheduled fresh lead."""
-    from datetime import datetime, timedelta, UTC
+    from datetime import UTC, datetime, timedelta
 
     campaign, _ = to_call_integration_env
 
@@ -259,7 +259,7 @@ def test_an_overdue_callback_sorts_above_both_future_and_never_scheduled(
     the top of the list. They are the first ones that should be called."
     An overdue (expired) callback_at must sort ahead of both a
     future-scheduled callback and a never-scheduled fresh lead."""
-    from datetime import datetime, timedelta, UTC
+    from datetime import UTC, datetime, timedelta
 
     campaign, _ = to_call_integration_env
 
@@ -309,7 +309,7 @@ def test_among_overdue_callbacks_the_oldest_sorts_first(to_call_integration_env)
     """Mark, 2026-10-05: among several overdue/expired entries, the most
     late one (oldest callback_at) must be at the very top - it's been
     waiting longest."""
-    from datetime import datetime, timedelta, UTC
+    from datetime import UTC, datetime, timedelta
 
     campaign, _ = to_call_integration_env
 

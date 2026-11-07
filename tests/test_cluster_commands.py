@@ -8,6 +8,7 @@ service-only test (see tests/unit/test_cluster_service.py) cannot catch a
 regression where the command layer stops passing log_callback through.
 """
 from __future__ import annotations
+
 from typing import Any, Callable, Optional
 from unittest.mock import patch
 

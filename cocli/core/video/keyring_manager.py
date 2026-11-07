@@ -5,9 +5,10 @@ All other secrets (client_id, client_secret, etc.) remain in 1Password.
 """
 from __future__ import annotations
 
-import keyring
 import logging
 from typing import Optional
+
+import keyring
 
 logger = logging.getLogger(__name__)
 

@@ -4,17 +4,17 @@ rows) uncolored (Mark, 2026-09-17)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
+from conftest import wait_for_widget
 from rich.text import Text
 from textual.widgets import Label, ListView
 
+from cocli.models.search import SearchResult
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
-from cocli.models.search import SearchResult
-from conftest import wait_for_widget
 
 
 def _result(slug: str, callback_at: str | None) -> SearchResult:
@@ -56,7 +56,7 @@ async def test_to_call_view_colors_overdue_and_due_soon_rows() -> None:
         renderables = {}
         for item in list_view.children:
             label = item.query_one(Label)
-            renderables[getattr(item, "name")] = label._Static__content
+            renderables[item.name] = label._Static__content
 
         never_called = renderables["Never Called Co"]
         overdue_r = renderables["Overdue Co"]

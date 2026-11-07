@@ -15,9 +15,10 @@ import json
 import logging
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Any
-from datetime import datetime, UTC
+from typing import Optional
+
 from rich.console import Console
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class CodeHash:
     timestamp: str
     files_included: int
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, CodeHash):
             return False
         return self.digest == other.digest

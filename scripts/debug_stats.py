@@ -1,7 +1,10 @@
 from __future__ import annotations
-import typer
+
 from typing import Optional
+
+import typer
 from rich.console import Console
+
 from cocli.core.config import get_campaign, get_companies_dir
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.text_utils import slugify

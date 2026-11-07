@@ -1,5 +1,7 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+
 from cocli.models.companies.meeting import Meeting
+
 
 def test_meeting_to_file_and_from_file(tmp_path):
     # Arrange

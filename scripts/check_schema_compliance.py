@@ -1,8 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
 import json
 import logging
-from cocli.core.paths import paths
+
 from cocli.core.constants import UNIT_SEP
+from cocli.core.paths import paths
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')

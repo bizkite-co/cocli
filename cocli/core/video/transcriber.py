@@ -1,15 +1,16 @@
 from __future__ import annotations
-from google.genai import Client
-from pathlib import Path
+
 import logging
 import os
 import time
-from typing import Optional, Union, cast, Any
+from pathlib import Path
+from typing import Any, Optional, Union, cast
+
+from faster_whisper import WhisperModel  # type: ignore
+from google.genai import Client
 
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret
-from faster_whisper import WhisperModel  # type: ignore
-
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class TranscriptionFactory:
     @staticmethod
     def get_transcriber(
         provider: str,
-    ) -> Union["GeminiTranscriber", "WhisperTranscriber", "DualTranscriber"]:
+    ) -> Union[GeminiTranscriber, WhisperTranscriber, DualTranscriber]:
         if provider == "gemini":
             return GeminiTranscriber()
         elif provider == "whisper":

@@ -1,19 +1,22 @@
 from __future__ import annotations
+
 import os
 import re
-import yaml
-from pathlib import Path
-import typer
-from rich.console import Console
-from rich.progress import track
-from typing import Any, Optional
 
 # Add path to import cocli
 import sys
+from pathlib import Path
+from typing import Any, Optional
+
+import typer
+import yaml
+from rich.console import Console
+from rich.progress import track
+
 sys.path.append(os.getcwd())
 
-from cocli.core.text_utils import is_valid_email
 from cocli.core.config import get_companies_dir
+from cocli.core.text_utils import is_valid_email
 
 app = typer.Typer()
 console = Console()

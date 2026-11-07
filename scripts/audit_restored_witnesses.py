@@ -1,8 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 from pathlib import Path
+
 from bs4 import BeautifulSoup
-from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_list import extract_rating_reviews_gm_list
+
+from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_list import (
+    extract_rating_reviews_gm_list,
+)
+
 
 def audit_restored() -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s')

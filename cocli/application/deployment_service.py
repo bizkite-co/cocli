@@ -64,7 +64,7 @@ class RolloutDiagnostics(BaseModel):
         campaign_name: str,
         batches: dict[str, int],
         hub_companies: int,
-    ) -> "RolloutDiagnostics":
+    ) -> RolloutDiagnostics:
         total = sum(batches.values())
         avg = hub_companies / total if total > 0 else 0.0
         # Same heuristic as the original report command.

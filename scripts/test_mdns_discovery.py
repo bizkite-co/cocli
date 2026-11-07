@@ -1,6 +1,8 @@
-import socket
 import logging
-from zeroconf import ServiceBrowser, ServiceListener, Zeroconf, ServiceInfo
+import socket
+
+from zeroconf import ServiceBrowser, ServiceInfo, ServiceListener, Zeroconf
+
 
 class CocliListener(ServiceListener):
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:

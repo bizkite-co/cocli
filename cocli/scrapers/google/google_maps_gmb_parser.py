@@ -1,8 +1,14 @@
 from __future__ import annotations
-from bs4 import BeautifulSoup
+
 from typing import Any, Optional
-from .google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
+
+from bs4 import BeautifulSoup
+
+from .google_maps_parsers.extract_rating_reviews_gm_details import (
+    extract_rating_reviews_gm_details,
+)
 from .google_maps_parsers.extract_website import extract_website
+
 
 def parse_gmb_page(html: str, witness_url: Optional[str] = None, debug: bool = False) -> dict[str, Any]:
     """
@@ -10,7 +16,7 @@ def parse_gmb_page(html: str, witness_url: Optional[str] = None, debug: bool = F
     """
     soup = BeautifulSoup(html, "html.parser")
     inner_text = soup.get_text(separator="\n", strip=True)
-    data = {}
+    data: dict[str, Any] = {}
 
     # --- EXTRACT NAME (High Priority) ---
     name = None

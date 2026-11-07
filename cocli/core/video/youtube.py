@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Any, Callable as CallableType
+from typing import Any, Optional
+from typing import Callable as CallableType
+
+from google.oauth2.credentials import Credentials as GoogleCredentials
 from googleapiclient.discovery import build  # type: ignore
 from googleapiclient.http import MediaFileUpload  # type: ignore
-from google.oauth2.credentials import Credentials as GoogleCredentials
 
 from cocli.core.config import load_campaign_config
-from cocli.utils.op_utils import get_op_secret
 from cocli.core.video.keyring_manager import KeyringManager
+from cocli.utils.op_utils import get_op_secret
 
 logger = logging.getLogger(__name__)
 

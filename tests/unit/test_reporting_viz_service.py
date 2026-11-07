@@ -242,9 +242,8 @@ def test_resolve_publish_config_missing_profile(tmp_path: Path) -> None:
     with patch(
         "cocli.application.reporting_service.get_campaign_dir",
         return_value=campaign_dir,
-    ):
-        with pytest.raises(ValueError, match="AWS profile required"):
-            service.resolve_publish_config()
+    ), pytest.raises(ValueError, match="AWS profile required"):
+        service.resolve_publish_config()
 
 
 def test_upload_kml_layers(tmp_path: Path) -> None:
@@ -322,7 +321,7 @@ def test_export_value_resources(tmp_path: Path) -> None:
         reviews_count = 10
 
         @classmethod
-        def model_validate(cls, row: Any) -> "FakeProspect":
+        def model_validate(cls, row: Any) -> FakeProspect:
             return cls()
 
     mock_manager = SimpleNamespace(
@@ -415,6 +414,5 @@ def test_require_campaign_dir_errors() -> None:
     service = ReportingService(campaign_name="missing")
     with patch(
         "cocli.application.reporting_service.get_campaign_dir", return_value=None
-    ):
-        with pytest.raises(ValueError, match="Campaign directory not found"):
-            service._require_campaign_dir()
+    ), pytest.raises(ValueError, match="Campaign directory not found"):
+        service._require_campaign_dir()

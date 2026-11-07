@@ -1,9 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 import pytest
-from textual.widgets import ListView, Input, ListItem
-from cocli.tui.app import CocliApp
+from textual.widgets import Input, ListItem, ListView
+
 from cocli.application.services import ServiceContainer
 from cocli.models.search import SearchResult
+from cocli.tui.app import CocliApp
+
 
 @pytest.mark.asyncio
 async def test_company_list_is_not_empty_verified(mocker):

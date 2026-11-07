@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from cocli.core.queue.filesystem import FilesystemEnrichmentQueue
 from cocli.models.campaigns.queues.base import QueueMessage
 

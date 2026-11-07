@@ -1,9 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
 from rich.console import Console
 from rich.table import Table
+
 from cocli.core.paths import paths
-from cocli.core.text_utils import slugify
 from cocli.core.sharding import get_geo_shard, get_grid_tile_id
+from cocli.core.text_utils import slugify
 from cocli.models.campaigns.mission import MissionTask
 from cocli.utils.usv_utils import USVReader
 

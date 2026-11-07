@@ -1,9 +1,12 @@
-from typing import ClassVar, Any
+from typing import Any, ClassVar
+
 from pydantic import Field
-from .base import BaseIndexModel
-from ...place_id import PlaceID
+
 from ...companies.slug import CompanySlug
 from ...company_name import OptionalCompanyName
+from ...place_id import PlaceID
+from .base import BaseIndexModel
+
 
 def strip_quotes(v: Any) -> Any:
     """Legacy strip_quotes function - kept for backward compatibility with other fields."""

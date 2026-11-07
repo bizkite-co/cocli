@@ -1,5 +1,7 @@
-from typing_extensions import Annotated
+from typing import Annotated
+
 from pydantic import AfterValidator
+
 
 def to_lowercase_domain(value: str) -> str:
     if not isinstance(value, str):
@@ -18,8 +20,7 @@ def to_lowercase_domain(value: str) -> str:
     host = parsed.netloc or parsed.path
     
     # Clean up the host
-    if host.startswith("www."):
-        host = host[4:]
+    host = host.removeprefix("www.")
         
     # Split by colon to remove port if present
     host = host.split(":")[0]

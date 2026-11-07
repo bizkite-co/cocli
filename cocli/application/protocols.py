@@ -1,12 +1,15 @@
 from __future__ import annotations
-from typing import Protocol, Any, Optional, Iterator, Callable, runtime_checkable
-from pathlib import Path
+
+from collections.abc import Iterator
 from datetime import datetime
-from cocli.models.search import SearchResult
-from cocli.models.companies.meeting import CompanyCall, CompanyMeeting
-from cocli.models import TileStatusResult, MissionReconciliationResult
-from cocli.models.tasks import MissionTask
+from pathlib import Path
+from typing import Any, Callable, Optional, Protocol, runtime_checkable
+
+from cocli.models import MissionReconciliationResult, TileStatusResult
 from cocli.models.cli_help import CliCommandMatch
+from cocli.models.companies.meeting import CompanyCall, CompanyMeeting
+from cocli.models.search import SearchResult
+from cocli.models.tasks import MissionTask
 
 
 @runtime_checkable
@@ -397,17 +400,14 @@ class AuditServiceProvider(Protocol):
 class AuditCodebaseServiceProvider(AuditServiceProvider, Protocol):
     """Subset of AuditService focusing on codebase operations."""
     # Inherits methods from AuditServiceProvider; can be further restricted if needed.
-    ...
 
 class AuditQueueServiceProvider(AuditServiceProvider, Protocol):
     """Subset of AuditService focusing on queue‑related operations."""
     # Inherits methods from AuditServiceProvider; can be further restricted.
-    ...
 
 class AuditClusterServiceProvider(AuditServiceProvider, Protocol):
     """Subset of AuditService focusing on cluster‑path operations."""
     # Inherits methods from AuditServiceProvider; can be further restricted.
-    ...
 
 class DataSyncServiceProvider(Protocol):
     campaign_name: str

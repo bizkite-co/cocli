@@ -1,10 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from pathlib import Path
+
 from datetime import datetime
-from typing import Optional, ClassVar
-from .base import QueueMessage
+from pathlib import Path
+from typing import ClassVar, Optional
+
 from ....core.ordinant import QueueName
+from .base import QueueMessage
 
 
 class ToCallTask(QueueMessage):

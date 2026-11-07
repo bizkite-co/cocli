@@ -1,7 +1,8 @@
+import re
+
 from cocli.core.paths import paths
 from cocli.models.companies.company import Company
 from cocli.utils.usv_utils import USVReader
-import re
 
 recovery_file = (
     paths.companies.path / "recovery" / "misaligned-review-count-records.usv"

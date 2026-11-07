@@ -1,6 +1,8 @@
 from pathlib import Path
-from cocli.utils.usv_utils import USVWriter
+
 import duckdb
+
+from cocli.utils.usv_utils import USVWriter
 
 # Paths
 results_dir = Path(

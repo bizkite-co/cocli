@@ -1,7 +1,8 @@
-import math
 import logging
-from ..models.target_location import TargetLocation
+import math
+
 from ..core.scrape_index import ScrapedArea
+from ..models.target_location import TargetLocation
 
 logger = logging.getLogger(__name__)
 

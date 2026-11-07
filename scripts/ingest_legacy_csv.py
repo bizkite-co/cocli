@@ -1,17 +1,19 @@
 from __future__ import annotations
-import typer
+
 import csv
 import logging
 from pathlib import Path
 from typing import Optional
+
+import typer
 from rich.console import Console
 
-from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
+from cocli.core.config import get_campaign, get_campaign_scraped_data_dir
 from cocli.core.importing import import_prospect
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from cocli.models.companies.company import Company
 from cocli.core.queue.factory import get_queue_manager
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.campaigns.queues.base import QueueMessage
+from cocli.models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 console = Console()

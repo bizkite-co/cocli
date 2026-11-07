@@ -2,7 +2,9 @@
 import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Static
+
 from cocli.tui.widgets.status_view import StatusView
+
 
 class StatusTestApp(App):
     """A minimal app to test StatusView."""

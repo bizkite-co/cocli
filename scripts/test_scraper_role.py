@@ -1,6 +1,8 @@
 import asyncio
 import logging
+
 from cocli.application.worker_service import WorkerService
+
 
 async def test_scraper_role() -> None:
     # Setup logging to console

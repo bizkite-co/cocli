@@ -1,6 +1,8 @@
-from datetime import datetime, timezone, timedelta
-from cocli.core.config import load_campaign_config, get_campaign
+from datetime import datetime, timedelta, timezone
+
+from cocli.core.config import get_campaign, load_campaign_config
 from cocli.core.reporting import get_boto3_session
+
 
 def main() -> None:
     campaign_name = get_campaign()

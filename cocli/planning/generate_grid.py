@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+import json
 import math
 import os
-import json
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
+
 from rich.console import Console
 
 from ..core.sharding import get_grid_tile_id
@@ -79,7 +81,7 @@ def generate_global_grid(center_lat: float, center_lon: float, radius_miles: flo
 
 def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[list[dict[str, Any]]] = None) -> list[dict[str, Any]]:
     """Helper to load grid tiles for a campaign from its config or provided locations."""
-    from cocli.core.config import load_campaign_config, get_campaign_dir
+    from cocli.core.config import get_campaign_dir, load_campaign_config
     config = load_campaign_config(campaign_name)
     campaign_dir = get_campaign_dir(campaign_name)
     
@@ -131,7 +133,7 @@ def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[list[
                 locations = prospecting_config.get("locations", [])
             
             if locations:
-                from geopy.geocoders import Nominatim # type: ignore
+                from geopy.geocoders import Nominatim  # type: ignore
                 geolocator = Nominatim(user_agent="cocli_planner")
 
                 for loc in locations:

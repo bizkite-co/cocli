@@ -1,13 +1,15 @@
 # POLICY: frictionless-data-policy-enforcement
-import socket
 import json
+import socket
 import time
-from datetime import datetime
-from rich.console import Console
-from rich.table import Table
-from rich.live import Live
 from collections import deque
+from datetime import datetime
 from typing import Any
+
+from rich.console import Console
+from rich.live import Live
+from rich.table import Table
+
 from cocli.core.paths import paths
 
 console = Console()
@@ -140,10 +142,11 @@ def audit_gossip(timeout_seconds: float = 60.0) -> None:
 
 def send_test_gossip(target_ip: str) -> None:
     """Sends a test QueueDatagram to a specific IP."""
-    from cocli.models.wal.record import QueueDatagram
-    from cocli.core.wal import get_node_id
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
+
     from cocli.core.gossip_bridge import get_gossip_port
+    from cocli.core.wal import get_node_id
+    from cocli.models.wal.record import QueueDatagram
     
     port = get_gossip_port()
     datagram = QueueDatagram(

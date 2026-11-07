@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from stations.segments import collect_shard, shard_by_char_index
 
 from cocli.core.queue.layout import QueueLayout, task_rel_under_phase
 from cocli.core.sharding import get_place_id_shard, get_shard_id
 from cocli.station_defs.campaigns.queues import DFQ_QUEUE_STATION
-from stations.segments import collect_shard, shard_by_char_index
 
 
 def test_place_id_combinator_matches_legacy_get_shard_id() -> None:

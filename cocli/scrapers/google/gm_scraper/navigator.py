@@ -1,5 +1,6 @@
 import logging
 import re
+
 from playwright.async_api import Page
 
 from ....utils.headers import jittered_delay_ms

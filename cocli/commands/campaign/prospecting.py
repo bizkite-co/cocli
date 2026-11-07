@@ -1,35 +1,37 @@
 from __future__ import annotations
-import typer
+
 import asyncio
-import logging
-import toml
 import json
-from typing import Optional, Any, cast, Annotated
+import logging
 from pathlib import Path
+from typing import TYPE_CHECKING, Annotated, Any, Optional, cast
+
+import toml
+import typer
 from rich.console import Console
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
-    TextColumn,
-    BarColumn,
     TaskProgressColumn,
+    TextColumn,
 )
+
 from cocli.core.geo_types import LatScale1, LonScale1
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from cocli.core.location_prospects_index import LocationProspectsIndex
 
+from cocli.core.config import get_campaign, get_campaign_dir, get_enrichment_service_url
 from cocli.core.paths import paths
-from cocli.core.config import get_campaign_dir, get_campaign, get_enrichment_service_url
-
+from cocli.core.queue.factory import get_queue_manager
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.text_utils import slugify
-from cocli.core.queue.factory import get_queue_manager
-from cocli.planning.generate_grid import get_campaign_grid_tiles
-from cocli.models.campaigns.queues.gm_list import ScrapeTask
-from cocli.models.companies.company import Company
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.campaigns.indexes.google_maps_venue import GoogleMapsVenue
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
+from cocli.models.companies.company import Company
+from cocli.planning.generate_grid import get_campaign_grid_tiles
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -137,11 +139,11 @@ async def pipeline(
 
         import sys
         _mod = sys.modules[__name__]
-        _async_playwright = getattr(_mod, "async_playwright")
-        _WebsiteCompiler = getattr(_mod, "WebsiteCompiler")
-        _enrich_company_website = getattr(_mod, "enrich_company_website")
-        _scrape_google_maps = getattr(_mod, "scrape_google_maps")
-        _scrape_google_maps_details = getattr(_mod, "scrape_google_maps_details")
+        _async_playwright = _mod.async_playwright
+        _WebsiteCompiler = _mod.WebsiteCompiler
+        _enrich_company_website = _mod.enrich_company_website
+        _scrape_google_maps = _mod.scrape_google_maps
+        _scrape_google_maps_details = _mod.scrape_google_maps_details
         launch_proxy = {"server": proxy_url} if proxy_url else None
 
         async with _async_playwright() as p:
@@ -417,11 +419,11 @@ def queue_scrapes(
         )
 
         from rich.progress import (
+            BarColumn,
             Progress,
             SpinnerColumn,
-            TextColumn,
-            BarColumn,
             TaskProgressColumn,
+            TextColumn,
             TimeRemainingColumn,
         )
 
@@ -588,9 +590,9 @@ def prepare_mission(
       Stage 4: Reset state - Clear offset for fresh batch creation
     """
     from ...commands.campaign.discovery_gen_stages import (
-        generate_tiles,
         expand_phrases,
         filter_frontier,
+        generate_tiles,
     )
 
     if campaign_name is None:
@@ -961,12 +963,14 @@ def monitor_batch(
         console.print(f"[red]Batch file not found: {batch_file}[/red]")
         raise typer.Exit(1)
 
-    from ...models.campaigns.mission import MissionTask
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    from rich.table import Table
+
     from ...core.sharding import get_geo_shard, get_grid_tile_id
     from ...core.text_utils import slugify
-    from rich.table import Table
-    from datetime import datetime, UTC, timedelta
-    import json
+    from ...models.campaigns.mission import MissionTask
 
     # 1. Load Batch
     tasks: list[MissionTask] = []
@@ -1114,8 +1118,8 @@ def discover_venues(
     if locations:
         console.print(f"[dim]Seeding search from location: {locations[0]}[/dim]")
 
-    from cocli.core.paths import paths
     from cocli.core.location_prospects_index import LocationProspectsIndex
+    from cocli.core.paths import paths
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
     checkpoint_path = (

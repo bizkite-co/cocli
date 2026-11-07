@@ -25,8 +25,7 @@ def _write_tile_file(pending_dir: Path, rel_path: str, records: list[TileRecord]
     tile_path = pending_dir / rel_path
     tile_path.parent.mkdir(parents=True, exist_ok=True)
     with open(tile_path, "w", encoding="utf-8") as f:
-        for r in records:
-            f.write(r.to_usv())
+        f.writelines(r.to_usv() for r in records)
 
 
 def test_process_map_tile_creates_run_and_enqueues_gm_list(tmp_path: Path) -> None:

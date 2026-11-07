@@ -1,7 +1,9 @@
 from __future__ import annotations
-import typer
-from typing import Optional
+
 import logging
+from typing import Optional
+
+import typer
 from rich.console import Console
 from rich.table import Table
 

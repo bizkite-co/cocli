@@ -1,5 +1,5 @@
-from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from cocli.core.paths import paths
+from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 
 
 def validate_all():

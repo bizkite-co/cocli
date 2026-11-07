@@ -2,30 +2,31 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.screen import ModalScreen
-from textual.widgets import Label, TextArea, Static, Markdown
 from textual.containers import Container, Horizontal, VerticalScroll
-from textual import on, events
+from textual.screen import ModalScreen
+from textual.widgets import Label, Markdown, Static, TextArea
 
-from cocli.models.companies.company import Company
-from cocli.models.companies.meeting import Meeting
-from cocli.models.companies.call_note import CallNote
-from cocli.models.campaigns.queues.to_call import ToCallTask
-from cocli.models.phone import format_us_phone
+from cocli.application.company_service import format_contact_line, list_known_contacts
 from cocli.application.follow_up_service import FollowUpService
 from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 from cocli.application.to_call_disposition_service import mark_to_call_invalid
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
-from cocli.application.company_service import format_contact_line, list_known_contacts
+from cocli.models.campaigns.queues.to_call import ToCallTask
+from cocli.models.companies.call_note import CallNote
+from cocli.models.companies.company import Company
+from cocli.models.companies.meeting import Meeting
+from cocli.models.phone import format_us_phone
 from cocli.utils.company_local_time import CompanyPlace
 from cocli.utils.when import parse_follow_up_when
+
 from .company_local_time import CompanyLocalTime, resolve_place_from_company
 from .inputs import CocliInput
 from .search_select import SearchSelect
@@ -513,9 +514,10 @@ class CallLogModal(ModalScreen[bool]):
             meeting_file = meeting.to_file(meetings_dir)
 
             try:
+                from tzlocal import get_localzone
+
                 from cocli.application.meeting_service import MeetingService
                 from cocli.models.companies.meeting import CompanyCall
-                from tzlocal import get_localzone
                 local_tz: Any
                 try:
                     local_tz = get_localzone()

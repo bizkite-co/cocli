@@ -1,8 +1,9 @@
+import logging
 import os
 import sys
-import logging
-import duckdb
 from pathlib import Path
+
+import duckdb
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))

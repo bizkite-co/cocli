@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path
 
+
 def before_scenario(context, scenario):
     # Clean up test_data directory before each scenario
     test_data_dir = Path("./tests/temp_data")

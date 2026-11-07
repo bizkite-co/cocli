@@ -1,14 +1,18 @@
 from __future__ import annotations
-import typer
+
 import json
-import subprocess
 import os
+import subprocess
 from datetime import datetime
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+
+import typer
 from rich.console import Console
+
 from cocli.core.config import get_campaign, get_campaign_dir
 from cocli.core.reporting import get_boto3_session
+
 from ..application.services import ServiceContainer
 
 app = typer.Typer(no_args_is_help=True, help="Manage web deployment.")

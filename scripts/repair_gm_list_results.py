@@ -1,5 +1,5 @@
-from cocli.core.paths import paths
 from cocli.core.constants import UNIT_SEP
+from cocli.core.paths import paths
 
 
 def repair_and_validate():

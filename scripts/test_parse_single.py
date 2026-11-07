@@ -1,7 +1,9 @@
-from typing import Any
 from pathlib import Path
+from typing import Any
+
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
+
 
 def test_single_file_isolated(file_path: Path) -> bool:
     print(f"Testing isolated parse of: {file_path}")

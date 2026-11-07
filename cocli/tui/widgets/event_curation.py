@@ -1,16 +1,17 @@
 from __future__ import annotations
+
 import logging
-from typing import Optional, cast, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 if TYPE_CHECKING:
     from ..app import CocliApp
 
-from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import ListView, ListItem, Label, Static
 from textual import on
+from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
+from textual.widgets import Label, ListItem, ListView, Static
 
 from ...models.campaigns.events import Event
 from .master_detail import MasterDetailView

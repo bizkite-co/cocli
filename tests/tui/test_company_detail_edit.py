@@ -1,11 +1,18 @@
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from cocli.tui.app import CocliApp
-from cocli.tui.widgets.company_detail import CompanyDetail, InfoTable, MeetingsTable, EditInput
-from cocli.models.companies.company import Company
+import pytest
+
 from cocli.core.paths import paths
+from cocli.models.companies.company import Company
+from cocli.tui.app import CocliApp
+from cocli.tui.widgets.company_detail import (
+    CompanyDetail,
+    EditInput,
+    InfoTable,
+    MeetingsTable,
+)
+
 
 @pytest.fixture
 def mock_company_data():

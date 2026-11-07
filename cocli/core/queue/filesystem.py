@@ -1,16 +1,17 @@
 from __future__ import annotations
-import os
+
 import json
 import logging
-from typing import TypeVar, Any, Optional, Union
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timedelta, UTC
+from typing import Any, Optional, TypeVar, Union
 
-from ...models.campaigns.queues.gm_list import ScrapeTask
-from ...models.campaigns.queues.gm_details import GmItemTask
-from ...models.campaigns.queues.base import QueueMessage
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
+from ...models.campaigns.queues.base import QueueMessage
+from ...models.campaigns.queues.gm_details import GmItemTask
+from ...models.campaigns.queues.gm_list import ScrapeTask
 from .layout import QueueLayout, resolve_queue_station
 from .protocol import QueueEdgeAliasesMixin
 from .task_file_filter import is_valid_task_data_file
@@ -1327,6 +1328,7 @@ class FilesystemTileQueue:
             MAP_TILE_PENDING_LAYOUT,
             MAP_TILE_QUEUE_STATION,
         )
+
         from .layout import QueueLayout
 
         self.campaign_name = campaign_name

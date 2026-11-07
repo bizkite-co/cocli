@@ -7,9 +7,9 @@ gm-list-queue-regressed-from-pendingcompleted-pattern-diverged-from-its-own-stat
 
 from pathlib import Path
 
+from cocli.application.audit_service import AuditService
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
-from cocli.application.audit_service import AuditService
 
 
 def _write(root: Path, rel_path: str) -> None:

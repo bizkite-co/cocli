@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from cocli.tui.widgets.confirm_screen import ConfirmScreen
 
 

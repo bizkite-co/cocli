@@ -1,5 +1,7 @@
 from typing import Annotated, Any
-from pydantic import StringConstraints, AfterValidator, BeforeValidator
+
+from pydantic import AfterValidator, BeforeValidator, StringConstraints
+
 
 def normalize_place_id(v: Any) -> Any:
     """

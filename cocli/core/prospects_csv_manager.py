@@ -1,13 +1,15 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 from __future__ import annotations
+
 import csv
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Optional
 
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from .sharding import get_place_id_shard
 from .config import get_campaign_dir, get_campaign_scraped_data_dir  # noqa: F401
+from .sharding import get_place_id_shard
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +33,8 @@ class ProspectsIndexManager:
     @property
     def checkpoint_path(self) -> Path:
         """Single source of truth checkpoint path for the prospects index."""
-        from cocli.core.paths import paths
         from cocli.core.ordinant import IndexIdentity
+        from cocli.core.paths import paths
         return paths.campaign(self.campaign_name).index(IndexIdentity.PROSPECTS).checkpoint
 
     def _get_checkpoint_path(self) -> Path:

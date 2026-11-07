@@ -1,14 +1,17 @@
 from __future__ import annotations
-import typer
+
 import logging
-from rich.console import Console
-from cocli.core.config import get_companies_dir
-from cocli.models.companies.company import Company
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.utils.usv_utils import USVDictWriter
+import re
 from pathlib import Path
 from typing import Optional
-import re
+
+import typer
+from rich.console import Console
+
+from cocli.core.config import get_companies_dir
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.models.companies.company import Company
+from cocli.utils.usv_utils import USVDictWriter
 
 app = typer.Typer()
 console = Console()
@@ -118,8 +121,9 @@ def main(
                 website_md = companies_dir / company.slug / "enrichments" / "website.md"
                 if website_md.exists():
                     try:
-                        from cocli.core.text_utils import parse_frontmatter
                         import yaml
+
+                        from cocli.core.text_utils import parse_frontmatter
                         content = website_md.read_text()
                         frontmatter_str = parse_frontmatter(content)
                         if frontmatter_str:

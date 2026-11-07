@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Optional
-import logging
 
-from ..models.companies.company import Company
+import logging
+from typing import Optional
+
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from ..models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 

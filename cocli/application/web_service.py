@@ -1,10 +1,19 @@
 from __future__ import annotations
-import toml
+
+from typing import Any, Callable, Optional
+
 import boto3
-from typing import Optional, Any, Callable
-from cocli.core.config import get_campaign_dir
-from cocli.core.reporting import get_campaign_stats, get_exclusions_data, get_queries_data, get_locations_data
+import toml
+
 from cocli.application.lead_export_service import LeadExportResult
+from cocli.core.config import get_campaign_dir
+from cocli.core.reporting import (
+    get_campaign_stats,
+    get_exclusions_data,
+    get_locations_data,
+    get_queries_data,
+)
+
 
 class WebService:
     def __init__(self, campaign_name: str):

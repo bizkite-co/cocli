@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
 from pathlib import Path
+
+from pydantic import BaseModel, Field
+
 from ..text_utils import slugify
+
 
 class OmapPathModel(BaseModel):
     """
@@ -23,7 +26,7 @@ class TilePath(OmapPathModel):
     extension: str = ".usv"
 
     def to_path(self) -> Path:
-        from ..sharding import get_grid_tile_id, get_geo_shard
+        from ..sharding import get_geo_shard, get_grid_tile_id
         tile_id = get_grid_tile_id(self.latitude, self.longitude)
         geo_shard = get_geo_shard(self.latitude)
         lat_tile, lon_tile = tile_id.split("_")

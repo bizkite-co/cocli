@@ -1,4 +1,5 @@
 import pytest
+
 from cocli.models.company_name import CompanyName
 
 
@@ -108,6 +109,7 @@ def test_quotes_only_raises():
 def test_pydantic_integration():
     """Test integration with Pydantic models."""
     from pydantic import BaseModel
+
     from cocli.models.company_name import OptionalCompanyName
 
     class TestCompany(BaseModel):

@@ -1,5 +1,6 @@
-from unittest.mock import patch
 import subprocess
+from unittest.mock import patch
+
 
 def test_help_command(runner, cli_app):
     result = runner.invoke(cli_app, ["--help"])

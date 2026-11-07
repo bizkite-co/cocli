@@ -8,8 +8,9 @@ Protocols live in ``stations`` (decision 0007).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Optional, Sequence, TypeVar
+from typing import Any, Callable, Generic, Optional, TypeVar
 
 from stations.protocols import (
     Compactor,

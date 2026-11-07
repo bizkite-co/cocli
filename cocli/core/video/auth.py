@@ -8,16 +8,17 @@ Design notes:
 """
 from __future__ import annotations
 
-import time
 import logging
+import time
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Any, Optional
+
 import requests
 from rich.console import Console
 
 from cocli.core.config import load_campaign_config
-from cocli.utils.op_utils import get_op_secret, set_op_secret
 from cocli.core.video.keyring_manager import KeyringManager
+from cocli.utils.op_utils import get_op_secret, set_op_secret
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -33,12 +34,10 @@ class PasswordManager(ABC):
     @abstractmethod
     def get_secret(self, path: str) -> Optional[str]:
         """Retrieve a secret from the password manager."""
-        pass
 
     @abstractmethod
     def set_secret(self, path: str, value: str) -> bool:
         """Store a secret in the password manager."""
-        pass
 
 
 class OnePasswordManager(PasswordManager):

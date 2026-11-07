@@ -1,14 +1,14 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar, Literal, Optional
 
 from pydantic import Field
 
-from .base import QueueMessage
 from ....core.ordinant import QueueIdentity, QueueName
+from .base import QueueMessage
 
 
 class FollowUpTask(QueueMessage):

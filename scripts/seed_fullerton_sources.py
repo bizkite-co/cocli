@@ -1,7 +1,8 @@
-from cocli.models.campaigns.queues.events import EventScrapeTask
+from cocli.core.config import set_campaign
 from cocli.core.ordinant import QueueIdentity
 from cocli.core.paths import paths
-from cocli.core.config import set_campaign
+from cocli.models.campaigns.queues.events import EventScrapeTask
+
 
 def seed_sources() -> None:
     set_campaign("fullertonian")

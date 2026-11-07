@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import pytest
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from textual.app import App, ComposeResult
 
 from cocli.models.companies.company import Company

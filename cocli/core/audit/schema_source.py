@@ -1,7 +1,8 @@
-import re
 import os
+import re
 from pathlib import Path
-from typing import Pattern
+from re import Pattern
+
 
 class SchemaSource:
     """

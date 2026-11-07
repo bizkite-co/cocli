@@ -1,10 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement
 import json
+
 import pytest
 
 from cocli.application.processors.gm_list import GmListProcessor
-from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 
 
 @pytest.mark.asyncio

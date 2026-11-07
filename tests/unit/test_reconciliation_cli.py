@@ -7,10 +7,10 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from cocli.core.paths import paths
-from cocli.core.queue.factory import get_queue_manager
 from cocli.commands.audit import app as audit_app
 from cocli.commands.data import app as data_app
+from cocli.core.paths import paths
+from cocli.core.queue.factory import get_queue_manager
 
 runner = CliRunner()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
-from typing import Optional, Literal, ClassVar
+
 import logging
+from typing import ClassVar, Literal, Optional
 
 from .google_maps_place import GoogleMapsPlace
 from .google_maps_raw import GoogleMapsRawResult
@@ -22,7 +23,7 @@ class GoogleMapsVenue(GoogleMapsPlace):
     prospect_type: Literal["prospect", "venue"] = "venue"
 
     @classmethod
-    def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsVenue":
+    def from_raw(cls, raw: GoogleMapsRawResult) -> GoogleMapsVenue:
         from cocli.core.text_utils import slugify
         data = {
             "place_id": raw.Place_ID,
@@ -83,7 +84,7 @@ class GoogleMapsVenue(GoogleMapsPlace):
         return cls(**data) # type: ignore
 
     @classmethod
-    def append_to_checkpoint(cls, campaign_name: str, venue: "GoogleMapsVenue") -> None:
+    def append_to_checkpoint(cls, campaign_name: str, venue: GoogleMapsVenue) -> None:
         """Appends a venue to the campaign's specialized checkpoint USV."""
         from ....core.paths import paths
         # Venues live in their own checkpoint file to maintain schema purity

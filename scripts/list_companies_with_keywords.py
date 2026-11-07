@@ -1,14 +1,16 @@
 from __future__ import annotations
+
 import csv
 from typing import Optional
+
 import typer
+import yaml
 from rich.console import Console
 from rich.progress import track
 
+from cocli.core.config import get_campaign, get_campaign_dir, get_companies_dir
 from cocli.models.companies.company import Company
-from cocli.core.config import get_companies_dir, get_campaign, get_campaign_dir
 from cocli.models.companies.website import Website
-import yaml
 
 app = typer.Typer()
 console = Console()

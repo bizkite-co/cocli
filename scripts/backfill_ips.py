@@ -1,9 +1,11 @@
 from __future__ import annotations
-import logging
+
 import asyncio
+import logging
 import socket
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
+
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 
 logging.basicConfig(level=logging.INFO)

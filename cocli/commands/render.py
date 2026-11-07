@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import typer
 from pathlib import Path
-from typing import Optional # Import Optional
+from typing import Optional  # Import Optional
+
+import typer
 
 from ..renderers.kml import render_kml_for_campaign
 

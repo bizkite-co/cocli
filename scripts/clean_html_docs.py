@@ -1,6 +1,8 @@
-import sys
 import re
+import sys
+
 from bs4 import BeautifulSoup, NavigableString
+
 
 def clean_text(text):
     # Remove multiple spaces but preserve single spaces

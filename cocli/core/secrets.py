@@ -1,8 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import os
+
 import logging
-from typing import Protocol, Optional, Any, cast
+import os
+from typing import Any, Optional, Protocol, cast
+
 from ..utils.op_utils import get_op_item, get_op_secret, read_op_secrets
 
 logger = logging.getLogger(__name__)

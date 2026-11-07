@@ -1,10 +1,13 @@
 from __future__ import annotations
-import shutil
+
 import os
-import typer
+import shutil
 from datetime import datetime
 from typing import Optional
-from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
+
+import typer
+
+from cocli.core.config import get_campaign, get_campaign_scraped_data_dir
 
 # Cutoff: Today at 14:00 (2pm)
 # Date: 2025-12-14

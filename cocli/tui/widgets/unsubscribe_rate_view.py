@@ -4,7 +4,7 @@ shown: no tracking infra exists yet (2026-09 decision)."""
 
 from __future__ import annotations
 
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -40,7 +40,9 @@ class UnsubscribeRateView(CocliPanel):
         self.refresh_stats()
 
     def refresh_stats(self) -> None:
-        from cocli.application.personalized_outreach_service import compute_unsubscribe_rate
+        from cocli.application.personalized_outreach_service import (
+            compute_unsubscribe_rate,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name

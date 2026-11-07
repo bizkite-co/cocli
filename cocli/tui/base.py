@@ -1,7 +1,8 @@
-from typing import Any, TypeVar, Generic
+from typing import Any, Generic, TypeVar
+
+from textual import events
 from textual.containers import Container
 from textual.screen import ModalScreen
-from textual import events
 
 T = TypeVar("T")
 

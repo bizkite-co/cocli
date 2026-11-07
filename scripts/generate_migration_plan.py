@@ -1,5 +1,7 @@
 import sys
+
 from cocli.core.config import get_campaign_dir
+
 
 def generate_plan(campaign_name: str) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
@@ -25,8 +27,7 @@ def generate_plan(campaign_name: str) -> None:
     
     # 2. Write the plan
     with open(plan_path, 'w') as f:
-        for c in sorted(candidates):
-            f.write(f"{c}\n")
+        f.writelines(f"{c}\n" for c in sorted(candidates))
             
     print(f"Plan generated: {len(candidates)} files to migrate.")
     print(f"Plan location: {plan_path}")

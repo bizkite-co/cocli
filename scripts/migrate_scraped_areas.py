@@ -1,8 +1,13 @@
-import typer
 import csv
+
+import typer
 from rich.console import Console
 
-from cocli.core.config import get_all_campaign_dirs, get_cocli_base_dir, get_scraped_areas_index_dir
+from cocli.core.config import (
+    get_all_campaign_dirs,
+    get_cocli_base_dir,
+    get_scraped_areas_index_dir,
+)
 from cocli.core.text_utils import slugify
 
 app = typer.Typer()

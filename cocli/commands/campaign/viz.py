@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
-from typing_extensions import Annotated
 
 from cocli.application.services import ServiceContainer
 from cocli.core.config import get_campaign

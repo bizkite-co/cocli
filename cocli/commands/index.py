@@ -106,8 +106,9 @@ def sync_pi_wal(
     else moves that data to S3 automatically. Run this before `compact`, or
     let `cocli web deploy` run both in order.
     """
-    from cocli.application.pi_sync_service import PiSyncService
     from rich.table import Table
+
+    from cocli.application.pi_sync_service import PiSyncService
 
     console.print(f"[bold]Syncing {index} WAL to S3 for {campaign}...[/bold]")
     service = PiSyncService(campaign)
@@ -142,8 +143,9 @@ def sync_pi_emails(
     `cocli data export-enriched-emails`, or let `cocli web export-emails`
     run the whole sequence.
     """
-    from cocli.application.pi_sync_service import PiSyncService
     from rich.table import Table
+
+    from cocli.application.pi_sync_service import PiSyncService
 
     console.print(f"[bold]Syncing email indexes for {campaign}...[/bold]")
     service = PiSyncService(campaign)

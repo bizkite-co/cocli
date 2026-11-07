@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from cocli.scrapers.event_search_scraper import EventSearchScraper
+
 from cocli.core.config import set_campaign
+from cocli.scrapers.event_search_scraper import EventSearchScraper
 
 logging.basicConfig(level=logging.INFO)
 

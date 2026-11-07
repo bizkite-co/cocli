@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Optional
-from .models import ShardIDPath
-from ..paths import paths
+
 from ...station_defs.path_helpers import email_shard_id
+from ..paths import paths
+from .models import ShardIDPath
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,6 @@ class EmailStore:
 
     async def sync(self, direction: str = "up") -> None:
         """S3 parity sync for the email index."""
-        pass
 
     @property
     def wasi_hash(self) -> Optional[str]:
@@ -95,6 +96,7 @@ class EmailStore:
         Verifies the directory identity via datapackage.json sentinel.
         """
         import json
+
         from ..ordinant import IndexIdentity
         sentinel_path = self.root / "datapackage.json"
         if not sentinel_path.exists():

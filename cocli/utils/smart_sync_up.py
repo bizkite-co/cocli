@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 import json
 import logging
 import time
-from pathlib import Path
-from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from ..core.config import get_cocli_base_dir
@@ -60,6 +61,7 @@ def run_smart_sync_up(
     
     try:
         from botocore.config import Config
+
         from ..core.reporting import get_boto3_session
         
         # Prepare a config object for get_boto3_session
@@ -114,7 +116,7 @@ def run_smart_sync_up(
             if 'Contents' in page:
                 for obj in page['Contents']:
                     key = str(obj['Key'])
-                    rel_path = key[len(prefix):] if key.startswith(prefix) else key
+                    rel_path = key.removeprefix(prefix)
                     remote_keys[rel_path] = key
     else:
         logger.info("Skipping S3 scan (delete_remote=False)")

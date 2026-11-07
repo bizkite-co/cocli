@@ -1,14 +1,16 @@
 from __future__ import annotations
+
+import os
 import sys
 from pathlib import Path
 from typing import Optional
-import os
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.quarantine.turboship_legacy import TurboshipLegacyProspect
+
 
 def migrate_record(line: str) -> Optional[GoogleMapsProspect]:
     if not line.strip() or "created_at\x1f" in line: # Skip header

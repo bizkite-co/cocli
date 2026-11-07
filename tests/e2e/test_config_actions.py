@@ -1,8 +1,10 @@
-import pytest
 import asyncio
 import json
+
 import boto3
+import pytest
 from playwright.async_api import expect
+
 
 @pytest.mark.asyncio
 async def test_add_exclusion_bridge(page, auth_creds, campaign_config, visible_locator):

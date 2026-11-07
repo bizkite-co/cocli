@@ -10,7 +10,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from cocli.commands.audit import _fetch_live_gm_list_tile_coverage, _sum_live_queue_pending
+from cocli.commands.audit import (
+    _fetch_live_gm_list_tile_coverage,
+    _sum_live_queue_pending,
+)
 from tests.test_audit_cluster_heartbeat import FakeS3Client
 
 _NOW = datetime.now(timezone.utc).isoformat()

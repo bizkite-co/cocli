@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import logging
+from typing import Optional
+
 import typer
 from rich.console import Console
-from cocli.core.config import get_companies_dir, load_campaign_config
-from cocli.compilers.website_compiler import WebsiteCompiler
 
-from typing import Optional
+from cocli.compilers.website_compiler import WebsiteCompiler
+from cocli.core.config import get_companies_dir, load_campaign_config
 
 app = typer.Typer()
 console = Console()

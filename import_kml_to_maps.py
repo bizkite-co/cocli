@@ -1,10 +1,11 @@
 
-import os
-import toml
-from playwright.sync_api import sync_playwright
 import logging
-import typer
+import os
 from pathlib import Path
+
+import toml
+import typer
+from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
 

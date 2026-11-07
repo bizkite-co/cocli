@@ -1,12 +1,14 @@
 import asyncio
 import logging
+
 import typer
-from cocli.core.enrichment import enrich_company_website
-from cocli.models.companies.company import Company
-from cocli.models.campaigns.campaign import Campaign
-from cocli.core.config import load_campaign_config
 from playwright.async_api import async_playwright
 from rich.console import Console
+
+from cocli.core.config import load_campaign_config
+from cocli.core.enrichment import enrich_company_website
+from cocli.models.campaigns.campaign import Campaign
+from cocli.models.companies.company import Company
 
 app = typer.Typer()
 console = Console()

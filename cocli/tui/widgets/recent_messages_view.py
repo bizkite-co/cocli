@@ -15,7 +15,7 @@ selected, so all existing rendering/detail logic (including the
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -108,13 +108,7 @@ class RecentMessagesView(MasterDetailView):
             self._show_detail_for(item)
 
     def on_key(self, event: events.Key) -> None:
-        if event.key in ("G", "shift+g") or event.character == "G":
-            if self.message_list.children:
-                self.message_list.index = len(self.message_list.children) - 1
-                self.message_list.scroll_end(animate=False)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "end":
+        if event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
             if self.message_list.children:
                 self.message_list.index = len(self.message_list.children) - 1
                 self.message_list.scroll_end(animate=False)

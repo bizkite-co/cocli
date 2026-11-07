@@ -1,5 +1,7 @@
-from pydantic import Field
 from typing import ClassVar
+
+from pydantic import Field
+
 from ...base import BaseUsvModel, ResourcePathPolicy
 
 

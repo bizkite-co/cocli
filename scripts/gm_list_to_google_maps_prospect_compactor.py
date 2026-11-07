@@ -1,6 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
-import logging
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -8,10 +8,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.paths import paths
-from cocli.utils.usv_utils import USVReader
 from cocli.core.prospect_compactor import compact_prospects_to_checkpoint
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.utils.usv_utils import USVReader
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -60,7 +60,9 @@ async def gm_list_to_google_maps_prospect_compact(campaign_name: str) -> None:
                         pid = row[0]
                         
                         try:
-                            from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+                            from cocli.models.campaigns.indexes.google_maps_raw import (
+                                GoogleMapsRawResult,
+                            )
                             raw = GoogleMapsRawResult(
                                 Place_ID=pid,
                                 Name=row[2],
@@ -94,8 +96,9 @@ async def gm_list_to_google_maps_prospect_compact(campaign_name: str) -> None:
         logger.info("Gold Checkpoint updated and stably sorted.")
 
 if __name__ == "__main__":
-    from cocli.core.config import get_campaign
     import sys
+
+    from cocli.core.config import get_campaign
     campaign = sys.argv[1] if len(sys.argv) > 1 else get_campaign()
     if not campaign:
         print("No campaign specified.")

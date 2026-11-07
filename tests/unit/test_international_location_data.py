@@ -16,8 +16,8 @@ from typing import Any
 import pytest
 
 from cocli.core.audit.field_lineage import (
-    FieldMap,
     Fallback,
+    FieldMap,
     assert_transform_field_integrity,
 )
 from cocli.core.text_utils import parse_postal_address
@@ -180,8 +180,8 @@ def test_parse_gmb_page_without_witness_url_leaves_coordinates_empty() -> None:
 
 
 def test_copenhagen_detail_fixture_produces_full_location() -> None:
-    from cocli.scrapers.google.google_maps_details import build_raw_result_from_details
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from cocli.scrapers.google.google_maps_details import build_raw_result_from_details
 
     details_dict = parse_postal_address_fixture_details()
     analysis = {"is_value_resource": False, "fee_category": None, "rationale": None}
@@ -308,8 +308,8 @@ def _ku_prospect(slug: str) -> Any:
 def test_apply_prospect_fills_empty_location_without_overwriting(
     sandboxed_companies_dir: Any,
 ) -> None:
-    from cocli.models.companies.company import Company
     from cocli.core.importing import apply_prospect_to_company_if_empty
+    from cocli.models.companies.company import Company
     from cocli.models.company_name import CompanyName
 
     # Company record written by hand: city Copenhagen, country DK, timezone set.
@@ -336,8 +336,8 @@ def test_apply_prospect_fills_empty_location_without_overwriting(
 
 
 def test_apply_prospect_does_not_overwrite_set_timezone(sandboxed_companies_dir: Any) -> None:
-    from cocli.models.companies.company import Company
     from cocli.core.importing import apply_prospect_to_company_if_empty
+    from cocli.models.companies.company import Company
     from cocli.models.company_name import CompanyName
 
     company = Company(

@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
+
 from playwright.async_api import Page
 
 from cocli.models.campaigns.raw_witness import RawWitness
+
 from ..gm_details_scraper import GoogleMapsDetailsScraper
 
 if TYPE_CHECKING:
@@ -34,7 +37,7 @@ def build_raw_result_from_details(
     witness_url: str,
     processed_by: str,
     analysis: dict[str, Any],
-) -> Optional["GoogleMapsRawResult"]:
+) -> Optional[GoogleMapsRawResult]:
     """Pure merge point: parsed detail-page dict (+ scrape context) -> GoogleMapsRawResult.
 
     Extracted from scrape_google_maps_details() so the field-lineage
@@ -51,8 +54,8 @@ def build_raw_result_from_details(
     version of this function threaded category/average_rating/reviews_count
     through as fallbacks, and why that was reverted.
     """
-    from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
     from cocli.core.text_utils import parse_postal_address
+    from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 
     final_name = details_dict.get("Name") or name
     if not final_name:
@@ -116,7 +119,7 @@ async def scrape_google_maps_details(
     name: Optional[str] = None,
     company_slug: Optional[str] = None,
     debug: bool = False
-) -> Optional["GoogleMapsProspect"]:
+) -> Optional[GoogleMapsProspect]:
     """
     Scrapes full details for a given Google Maps Place ID.
     Uses the state machine for capture and then parses the result.

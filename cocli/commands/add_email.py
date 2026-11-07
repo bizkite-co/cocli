@@ -1,11 +1,13 @@
 from __future__ import annotations
-import typer
+
 import logging
 from typing import Optional
 
-from ..core.config import get_companies_dir, get_campaign
-from ..models.companies.company import Company
+import typer
+
+from ..core.config import get_campaign, get_companies_dir
 from ..core.utils import create_company_files
+from ..models.companies.company import Company
 from ..models.email_address import EmailAddress
 
 logger = logging.getLogger(__name__)

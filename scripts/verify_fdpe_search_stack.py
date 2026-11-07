@@ -1,12 +1,15 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 from __future__ import annotations
-import duckdb
+
 import logging
-from typing import Any, cast, Optional
-from cocli.utils.duckdb_utils import load_usv_to_duckdb
+from typing import Any, Optional, cast
+
+import duckdb
+
+from cocli.core.cache import CACHE_FILE_NAME, get_cache_path
 from cocli.core.paths import paths
-from cocli.core.cache import get_cache_path, CACHE_FILE_NAME
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.utils.duckdb_utils import load_usv_to_duckdb
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
+import logging
 import os
 import sys
-import logging
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.campaigns.queues.gm_details import GmItemTask
 from cocli.core.text_utils import slugify
+from cocli.models.campaigns.queues.gm_details import GmItemTask
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)

@@ -13,9 +13,9 @@ from pathlib import Path
 import duckdb
 import typer
 
+from cocli.core.email_index_manager import EmailIndexManager
 from cocli.core.paths import paths
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.core.email_index_manager import EmailIndexManager
 from cocli.core.transformers.gm_list_to_checkpoint import _load_gm_list_results_auto
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 

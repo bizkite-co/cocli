@@ -1,7 +1,7 @@
-import sys
-import subprocess
 import logging
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -41,8 +41,7 @@ def remove_from_s3(file_list: list[str], campaign: str) -> None:
     # Use xargs to parallelize removal (10 at a time)
     temp_list = Path("temp/s3_remove_list.txt")
     with open(temp_list, "w") as f:
-        for k in keys:
-            f.write(f"{k}\n")
+        f.writelines(f"{k}\n" for k in keys)
     
     cmd = f"cat {temp_list} | xargs -n 1 -P 10 aws s3 rm --recursive"
     try:

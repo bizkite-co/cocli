@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from ..app import CocliApp
     from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+    from ..app import CocliApp
 
 from textual import events, on
 from textual.binding import Binding
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class PendingBatchListItem(ListItem):
-    def __init__(self, entry: "PendingBatchEntry") -> None:
+    def __init__(self, entry: PendingBatchEntry) -> None:
         super().__init__()
         self.entry = entry
 
@@ -44,7 +45,7 @@ class PendingBatchPreview(VerticalScroll):
         self,
         subject: str | None,
         body: str | None,
-        entry: "PendingBatchEntry | None" = None,
+        entry: PendingBatchEntry | None = None,
         rendered_content: str | None = None,
         is_html: bool = False,
     ) -> None:
@@ -115,7 +116,9 @@ class TargetBatchesView(MasterDetailView):
         self.refresh_batches()
 
     def refresh_batches(self) -> None:
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -148,13 +151,7 @@ class TargetBatchesView(MasterDetailView):
 
     def on_key(self, event: events.Key) -> None:
         """vim-style navigation - ListView only binds arrow keys by default."""
-        if event.key in ("G", "shift+g") or event.character == "G":
-            if self.batch_list.children:
-                self.batch_list.index = len(self.batch_list.children) - 1
-                self.batch_list.scroll_end(animate=False)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "end":
+        if event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
             if self.batch_list.children:
                 self.batch_list.index = len(self.batch_list.children) - 1
                 self.batch_list.scroll_end(animate=False)
@@ -190,12 +187,14 @@ class TargetBatchesView(MasterDetailView):
             event.prevent_default()
             event.stop()
 
-    def _update_entry_preview(self, entry: "PendingBatchEntry | None") -> None:
+    def _update_entry_preview(self, entry: PendingBatchEntry | None) -> None:
         if entry is None:
             self.batch_preview.update_preview(None, None)
             return
 
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
         from cocli.utils.terminal_preview import render_html_for_terminal
 
         app = cast("CocliApp", self.app)
@@ -255,7 +254,7 @@ class TargetBatchesView(MasterDetailView):
             return
         self._update_entry_preview(message.item.entry)
 
-    def _highlighted_entry(self) -> "PendingBatchEntry | None":
+    def _highlighted_entry(self) -> PendingBatchEntry | None:
         item = self.batch_list.highlighted_child
         if isinstance(item, PendingBatchListItem):
             return item.entry
@@ -287,8 +286,11 @@ class TargetBatchesView(MasterDetailView):
         self.refresh_batches()
 
     async def _new_batch_flow(self) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .new_batch_modal import NewBatchModal
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -317,9 +319,12 @@ class TargetBatchesView(MasterDetailView):
             return
         self.run_worker(self._edit_entry_flow(entry), exclusive=True)
 
-    async def _edit_entry_flow(self, entry: "PendingBatchEntry") -> None:
+    async def _edit_entry_flow(self, entry: PendingBatchEntry) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .edit_pending_entry_modal import EditPendingEntryModal
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -343,7 +348,9 @@ class TargetBatchesView(MasterDetailView):
         Only exists for templates with a `layout:` (see
         render_and_save_html_preview()); a plain-text .md template has
         nothing to preview beyond what's already in the detail pane."""
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
         from cocli.utils.open_url import open_url
 
         entry = self._highlighted_entry()
@@ -378,8 +385,11 @@ class TargetBatchesView(MasterDetailView):
         self.run_worker(self._send_batch_flow(entry.batch_id), exclusive=True)
 
     async def _send_batch_flow(self, batch_id: str) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .confirm_screen import ConfirmScreen
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -418,8 +428,11 @@ class TargetBatchesView(MasterDetailView):
         self.run_worker(self._send_all_batches_flow(), exclusive=True)
 
     async def _send_all_batches_flow(self) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .confirm_screen import ConfirmScreen
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -472,8 +485,11 @@ class TargetBatchesView(MasterDetailView):
         self.run_worker(self._discard_batch_flow(entry.batch_id), exclusive=True)
 
     async def _discard_batch_flow(self, batch_id: str) -> None:
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
+
         from .confirm_screen import ConfirmScreen
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
         confirmed = await self.app.push_screen_wait(
             ConfirmScreen(f"Discard batch {batch_id} without sending?")

@@ -41,10 +41,23 @@ def _settings(campaign_name: str) -> tuple[EmailSettings, Optional[str]]:
 
 @app.command("authorize")
 def authorize_mail() -> None:
-    """Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup)."""
+    """Browser OAuth for the campaign IMAP user. Writes the local token cache (no mutt-setup).
+
+    A GoDaddy Microsoft 365 directory needs its own app. The worked example,
+    including the device-code sign-in that does not open the default browser,
+    is campaigns/<campaign>/infrastructure/m365-send.md under the data home.
+    Handex: ~/.local/share/cocli_data/campaigns/handex/infrastructure/m365-send.md.
+    """
     campaign_name = _require_campaign()
     settings, _profile = _settings(campaign_name)
     try:
+        console.print(
+            "Mailbox OAuth setup is documented at "
+            "campaigns/<campaign>/infrastructure/m365-send.md "
+            "(Handex: ~/.local/share/cocli_data/campaigns/handex/infrastructure/m365-send.md). "
+            "On a GoDaddy tenant, do not open the default browser. "
+            "Use the device-code steps in that document."
+        )
         console.print("Open this URL (GoDaddy 2FA may apply):")
         console.print(build_authorize_url(settings))
         path = authorize_public_client(settings)
@@ -167,8 +180,8 @@ def unsubscribe(
     campaign_name = _require_campaign()
     _, profile = _settings(campaign_name)
 
-    from cocli.core.exclusions import ExclusionManager
     from cocli.application.ses_suppression_service import SesSuppressionService
+    from cocli.core.exclusions import ExclusionManager
 
     ex_mgr = ExclusionManager(campaign_name)
     ex_mgr.add_exclusion(domain=address, reason=f"unsubscribe:{reason}")
@@ -218,7 +231,9 @@ def prepare_batch(
 ) -> None:
     """Generate personalized outreach email drafts for testing (filters prospects with contact first names)."""
     campaign_name = _require_campaign()
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     service = PersonalizedOutreachService(campaign_name)
     matches = service.find_eligible_prospects(
@@ -293,7 +308,9 @@ def send_batch(
 ) -> None:
     """Actually send a batch via SES (prepare-batch only renders drafts)."""
     campaign_name = _require_campaign()
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     service = PersonalizedOutreachService(campaign_name)
     matches = service.find_eligible_prospects(limit=limit, template_name=template, initiative=initiative)
@@ -336,7 +353,9 @@ def list_pending() -> None:
     a SendLogEntry to email-send-log/log.usv instead - that's the
     permanent "was this sent" record, queryable via `list_send_log()`)."""
     campaign_name = _require_campaign()
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     service = PersonalizedOutreachService(campaign_name)
     entries = service.list_pending_batches()
@@ -375,7 +394,9 @@ def send_pending(
 ) -> None:
     """Send exactly one pending entry as a one-off or all pending entries (--all)."""
     campaign_name = _require_campaign()
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     service = PersonalizedOutreachService(campaign_name)
 
@@ -480,7 +501,9 @@ def render_html_preview(
     plain-text template has nothing beyond the body already visible in
     the .md file."""
     campaign_name = _require_campaign()
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
     from cocli.utils.open_url import open_url
 
     service = PersonalizedOutreachService(campaign_name)

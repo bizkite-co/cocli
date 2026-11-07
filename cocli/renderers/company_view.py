@@ -1,18 +1,20 @@
 from __future__ import annotations
+
 import datetime
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
 
+from rich.columns import Columns
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.columns import Columns
-
 from tzlocal import get_localzone
+
 from ..models.companies.company import Company
+from ..models.companies.note import Note
 from ..models.companies.website import Website
 from ..models.people.person import Person
-from ..models.companies.note import Note
+
 
 def _render_company_details(company: Company, tags: list[str], content: str, website_data: Optional[Website]) -> Panel:
     """Renders company details, including tags, services, and markdown content."""

@@ -1,37 +1,40 @@
 from __future__ import annotations
-import re
-import httpx
-import asyncio
-import socket
-import os
-import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import Optional, Callable, Coroutine, Any, Union
-from playwright.async_api import Page, Browser, BrowserContext
-from bs4 import BeautifulSoup
-from pydantic import ValidationError
-import logging
-from urllib.parse import urljoin
-from datetime import datetime, timedelta, UTC
 
-from ..models.companies.website import Website
-from ..core.website_domain_csv_manager import (
-    WebsiteDomainCsvManager,
-    CURRENT_SCRAPER_VERSION,
-)
+import asyncio
+import logging
+import os
+import re
+import socket
+import xml.etree.ElementTree as ET
+from collections.abc import Coroutine
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Callable, Optional, Union
+from urllib.parse import urljoin
+
+import httpx
+from bs4 import BeautifulSoup
+from playwright.async_api import Browser, BrowserContext, Page
+from pydantic import ValidationError
+
 from ..core.domain_index_manager import DomainIndexManager
-from ..core.s3_company_manager import S3CompanyManager
-from ..models.campaigns.indexes.domains import WebsiteDomainCsv
-from ..models.campaigns.campaign import Campaign
-from ..core.exceptions import EnrichmentError, NavigationError
-from ..core.error_classification import ErrorCategory, classify_exception
 from ..core.email_index_manager import EmailIndexManager
-from ..models.campaigns.indexes.email import EmailEntry
-from ..models.email_address import EmailAddress
-from ..utils.playwright_utils import setup_stealth_context, wait_until_page_painted
-from ..models.campaigns.raw_witness import RawWebsiteWitness
+from ..core.error_classification import ErrorCategory, classify_exception
+from ..core.exceptions import EnrichmentError, NavigationError
+from ..core.s3_company_manager import S3CompanyManager
 from ..core.text_utils import is_valid_email
+from ..core.website_domain_csv_manager import (
+    CURRENT_SCRAPER_VERSION,
+    WebsiteDomainCsvManager,
+)
+from ..models.campaigns.campaign import Campaign
+from ..models.campaigns.indexes.domains import WebsiteDomainCsv
+from ..models.campaigns.indexes.email import EmailEntry
+from ..models.campaigns.raw_witness import RawWebsiteWitness
+from ..models.companies.website import Website
+from ..models.email_address import EmailAddress
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
+from ..utils.playwright_utils import setup_stealth_context, wait_until_page_painted
 
 STOP_WORDS = {
     # Business & Web terms
@@ -49,7 +52,7 @@ STOP_WORDS = {
     "ridge", "park", "hills", "island", "county", "state", "city", "town", "country", "nation",
     "naperville", "florissant", "bay", "beach", "creek", "canyon", "grove", "harbor", "haven", 
     "hill", "meadow", "meadows", "mount", "mountain", "mountains", "port", "spring", "springs",
-    "station", "wood", "woods", "boroughs", "island", "islands", "center", "square",
+    "station", "wood", "woods", "boroughs", "islands", "center", "square",
     # States & Cities
     "washington", "wisconsin", "virginia", "georgia", "maryland", "carolina", "dakota", "delaware",
     "indiana", "michigan", "montana", "nevada", "oregon", "texas", "utah", "vermont", "wyoming",
@@ -71,7 +74,7 @@ FIRST_NAMES = {
     "walter", "harold", "jeremy", "ethan", "carl", "keith", "roger", "gerald", "christian", "terry",
     "sean", "arthur", "austin", "noah", "lawrence", "jesse", "joe", "bryan", "billy", "jordan",
     "albert", "dylan", "bruce", "willie", "alan", "gabriel", "logan", "randy", "ralph", "roy",
-    "alan", "louis", "wayne", "vincent", "russell", "bobby", "philip", "johnny", "mary", "patricia",
+    "louis", "wayne", "vincent", "russell", "bobby", "philip", "johnny", "mary", "patricia",
     "jennifer", "linda", "elizabeth", "barbara", "susan", "jessica", "sarah", "karen", "lisa", "nancy",
     "betty", "sandra", "margaret", "ashley", "kimberly", "emily", "donna", "michelle", "carol", "amanda",
     "dorothy", "melissa", "deborah", "stephanie", "rebecca", "sharon", "laura", "cynthia", "kathleen", "amy",
@@ -82,8 +85,8 @@ FIRST_NAMES = {
     "hannah", "sara", "janice", "julia", "olivia", "grace", "rose", "theresa", "judy", "beverly",
     "denise", "marilyn", "amber", "madison", "danielle", "brittany", "diana", "abigail", "jane", "lori",
     "bill", "steve", "mike", "dave", "chris", "bob", "ken", "rick", "dan", "tom", "jeff", "rob", "tim",
-    "tony", "andy", "jeffery", "jerry", "scott", "bruce", "pat", "gary", "keith", "brian", "bobby", "craig",
-    "jared", "justin", "corey", "marcus", "kurt", "charlie", "sam", "matt", "alex", "ben", "luke", "jake"
+    "tony", "andy", "jeffery", "pat", "craig",
+    "jared", "corey", "marcus", "kurt", "charlie", "sam", "matt", "alex", "ben", "luke", "jake"
 }
 
 # Mailbox local-parts that are role addresses, not a person - shared between
@@ -1018,7 +1021,7 @@ class WebsiteScraper:
 
         for platform in ["facebook", "linkedin", "instagram", "twitter", "youtube"]:
             if not getattr(website_data, f"{platform}_url"):
-                link = soup.find("a", href=re.compile(f"{platform}\\.com", re.I))
+                link = soup.find("a", href=re.compile(f"{platform}\\.com", re.IGNORECASE))
                 if link:
                     setattr(website_data, f"{platform}_url", str(link["href"]))
 
@@ -1121,7 +1124,7 @@ class WebsiteScraper:
                 )
             except Exception:
                 pass
-        linkedin_link = soup.find("a", href=re.compile(r"linkedin\.com/in/", re.I))
+        linkedin_link = soup.find("a", href=re.compile(r"linkedin\.com/in/", re.IGNORECASE))
         if linkedin_link:
             person_data["linkedin_url"] = str(linkedin_link["href"])
         phone_match = re.search(
@@ -1263,7 +1266,7 @@ class WebsiteScraper:
                     context_end = min(len(text), match.end() + 150)
                     context = text[context_start:context_end].lower()
                     
-                    keywords = {"owner", "founder", "president", "ceo", "partner", "manager", "team", "staff", "meet", "founder", "about", "contact", "our", "we"}
+                    keywords = {"owner", "founder", "president", "ceo", "partner", "manager", "team", "staff", "meet", "about", "contact", "our", "we"}
                     if any(kw in context for kw in keywords):
                         seen_names.add(cleaned.lower())
                         
@@ -1290,14 +1293,14 @@ class WebsiteScraper:
         self, soup: BeautifulSoup, html: str = ""
     ) -> dict[str, str]:
         email_to_label = {}
-        for link in soup.find_all("a", href=re.compile(r"^mailto:", re.I)):
+        for link in soup.find_all("a", href=re.compile(r"^mailto:", re.IGNORECASE)):
             href_attr = link.get("href")
             if not href_attr or not isinstance(href_attr, str):
                 continue
             m = re.search(
                 r"mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})",
                 href_attr,
-                re.I,
+                re.IGNORECASE,
             )
             if m:
                 email = m.group(1).lower()
@@ -1337,13 +1340,13 @@ class WebsiteScraper:
             r"\b([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|\[\s*at\s*\]|\(\s*at\s*\)|at)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|\[\s*dot\s*\]|\(\s*dot\s*\)|dot)\s*([a-zA-Z]{2,})\b"
         ]
         for pattern in obfuscated_patterns:
-            for match in re.finditer(pattern, text_content, re.I):
+            for match in re.finditer(pattern, text_content, re.IGNORECASE):
                 email = f"{match.group(1)}@{match.group(2)}.{match.group(3)}"
                 email = re.sub(r"\s+", "", email).lower()
                 if email not in email_to_label:
                     email_to_label[email] = ""
             if html:
-                for match in re.finditer(pattern, html, re.I):
+                for match in re.finditer(pattern, html, re.IGNORECASE):
                     email = f"{match.group(1)}@{match.group(2)}.{match.group(3)}"
                     email = re.sub(r"\s+", "", email).lower()
                     if email not in email_to_label:

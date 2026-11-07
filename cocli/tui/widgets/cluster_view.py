@@ -1,15 +1,14 @@
-from textual.app import ComposeResult
-from textual.widgets import Label, DataTable
-from textual.containers import VerticalScroll, Horizontal
-from typing import Any, TYPE_CHECKING
 import asyncio
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+from typing import Any
+
+from textual.app import ComposeResult
+from textual.containers import Horizontal, VerticalScroll
+from textual.widgets import DataTable, Label
 
 from cocli.core.gossip_bridge import bridge
 from cocli.tui.widgets.remote_pull import RemotePullMixin
 
-if TYPE_CHECKING:
-    pass
 
 class ClusterView(RemotePullMixin, VerticalScroll):
     """Real-time cluster dashboard using Gossip Bridge data."""
@@ -147,9 +146,10 @@ class ClusterView(RemotePullMixin, VerticalScroll):
             return
 
     async def _load_registry(self) -> None:
+        import json
+
         from cocli.core.config import get_campaign, load_campaign_config
         from cocli.core.reporting import get_boto3_session
-        import json
         
         campaign = get_campaign()
         if not campaign:
@@ -187,9 +187,10 @@ class ClusterView(RemotePullMixin, VerticalScroll):
             return
 
     async def _load_s3_status(self) -> None:
+        import json
+
         from cocli.core.config import get_campaign, load_campaign_config
         from cocli.core.reporting import get_boto3_session
-        import json
 
         campaign = get_campaign()
         if not campaign:

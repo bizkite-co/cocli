@@ -1,6 +1,7 @@
 import sys
 from typing import IO, Any
 
+
 def dump_tree(widget: Any, indent: int = 0, file: IO[str] = sys.stdout, max_children: int = 3) -> None:
     """
     Recursively dumps the widget tree of a Textual widget or app.

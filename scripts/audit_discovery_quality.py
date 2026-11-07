@@ -1,5 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
+
 from cocli.core.paths import paths
 from cocli.utils.usv_utils import USVReader
 

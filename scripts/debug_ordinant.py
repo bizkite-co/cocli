@@ -1,6 +1,7 @@
 import hashlib
 import sys
 from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -9,7 +10,6 @@ from rich.table import Table
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.sharding import get_domain_shard
-
 
 app = typer.Typer()
 console = Console()

@@ -1,7 +1,10 @@
 from typing import ClassVar
-from ..base import BaseUsvModel
+
 from pydantic import Field
+
 from ...core.geo_types import LatScale1, LonScale1
+from ..base import BaseUsvModel
+
 
 class MissionTask(BaseUsvModel):
     """

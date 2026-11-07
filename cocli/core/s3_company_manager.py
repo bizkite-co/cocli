@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import logging
-import yaml
-from botocore.exceptions import ClientError
 from typing import Optional
 
-from .paths import paths
+import yaml
+from botocore.exceptions import ClientError
+
 from ..models.campaigns.campaign import Campaign
-from ..models.companies.company import Company # To load/save _index.md equivalent
-from ..models.companies.website import Website # To load/save website.md equivalent
+from ..models.companies.company import Company  # To load/save _index.md equivalent
+from ..models.companies.website import Website  # To load/save website.md equivalent
+from .paths import paths
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ class S3CompanyManager:
         
         # Determine S3 bucket: env var > campaign config > default
         import os
+
         from .config import load_campaign_config
         from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
 

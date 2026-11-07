@@ -4,8 +4,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from cocli.services.cluster_service import ClusterService, find_node_ownership_conflicts
+
 from cocli.models.campaigns.worker_config import PiNodeConfig
+from cocli.services.cluster_service import ClusterService, find_node_ownership_conflicts
 
 
 @pytest.mark.asyncio

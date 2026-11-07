@@ -1,9 +1,10 @@
-import toml
 import csv
-from geopy.geocoders import Nominatim  # type: ignore
-from geopy.exc import GeocoderServiceError  # type: ignore
-from rich.console import Console
 import sys
+
+import toml
+from geopy.exc import GeocoderServiceError  # type: ignore
+from geopy.geocoders import Nominatim  # type: ignore
+from rich.console import Console
 
 console = Console()
 

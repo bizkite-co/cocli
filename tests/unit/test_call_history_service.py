@@ -1,9 +1,10 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+
 from cocli.application.call_history_service import (
     ConnectedCallInfo,
     detect_spoke_in_notes,
-    format_call_subject,
     format_call_opener,
+    format_call_subject,
 )
 
 
@@ -59,8 +60,8 @@ def test_format_call_subject_and_opener():
 
 
 def test_find_recent_connected_call_mock(monkeypatch):
-    from cocli.models.companies.activity import CompanyActivity
     from cocli.application.call_history_service import find_recent_connected_call
+    from cocli.models.companies.activity import CompanyActivity
 
     mock_act = [
         CompanyActivity(

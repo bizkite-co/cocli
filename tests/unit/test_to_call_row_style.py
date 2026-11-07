@@ -5,7 +5,7 @@ ticket (Mark, 2026-09-17)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 from cocli.tui.widgets.company_list import _to_call_row_style
 

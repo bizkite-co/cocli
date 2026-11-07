@@ -1,6 +1,8 @@
 import csv
-import pytest
 from pathlib import Path
+
+import pytest
+
 from cocli.scrapers.google.google_maps_parser import parse_business_listing_html
 
 TEST_DATA_DIR = Path("tests/data/maps.google.com")

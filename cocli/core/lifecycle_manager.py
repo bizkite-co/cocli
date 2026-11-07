@@ -1,12 +1,14 @@
-import os
 import logging
+import os
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
-from datetime import datetime, UTC
+from typing import Any
 
-from .paths import paths
 from cocli.core.constants import UNIT_SEP
+
 from ..models.campaigns.indexes.lifecycle import LifecycleItem
+from .paths import paths
 
 logger = logging.getLogger(__name__)
 

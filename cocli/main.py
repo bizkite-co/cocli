@@ -1,22 +1,24 @@
 from __future__ import annotations
+
 from cocli.core.bootstrap import setup_environment
 
 setup_environment()
 
 import os
 from typing import Optional
+
 import typer
 from rich.console import Console
 
 from cocli.commands import (
+    admin,
+    audit,
     companies,
+    data,
     enrich,
     query,
-    audit,
-    task,
-    admin,
-    data,
     register_commands,
+    task,
 )
 from cocli.core.paths import paths
 
@@ -64,7 +66,7 @@ def main_callback(
     if campaign:
         os.environ["COCLI_CAMPAIGN"] = campaign
 
-    from cocli.core.environment import get_environment, Environment
+    from cocli.core.environment import Environment, get_environment
 
     env = get_environment()
     if env != Environment.PROD:

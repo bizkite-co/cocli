@@ -38,7 +38,11 @@ def compact_entity_journal(
 ) -> None:
     """Rewrite entity files from the field journal and upload the files that changed."""
     from cocli.core.config import get_campaign, load_campaign_config
-    from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+    from cocli.core.reporting import (
+        get_boto3_session,
+        get_data_bucket_name,
+        get_s3_client,
+    )
 
     upload: Optional[Callable[[Path, str], None]] = None
     if not no_upload:

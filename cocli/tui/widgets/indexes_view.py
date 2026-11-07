@@ -1,16 +1,18 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from typing import Any, Optional, TYPE_CHECKING, cast
-import logging
-import json
-from pathlib import Path
-from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal, VerticalScroll
-from textual.widgets import Label, ListView, ListItem, Static
-from rich.table import Table
-from rich.panel import Panel
-from ...core.paths import paths
 
+import json
+import logging
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+from rich.panel import Panel
+from rich.table import Table
+from textual.app import ComposeResult
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Label, ListItem, ListView, Static
+
+from ...core.paths import paths
 
 if TYPE_CHECKING:
     from ..app import CocliApp

@@ -1,8 +1,10 @@
+import logging
 import os
 import re
-import logging
 from pathlib import Path
+
 from rich.console import Console
+
 from cocli.core.constants import UNIT_SEP
 
 logging.basicConfig(level=logging.INFO)

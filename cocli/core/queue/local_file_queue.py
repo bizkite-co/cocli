@@ -2,11 +2,11 @@ import json
 import logging
 import shutil
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
+from ...core.config import get_cocli_base_dir
 from ...models.campaigns.queues.base import QueueMessage
 from . import QueueManager
-from ...core.config import get_cocli_base_dir
 
 logger = logging.getLogger(__name__)
 

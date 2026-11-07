@@ -16,8 +16,8 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 logger = logging.getLogger(__name__)
 

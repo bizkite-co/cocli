@@ -172,17 +172,23 @@ def authorize_public_client(settings: EmailSettings, *, open_browser: bool = Tru
 def _wait_for_auth_code(
     auth_url: str, port: int, account: str, *, open_browser: bool = True
 ) -> str:
+    # A callback with no code must not stop the listener. The default browser
+    # hits localhost before Microsoft redirects, and on a GoDaddy tenant that
+    # browser is the wrong account. Setup notes, including the device-code
+    # sign-in used for Handex:
+    # ~/.local/share/cocli_data/campaigns/handex/infrastructure/m365-send.md
     class StoppableHTTPServer(HTTPServer):
         auth_code: Optional[str] = None
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802
+        def do_GET(self) -> None:
             if self.path.startswith("/favicon.ico"):
                 self.send_response(204)
                 self.end_headers()
                 return
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             code = query.get("code", [None])[0]
+            error = query.get("error", [None])[0]
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
@@ -191,9 +197,20 @@ def _wait_for_auth_code(
                 self.wfile.write(
                     b"<html><body><h1>Authorization successful.</h1><p>You can close this window.</p></body></html>"
                 )
-            else:
-                self.wfile.write(b"<html><body><h1>Authorization failed.</h1></body></html>")
-            threading.Timer(1, self.server.shutdown).start()
+                threading.Timer(1, self.server.shutdown).start()
+                return
+            logger.error("OAuth callback had no code: %s", self.path)
+            if error:
+                detail = str(error).encode()
+                self.wfile.write(
+                    b"<html><body><h1>Authorization was not completed.</h1><p>"
+                    + detail
+                    + b"</p><p>Return to the Microsoft sign-in window and approve access.</p></body></html>"
+                )
+                return
+            self.wfile.write(
+                b"<html><body><h1>Waiting for Microsoft.</h1><p>This tab has no authorization code. Finish sign-in in the Microsoft window.</p></body></html>"
+            )
 
         def log_message(self, fmt: str, *args: object) -> None:
             logger.info(fmt, *args)

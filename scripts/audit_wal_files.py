@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.constants import UNIT_SEP
 
+
 def audit_wal() -> None:
     wal_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects/wal")
     if not wal_dir.exists():
@@ -68,8 +69,7 @@ def audit_wal() -> None:
         with open(broken_log, "w") as f:
             f.write("--- Broken WAL Files Report ---\n")
             f.write(f"Total: {len(broken_files)} / {total_files}\n\n")
-            for path, issue in broken_files:
-                f.write(f"{path}: {issue}\n")
+            f.writelines(f"{path}: {issue}\n" for path, issue in broken_files)
         
         print(f"Details written to {broken_log}")
         

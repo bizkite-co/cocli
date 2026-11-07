@@ -1,17 +1,17 @@
 # POLICY: frictionless-data-policy-enforcement
-import os
-import sys
-import shutil
-import logging
 import argparse
+import logging
+import os
+import shutil
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.config import load_campaign_config
-from cocli.core.paths import paths
 from cocli.core.constants import UNIT_SEP
+from cocli.core.paths import paths
 
 # 1. Setup Logging to File
 LOG_FILE = Path(".logs/cleanup_discovery.log")

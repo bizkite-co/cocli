@@ -1,11 +1,13 @@
 from __future__ import annotations
-import typer
+
 import json
+from typing import Optional
+
+import typer
 from rich.console import Console
 from rich.progress import track
 
-from typing import Optional
-from cocli.core.config import get_cocli_base_dir, get_campaign
+from cocli.core.config import get_campaign, get_cocli_base_dir
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.campaigns.queues.base import QueueMessage
 

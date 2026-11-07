@@ -1,35 +1,33 @@
-import yaml
+import datetime
 import logging
-import typer
-from typing import Any
-from pathlib import Path
-import subprocess
 import os
 import shutil
+import subprocess
 import sys
-import datetime
+from pathlib import Path
+from typing import Any
 
+import httpx
+import typer
+import yaml
 from rich.console import Console
 
-
-from cocli.core.text_utils import slugify
-from cocli.core.utils import _getch, run_fzf, create_person_files
 from cocli.core.paths import paths
+from cocli.core.text_utils import slugify
+from cocli.core.utils import _getch, create_person_files, run_fzf
 from cocli.utils.open_url import open_url
-from ..core.config import get_campaign, get_editor_command, get_enrichment_service_url
-from ..models.companies.company import Company
-from ..models.people.person import Person
-from ..models.companies.note import Note
 
-
-from ..models.companies.website import Website
-from ..renderers.company_view import display_company_view
-from ..core.exclusions import ExclusionManager
-from ..commands.add_meeting import _add_meeting_logic
-from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 from ..application.company_service import get_company_details_for_view  # New Import
-import httpx
+from ..commands.add_meeting import _add_meeting_logic
 from ..compilers.website_compiler import WebsiteCompiler
+from ..core.config import get_campaign, get_editor_command, get_enrichment_service_url
+from ..core.exclusions import ExclusionManager
+from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
+from ..models.companies.company import Company
+from ..models.companies.note import Note
+from ..models.companies.website import Website
+from ..models.people.person import Person
+from ..renderers.company_view import display_company_view
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -82,8 +80,8 @@ def _interactive_view_company(company_slug: str) -> None:
         frontmatter_data = _load_frontmatter(index_path)
 
         if char == "f":
-            from .fz import fz
             from ..core.config import get_context
+            from .fz import fz
 
             console.clear()
             fz(filter_override=get_context())

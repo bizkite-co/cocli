@@ -1,5 +1,6 @@
-import typer
 import logging
+
+import typer
 
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from typing import Union
+
 from .geo_types import LatScale1, LonScale1
+
 
 def get_place_id_shard(place_id: str) -> str:
     """

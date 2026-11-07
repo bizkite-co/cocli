@@ -1,5 +1,7 @@
-import duckdb
 from pathlib import Path
+
+import duckdb
+
 from cocli.utils.duckdb_utils import find_datapackage, load_usv_to_duckdb
 
 # Initialize DuckDB and load data

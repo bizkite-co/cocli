@@ -1,12 +1,13 @@
-import sys
 import glob
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.paths import paths
 from cocli.core.config import get_campaign
+from cocli.core.paths import paths
+
 
 def run_stats(campaign_name: str) -> None:
     print(f"================ Campaign Stats: {campaign_name} ================")

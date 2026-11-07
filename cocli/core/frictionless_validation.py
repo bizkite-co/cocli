@@ -72,12 +72,12 @@ def validate_usv_file(
                                 model_class.from_usv(line)
                                 record_count += 1
                             except Exception as e:
-                                errors.append(f"Line {line_num}: {str(e)}")
+                                errors.append(f"Line {line_num}: {e!s}")
                                 if len(errors) > 10:
                                     errors.append("... (truncated)")
                                     break
             except Exception as e:
-                return False, record_count, [f"Failed to read USV file: {str(e)}"]
+                return False, record_count, [f"Failed to read USV file: {e!s}"]
 
             # Additional: validate field count
             with open(usv_path, "r", encoding="utf-8") as f:
@@ -109,9 +109,9 @@ def validate_usv_file(
         return len(errors) == 0, record_count, errors
 
     except json.JSONDecodeError as e:
-        return False, 0, [f"Invalid JSON in schema: {str(e)}"]
+        return False, 0, [f"Invalid JSON in schema: {e!s}"]
     except Exception as e:
-        return False, record_count, [f"Validation error: {str(e)}"]
+        return False, record_count, [f"Validation error: {e!s}"]
 
 
 def validate_stage_outputs(
@@ -128,8 +128,8 @@ def validate_stage_outputs(
     Returns:
         Dict mapping stage number → validation results
     """
-    from cocli.models.campaigns.tiles import TileRecord
     from cocli.models.campaigns.mission import MissionTask
+    from cocli.models.campaigns.tiles import TileRecord
 
     results: dict[int, dict[str, Any]] = {}
 
@@ -221,5 +221,5 @@ def validate_schema_hash(
         return is_valid, actual_hash
 
     except Exception as e:
-        logger.error(f"Failed to validate schema hash: {str(e)}")
+        logger.error(f"Failed to validate schema hash: {e!s}")
         return False, ""

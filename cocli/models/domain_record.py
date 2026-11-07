@@ -18,16 +18,16 @@ not-yet-built follow-up.
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field
 
-from .domain import Domain, to_lowercase_domain
 from ..core.paths import paths
 from ..core.text_utils import slugdotify
+from .domain import Domain, to_lowercase_domain
 
 
 class DomainRecord(BaseModel):
@@ -52,7 +52,7 @@ class DomainRecord(BaseModel):
         return paths.domains.entry(cls.slug_for(domain)).index
 
     @classmethod
-    def get(cls, domain: str) -> Optional["DomainRecord"]:
+    def get(cls, domain: str) -> Optional[DomainRecord]:
         index_path = cls._index_path(domain)
         if not index_path.exists():
             return None
@@ -70,7 +70,7 @@ class DomainRecord(BaseModel):
             return None
 
     @classmethod
-    def get_or_create(cls, domain: str) -> "DomainRecord":
+    def get_or_create(cls, domain: str) -> DomainRecord:
         return cls.get(domain) or cls(domain=domain)
 
     def save(self) -> Path:

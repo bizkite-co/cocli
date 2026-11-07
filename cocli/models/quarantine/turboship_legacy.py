@@ -1,9 +1,13 @@
 from __future__ import annotations
-from pydantic import BaseModel
-from typing import Optional
+
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
 from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..phone import OptionalPhone
+
 
 class TurboshipLegacyProspect(BaseModel):
     """
@@ -65,7 +69,7 @@ class TurboshipLegacyProspect(BaseModel):
     processed_by: Optional[str] = None
 
     @classmethod
-    def from_usv_line(cls, line: str) -> "TurboshipLegacyProspect":
+    def from_usv_line(cls, line: str) -> TurboshipLegacyProspect:
         from cocli.core.constants import UNIT_SEP
         parts = line.strip("\x1e\n").split(UNIT_SEP)
         
@@ -132,7 +136,11 @@ class TurboshipLegacyProspect(BaseModel):
 
     def to_ideal(self) -> GoogleMapsProspect:
         """Transforms the Turboship legacy format into the Gold Standard model."""
-        from cocli.core.text_utils import parse_address_components, calculate_company_hash, slugify
+        from cocli.core.text_utils import (
+            calculate_company_hash,
+            parse_address_components,
+            slugify,
+        )
         
         # 1. Map all fields to the Gold Standard model
         data = {

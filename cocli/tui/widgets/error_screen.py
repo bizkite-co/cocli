@@ -1,7 +1,8 @@
-from textual.screen import Screen
-from textual.app import ComposeResult
-from textual.widgets import Static
 from rich.panel import Panel
+from textual.app import ComposeResult
+from textual.screen import Screen
+from textual.widgets import Static
+
 
 class ErrorScreen(Screen[None]):
     """A screen to display a formatted error message."""

@@ -1,6 +1,9 @@
-from pydantic import Field, PrivateAttr
 from enum import Enum
+
+from pydantic import Field, PrivateAttr
+
 from .base import BaseUsvModel
+
 
 class TaskStatus(str, Enum):
     DRAFT = "DRAFT"

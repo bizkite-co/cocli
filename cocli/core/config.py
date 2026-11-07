@@ -1,16 +1,18 @@
 from __future__ import annotations
+
+import logging
 import os
-from pathlib import Path
 import platform
+from pathlib import Path
+from typing import Any, Optional
+
 import tomli
 import tomli_w
-from typing import Optional, Any
-import logging
-from pydantic import BaseModel, Field, ConfigDict, ValidationError
-
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings import BaseSettings
 from rich.console import Console
-from .paths import paths, get_validated_dir
+
+from .paths import get_validated_dir, paths
 
 console = Console()
 
@@ -22,7 +24,7 @@ def get_cocli_app_data_dir() -> Path:
     Determines the root data directory for cocli application-specific files (logs, caches).
     This is distinct from the user's business data directory.
     """
-    from .environment import get_environment, Environment
+    from .environment import Environment, get_environment
 
     env = get_environment()
 

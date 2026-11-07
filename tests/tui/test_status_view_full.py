@@ -1,9 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+from textual.widgets import Label
+
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.status_view import StatusView
-from textual.widgets import Label
+
 
 @pytest.mark.asyncio
 async def test_tui_status_view_navigation(mocker):

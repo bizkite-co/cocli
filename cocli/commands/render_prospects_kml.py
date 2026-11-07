@@ -1,8 +1,10 @@
 from __future__ import annotations
-import simplekml # type: ignore
-import typer
+
 import logging
 from typing import Optional
+
+import simplekml  # type: ignore
+import typer
 
 from ..core.config import get_campaign_dir
 from ..models.companies.company import Company

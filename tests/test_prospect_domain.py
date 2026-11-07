@@ -1,6 +1,7 @@
 
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.constants import UNIT_SEP
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+
 
 def test_prospect_domain_extraction():
     # Example line with website but no domain

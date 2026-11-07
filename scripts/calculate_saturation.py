@@ -1,15 +1,17 @@
 from __future__ import annotations
-import typer
+
 import csv
 import logging
 from typing import Optional
+
+import typer
 from rich.console import Console
 from rich.progress import track
 
-from cocli.models.target_location import TargetLocation
-from cocli.core.scrape_index import ScrapeIndex
-from cocli.core.saturation_calculator import calculate_saturation_score
 from cocli.core.config import get_campaign, get_campaigns_dir
+from cocli.core.saturation_calculator import calculate_saturation_score
+from cocli.core.scrape_index import ScrapeIndex
+from cocli.models.target_location import TargetLocation
 
 logger = logging.getLogger(__name__)
 console = Console()

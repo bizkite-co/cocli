@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import sys
+
 from cocli.core.prospect_compactor import compact_prospects_to_checkpoint
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

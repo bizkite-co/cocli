@@ -1,12 +1,13 @@
-import sys
 import json
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.sharding import get_place_id_shard
+
 
 def enqueue_hollow(execute: bool = False) -> None:
     pending_dir = Path("data/campaigns/roadmap/queues/gm-details/pending")

@@ -9,11 +9,11 @@ import pytest
 
 from cocli.application.worker_service import (
     WorkerService,
+    _read_hwmon_cpu_temp_c,
+    _read_sysfs_cpu_temp_c,
     parse_sysfs_millidegree,
     parse_vcgencmd_temp,
     read_cpu_temp_c,
-    _read_hwmon_cpu_temp_c,
-    _read_sysfs_cpu_temp_c,
 )
 from cocli.core.logging_config import RollingErrorCounter, get_recent_error_count
 from cocli.core.paths import paths

@@ -1,14 +1,16 @@
 import json
 import logging
-import typer
+from datetime import datetime
 from pathlib import Path
+
+import typer
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_cocli_base_dir
 from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaigns.campaign import Campaign as CampaignModel
 from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
-from datetime import datetime
 
 app = typer.Typer()
 console = Console()

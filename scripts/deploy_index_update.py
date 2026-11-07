@@ -1,8 +1,9 @@
-import subprocess
-import tomli
-from pathlib import Path
-import sys
 import logging
+import subprocess
+import sys
+from pathlib import Path
+
+import tomli
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

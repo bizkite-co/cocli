@@ -6,7 +6,9 @@ from typing import Any
 sys.path.append(os.getcwd())
 
 from typer.main import get_command
+
 from cocli.main import app as main_app
+
 
 def dump_cli_tree(command: Any, indent: int = 0) -> None:
     """

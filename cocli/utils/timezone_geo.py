@@ -29,7 +29,7 @@ ONE_ZONE_COUNTRIES: dict[str, str] = {
 
 
 @lru_cache(maxsize=1)
-def _finder() -> "Any":
+def _finder() -> Any:
     from timezonefinder import TimezoneFinder
 
     return TimezoneFinder()

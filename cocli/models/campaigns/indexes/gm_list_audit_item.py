@@ -1,6 +1,9 @@
 from __future__ import annotations
+
+from typing import ClassVar, Optional
+
 from pydantic import Field
-from typing import Optional, ClassVar
+
 from ...base import BaseUsvModel, ResourcePathPolicy
 
 

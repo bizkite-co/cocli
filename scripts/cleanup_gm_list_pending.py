@@ -1,11 +1,11 @@
-import os
-import sys
-import json
-import shutil
-import logging
 import argparse
+import json
+import logging
+import os
+import shutil
+import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, UTC, timedelta
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -54,8 +54,8 @@ def _alert_precision_violation(campaign_name: str, location: str, count: int, sa
     """Precision-named dirs should never occur post-fix - this is a bug
     signal, not routine housekeeping, so it pages instead of just logging."""
     try:
-        from cocli.utils.alert_utils import send_alert
         from cocli.models.campaigns.campaign import Campaign
+        from cocli.utils.alert_utils import send_alert
 
         campaign = Campaign.load(campaign_name)
         ntfy_url = getattr(getattr(campaign, "alerts", None), "ntfy_url", None)

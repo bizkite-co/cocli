@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from cocli.utils.terminal_preview import render_html_for_terminal
 
 

@@ -1,9 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
-from cocli.core.geo_types import LatScale1, LonScale1, LatScale6
-from cocli.core.sharding import get_grid_tile_id, get_geo_shard
+from cocli.core.geo_types import LatScale1, LatScale6, LonScale1
+from cocli.core.sharding import get_geo_shard, get_grid_tile_id
 from cocli.core.text_utils import slugify
 from cocli.models.campaigns.mission import MissionTask
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
+
 
 def test_tile_id_bucketing_logic():
     """

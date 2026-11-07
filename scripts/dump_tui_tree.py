@@ -6,8 +6,9 @@ from typing import IO, Any
 # Ensure cocli is in the path
 sys.path.append(os.getcwd())
 
-from cocli.tui.app import CocliApp
 from cocli.application.services import ServiceContainer
+from cocli.tui.app import CocliApp
+
 
 def dump_tree(widget: Any, indent: int = 0, file: IO[str] = sys.stdout, max_children: int = 3) -> None:
     node_id = f' (id="{widget.id}")' if getattr(widget, "id", None) else ""

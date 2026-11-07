@@ -1,7 +1,10 @@
 from __future__ import annotations
-import typer
+
 from typing import Optional
+
+import typer
 from rich.console import Console
+
 from ..services.sync_service import SyncService
 
 console = Console()
@@ -143,9 +146,9 @@ def pi_results(
         cocli sync pi-results --campaign roadmap --force  # Force sync
         cocli sync pi-results --status                   # Check status
     """
+    from cocli.application.pi_sync_service import PiSyncService
     from cocli.core.config import get_campaign
     from cocli.core.sync_tracker import SyncTracker
-    from cocli.application.pi_sync_service import PiSyncService
 
     # Default to "roadmap" if no campaign is active, as a safe fallback for cluster-wide syncing
     campaign_name = campaign or get_campaign() or "roadmap"
@@ -156,7 +159,7 @@ def pi_results(
     if status:
         last_sync = tracker.get_last_sync()
         if last_sync:
-            from datetime import datetime, UTC
+            from datetime import UTC, datetime
 
             age = datetime.now(UTC) - last_sync
             age_minutes = age.total_seconds() / 60

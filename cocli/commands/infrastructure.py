@@ -1,9 +1,12 @@
 from __future__ import annotations
-import typer
+
 from typing import Optional
+
+import typer
 from rich.console import Console
-from cocli.core.infrastructure.rpi import start_rpi_worker, stop_rpi_workers
+
 from cocli.core.config import get_campaign, load_campaign_config
+from cocli.core.infrastructure.rpi import start_rpi_worker, stop_rpi_workers
 
 app = typer.Typer(help="Manage cocli infrastructure (Raspberry Pis, AWS).", no_args_is_help=True)
 console = Console()

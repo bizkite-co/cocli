@@ -3,6 +3,7 @@ import asyncio
 import logging
 import sys
 from typing import Any
+
 from cocli.application.operation_service import OperationService
 from cocli.core.config import set_campaign
 

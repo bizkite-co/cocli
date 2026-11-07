@@ -1,12 +1,21 @@
-import boto3
 import json
 import logging
-import typer
-from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
+from typing import Any
+
+import boto3
+import typer
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
+
 from cocli.core.text_utils import slugdotify
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 
 # Set logging to WARNING to silence individual file logs
 logging.basicConfig(level=logging.WARNING)

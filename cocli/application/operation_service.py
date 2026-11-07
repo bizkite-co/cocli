@@ -1,9 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import logging
+
 import asyncio
-from typing import Any, Optional, Callable
-from dataclasses import dataclass, field as dataclass_field
+import logging
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from typing import Any, Callable, Optional
 
 from .services import ServiceContainer
 
@@ -35,8 +37,8 @@ class OperationService:
     """
 
     def __init__(self, campaign_name: str, services: Optional[ServiceContainer] = None):
-        import socket
         import os
+        import socket
 
         self.campaign_name = campaign_name
         self.services = services or ServiceContainer(campaign_name=campaign_name)
@@ -352,7 +354,7 @@ class OperationService:
         This is the shared logic used by both the TUI and CLI.
         """
         params = params or {}
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
         from pathlib import Path
 
         op = self.get_details(op_id)
@@ -720,12 +722,12 @@ class OperationService:
                     would_update = 0
                     sample_slugs: list[str] = []
                     limit = params.get("limit")
-                    from cocli.models.companies.company import Company
-                    from cocli.models.company_name import CompanyName
-                    from cocli.models.campaigns.queues.to_call import ToCallTask
                     from cocli.core.do_not_call_manager import DoNotCallManager
                     from cocli.core.exclusions import ExclusionManager
                     from cocli.core.paths import paths as _cc_paths
+                    from cocli.models.campaigns.queues.to_call import ToCallTask
+                    from cocli.models.companies.company import Company
+                    from cocli.models.company_name import CompanyName
                     tasks_to_save = []
 
                     # "Add more" is the standard population strategy (Mark,
@@ -875,8 +877,8 @@ class OperationService:
                         await asyncio.to_thread(build_cache, campaign=self.campaign_name)
 
                     if tasks_to_save:
-                        from cocli.models.base import write_queue_files
                         from cocli.core.paths import paths
+                        from cocli.models.base import write_queue_files
                         base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
                         write_queue_files(
                             model_class=ToCallTask,
@@ -959,10 +961,14 @@ class OperationService:
                     if not place_id:
                         raise ValueError("No place_id provided for scrape")
 
-                    from ..models.campaigns.queues.gm_details import GmItemTask
-                    from .processors.google_maps import GoogleMapsDetailsProcessor
-                    from ..utils.playwright_utils import launch_browser, new_details_context
                     from playwright.async_api import async_playwright
+
+                    from ..models.campaigns.queues.gm_details import GmItemTask
+                    from ..utils.playwright_utils import (
+                        launch_browser,
+                        new_details_context,
+                    )
+                    from .processors.google_maps import GoogleMapsDetailsProcessor
 
                     task = GmItemTask(
                         place_id=place_id,
@@ -1006,14 +1012,15 @@ class OperationService:
                             "company_slug and domain are required for re-enrichment"
                         )
 
+                    from playwright.async_api import async_playwright
+
                     from ..core.enrichment import enrich_company_website
-                    from ..models.companies.company import Company
                     from ..models.campaigns.campaign import Campaign
+                    from ..models.companies.company import Company
                     from ..utils.playwright_utils import (
                         launch_browser,
                         new_enrichment_context,
                     )
-                    from playwright.async_api import async_playwright
 
                     log_step("browser_init", "pending")
                     async with async_playwright() as p:
@@ -1074,10 +1081,11 @@ class OperationService:
             elif op_id == "op_refresh_dev":
 
                 async def run_refresh() -> dict[str, Any]:
-                    from ..core.environment import get_environment, Environment
-                    import subprocess
                     import os
+                    import subprocess
                     from pathlib import Path
+
+                    from ..core.environment import Environment, get_environment
 
                     env = get_environment()
                     if env == Environment.PROD:
@@ -1146,9 +1154,10 @@ class OperationService:
             elif op_id == "op_sanitize_discovery":
 
                 async def run_sanitization() -> dict[str, Any]:
-                    from ..services.cluster_service import ClusterService
-                    from pathlib import Path
                     import importlib.util
+                    from pathlib import Path
+
+                    from ..services.cluster_service import ClusterService
 
                     project_root = Path(__file__).parent.parent.parent.resolve()
 
@@ -1207,8 +1216,8 @@ class OperationService:
             elif op_id == "op_purge_pending":
 
                 async def run_purge() -> dict[str, Any]:
-                    from pathlib import Path
                     import importlib.util
+                    from pathlib import Path
 
                     project_root = Path(__file__).parent.parent.parent.resolve()
                     pending_script = (
@@ -1263,11 +1272,13 @@ class OperationService:
                         f"Creating batch '{batch_name}' (Limit: {limit}, TTL: {ttl_days}d)...",
                     )
 
-                    from ..models.campaigns.mission import MissionTask
-                    from ..core.scrape_index import ScrapeIndex
-                    from ..core.paths import paths
-                    import toml
                     import shutil
+
+                    import toml
+
+                    from ..core.paths import paths
+                    from ..core.scrape_index import ScrapeIndex
+                    from ..models.campaigns.mission import MissionTask
 
                     campaign_dir = paths.campaign(self.campaign_name).path
                     dg = paths.campaign(self.campaign_name).queue(
@@ -1350,8 +1361,9 @@ class OperationService:
                         "pending",
                         "Activating tasks into mission index...",
                     )
-                    from ..core.sharding import get_geo_shard
                     from cocli.core.text_utils import slugify
+
+                    from ..core.sharding import get_geo_shard
 
                     activated_count = 0
                     for task in tasks:

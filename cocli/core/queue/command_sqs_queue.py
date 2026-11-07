@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import json
 import logging
 from typing import Optional
+
 from botocore.exceptions import ClientError
 
 from ...models.command import CocliCommand

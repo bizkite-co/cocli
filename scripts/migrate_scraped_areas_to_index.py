@@ -3,8 +3,9 @@ import csv
 import json
 import logging
 import math
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
+
 import typer
 from rich.console import Console
 from rich.progress import track

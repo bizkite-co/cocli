@@ -1,7 +1,10 @@
 from __future__ import annotations
+
+from datetime import UTC, datetime
 from typing import ClassVar
-from datetime import datetime, UTC
+
 from pydantic import Field
+
 from .base import BaseIndexModel
 
 

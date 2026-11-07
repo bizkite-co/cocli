@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from textual import on, events
+from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen

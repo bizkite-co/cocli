@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-import logging
 import asyncio
-from typing import TYPE_CHECKING, Any, Optional
+import logging
+from typing import Any, Optional
 
-from textual.binding import Binding
-from textual.widgets import ListView, ListItem, Label, Static
+from textual import events, on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.message import Message
-from textual import events, on
+from textual.widgets import Label, ListItem, ListView, Static
 
 from cocli.core.config import get_all_campaign_dirs
 from cocli.core.text_utils import slugify
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +132,6 @@ class CampaignSelection(Static):
             self.action_add_campaign()
             event.prevent_default()
 
-    def focus(self, scroll_visible: bool = True) -> "CampaignSelection":
+    def focus(self, scroll_visible: bool = True) -> CampaignSelection:
         self.query_one("#campaign_list_view", ListView).focus()
         return self

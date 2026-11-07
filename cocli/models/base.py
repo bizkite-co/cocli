@@ -1,20 +1,21 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
+
 import json
 import logging
-from enum import Enum
+from collections.abc import Sequence
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
-    TypeVar,
+    Callable,
+    ClassVar,
     Optional,
     Protocol,
-    runtime_checkable,
-    ClassVar,
-    Callable,
-    Sequence,
+    TypeVar,
     get_origin,
+    runtime_checkable,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -109,7 +110,7 @@ class QueueWriter(Protocol):
     @classmethod
     def write_queue_files(
         cls,
-        items: list["BaseUsvModel"],
+        items: list[BaseUsvModel],
         queue_dir: Path,
         resource_name: str,
         resource_path: str,
@@ -127,6 +128,9 @@ class QueueWriter(Protocol):
 
 
 from typing import Protocol, runtime_checkable
+
+from typing_extensions import Self
+
 
 @runtime_checkable
 class OMOPQueueRecord(Protocol):
@@ -211,7 +215,7 @@ class BaseUsvModel(BaseModel):
         return UNIT_SEP.join(values) + "\n"
 
     @classmethod
-    def validate_record(cls: type[T], usv_line: str) -> tuple[bool, Optional[T], str]:
+    def validate_record(cls, usv_line: str) -> tuple[bool, Optional[Self], str]:
         """
         Validates a single USV record against this model's schema.
         Returns (is_valid, parsed_model, error_message).
@@ -261,7 +265,7 @@ class BaseUsvModel(BaseModel):
 
     @classmethod
     def validate_file(
-        cls: type[T], usv_path: Path, invalid_path: Optional[Path] = None
+        cls, usv_path: Path, invalid_path: Optional[Path] = None
     ) -> dict[str, int]:
         """
         Validates all records in a USV file.
@@ -295,7 +299,7 @@ class BaseUsvModel(BaseModel):
                 f_invalid.close()
 
     @classmethod
-    def from_usv(cls: type[T], usv_str: str) -> T:
+    def from_usv(cls, usv_str: str) -> Self:
         """Parses a Unit-Separated Value string into a model instance."""
         # Strip both Record Separator and Newline
         line = usv_str.strip("\x1e\n")
@@ -715,8 +719,8 @@ class BaseUsvModel(BaseModel):
 
     @classmethod
     def save_usv_with_datapackage(
-        cls: type[T],
-        items: list[T],
+        cls,
+        items: list[Self],
         output_path: Path,
         resource_name: Optional[str] = None,
     ) -> None:
@@ -726,8 +730,7 @@ class BaseUsvModel(BaseModel):
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
-            for item in items:
-                f.write(item.to_usv())
+            f.writelines(item.to_usv() for item in items)
 
         # Save datapackage.json in the same directory
         res_name = resource_name or output_path.stem

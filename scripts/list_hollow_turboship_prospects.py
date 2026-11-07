@@ -1,5 +1,6 @@
 import typer
 from rich.console import Console
+
 from cocli.core.config import get_campaign_dir
 
 app = typer.Typer()

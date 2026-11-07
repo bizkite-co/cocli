@@ -1,6 +1,8 @@
 from __future__ import annotations
-from typing import Protocol, Optional
+
 from pathlib import Path
+from typing import Optional, Protocol
+
 
 class ManagedStore(Protocol):
     """

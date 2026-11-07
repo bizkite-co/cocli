@@ -73,8 +73,9 @@ async def test_pressing_T_on_activity_table_dispatches_transcribe_recording(
 async def test_play_recording_warns_when_no_recording_on_selected_call(
     mock_company_data,
 ):
+    from datetime import UTC, datetime
+
     from cocli.models.companies.activity import CompanyActivity
-    from datetime import datetime, UTC
 
     mock_company_data["activity"] = [
         CompanyActivity(

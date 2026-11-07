@@ -1,8 +1,9 @@
 import asyncio
+import logging
 import os
 import sys
-import logging
 from typing import Any
+
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
 
 # Configure logging
@@ -40,6 +41,7 @@ async def re_enqueue_targeted() -> None:
     )
 
     from playwright.async_api import async_playwright
+
     from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
     from cocli.utils.playwright_utils import setup_optimized_context
 
@@ -68,8 +70,8 @@ async def re_enqueue_targeted() -> None:
         # We wrap our task in a list so poll logic would see it
         # Actually, let's just use the internal method with a tiny modification
         # Or better: just use ScrapeCoordinator directly like the worker does
-        from cocli.scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
         from cocli.application.processors.gm_list import GmListProcessor
+        from cocli.scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
         
         coordinator = ScrapeCoordinator(browser, campaign_name=campaign, debug=True)
         

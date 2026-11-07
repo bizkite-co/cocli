@@ -1,10 +1,10 @@
-from cocli.core.website_cache import WebsiteCache
-from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
-
 import sys
 from datetime import datetime
 from pathlib import Path
+
+from cocli.core.website_cache import WebsiteCache
+from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent

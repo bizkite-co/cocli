@@ -1,6 +1,7 @@
 import json
 import os
 
+
 # Centralized sharding logic
 def get_shard_id(identifier: str) -> str:
     if not identifier or len(identifier) < 6:
@@ -8,8 +9,8 @@ def get_shard_id(identifier: str) -> str:
     return identifier[5]
 
 def bulk_re_enqueue(hollow_ids_file: str, bucket: str, campaign: str) -> None:
-    from cocli.core.reporting import get_boto3_session
     from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session
     
     config = load_campaign_config(campaign)
     session = get_boto3_session(config)
@@ -58,6 +59,7 @@ def bulk_re_enqueue(hollow_ids_file: str, bucket: str, campaign: str) -> None:
 
 if __name__ == "__main__":
     import sys
+
     from cocli.core.config import load_campaign_config
     CAMPAIGN = sys.argv[1] if len(sys.argv) > 1 else "roadmap"
     config = load_campaign_config(CAMPAIGN)

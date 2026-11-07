@@ -1,8 +1,10 @@
 import pytest
-from cocli.tui.app import CocliApp
-from cocli.models.search import SearchResult
-from cocli.application.services import ServiceContainer
 from textual.widgets import ListView
+
+from cocli.application.services import ServiceContainer
+from cocli.models.search import SearchResult
+from cocli.tui.app import CocliApp
+
 
 def setup_mocks(monkeypatch, mock_cocli_env):
     # Mock the search service synchronously

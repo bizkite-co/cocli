@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+import argparse
 import subprocess
 import sys
-import argparse
 
 # Removed LOCAL_FILE_PATH, CONTAINER_FILE_PATH, TEMP_DIR as mtime comparison is being removed.
 

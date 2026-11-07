@@ -1,13 +1,15 @@
 import json
 import logging
-import typer
+from datetime import datetime
 from pathlib import Path
+
+import typer
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_cocli_base_dir
-from cocli.models.campaigns.indexes.email import EmailEntry
 from cocli.core.email_index_manager import EmailIndexManager
-from datetime import datetime
+from cocli.models.campaigns.indexes.email import EmailEntry
 
 app = typer.Typer()
 console = Console()

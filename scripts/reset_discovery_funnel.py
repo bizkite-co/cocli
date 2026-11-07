@@ -1,14 +1,15 @@
 # POLICY: frictionless-data-policy-enforcement
-import shutil
 import argparse
 import logging
-from pathlib import Path
+import shutil
 
 # Add project root to path
 import sys
+from pathlib import Path
+
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.config import get_campaign_dir, get_campaign
+from cocli.core.config import get_campaign, get_campaign_dir
 from cocli.core.paths import paths
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

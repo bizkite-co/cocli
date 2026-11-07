@@ -1,10 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import logging
+
 import asyncio
+import logging
 import subprocess
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any, Callable, Optional
+
+from rich.console import Console
 
 from ..core.config import load_campaign_config
 from ..models.campaigns.worker_config import (
@@ -12,8 +15,6 @@ from ..models.campaigns.worker_config import (
     PiNodeConfig,
     WorkerDefinition,
 )
-
-from rich.console import Console
 
 logger = logging.getLogger(__name__)
 console = Console()

@@ -1,11 +1,12 @@
-import sys
 import shutil
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.sharding import get_place_id_shard
+
 
 def normalize_shards(execute: bool = False) -> None:
     pending_dir = Path("data/campaigns/roadmap/queues/gm-details/pending")

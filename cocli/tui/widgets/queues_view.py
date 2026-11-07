@@ -1,25 +1,24 @@
 from __future__ import annotations
-from typing import Any, Optional, TYPE_CHECKING, cast, Union
 
-import logging
 import asyncio
-from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal, VerticalScroll
-from textual.widgets import Label, ListView, ListItem, Static, Input
-from textual import work, events
+import logging
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 from rich.table import Table
+from textual import events, work
+from textual.app import ComposeResult
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Input, Label, ListItem, ListView, Static
+
+from cocli.core.ordinant import QueueIdentity
+from cocli.core.paths import paths
 from cocli.models.campaigns.queues.metadata import (
     QUEUES_METADATA,
-    QueueMetadata,
     PropertyInfo,
+    QueueMetadata,
 )
-from cocli.core.paths import paths
-from cocli.core.ordinant import QueueIdentity
-from cocli.utils.open_url import open_url
 from cocli.tui.widgets.remote_pull import RemotePullMixin
-
-
+from cocli.utils.open_url import open_url
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -483,8 +482,7 @@ class QueueDetail(RemotePullMixin, VerticalScroll):
                     f.write(GmListReviewedItem.get_header())
 
             with open(reviewed_path, "a", encoding="utf-8") as f:
-                for entry in reviewed_entries:
-                    f.write(entry.to_usv())
+                f.writelines(entry.to_usv() for entry in reviewed_entries)
 
             self.app.notify(f"Reviewed: {biz_name[:30]} | {rating} ({reviews})")
             saved_idx = self.audit_selected_idx
@@ -793,8 +791,7 @@ class QueueDetail(RemotePullMixin, VerticalScroll):
                     f.write(GmListReviewedItem.get_header())
 
             with open(reviewed_path, "a", encoding="utf-8") as f:
-                for entry in reviewed_entries:
-                    f.write(entry.to_usv())
+                f.writelines(entry.to_usv() for entry in reviewed_entries)
 
             self.app.notify(f"Reviewed: {biz_name[:30]} | {rating} ({reviews})")
             self.is_editing = False

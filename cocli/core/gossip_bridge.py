@@ -1,20 +1,28 @@
 from __future__ import annotations
-import re
-import time
-import socket
+
 import logging
-import threading
 import os
+import re
+import socket
+import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
-from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser, ServiceListener
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
-from .wal import get_node_id
-from ..models.wal.record import DatagramRecord, RS, QueueDatagram, HeartbeatDatagram, ConfigDatagram
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from zeroconf import ServiceBrowser, ServiceInfo, ServiceListener, Zeroconf
+
+from ..models.wal.record import (
+    RS,
+    ConfigDatagram,
+    DatagramRecord,
+    HeartbeatDatagram,
+    QueueDatagram,
+)
+from .environment import Environment, get_environment
 from .paths import paths
-from .environment import get_environment, Environment
+from .wal import get_node_id
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +123,7 @@ def registry_entry_is_live(
         return False
 
 class GossipListener(ServiceListener):
-    def __init__(self, bridge: "GossipBridge") -> None:
+    def __init__(self, bridge: GossipBridge) -> None:
         self.bridge = bridge
 
     def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
@@ -137,7 +145,7 @@ class GossipListener(ServiceListener):
         pass
 
 class WalEventHandler(FileSystemEventHandler):
-    def __init__(self, bridge: "GossipBridge") -> None:
+    def __init__(self, bridge: GossipBridge) -> None:
         self.bridge = bridge
 
     def on_modified(self, event: Any) -> None:
@@ -330,10 +338,11 @@ class GossipBridge:
                 logger.info(f"Received queue sync: {q_record.queue_name}/{q_record.task_id} [{q_record.status}] from {q_record.node_id} (Campaign: {effective_campaign})")
                 
                 # Resolve queue manager using local imports to avoid circular dependencies
-                from .queue.factory import get_queue_manager
-                from .queue.filesystem import FilesystemTileQueue, FilesystemQueue
-                from datetime import datetime, timedelta, UTC
                 import json
+                from datetime import UTC, datetime, timedelta
+
+                from .queue.factory import get_queue_manager
+                from .queue.filesystem import FilesystemQueue, FilesystemTileQueue
 
                 queue_type = q_record.queue_name
                 if queue_type == "gm-details":
@@ -565,7 +574,8 @@ class GossipBridge:
                     logger.warning(f"mDNS setup failed: {e}")
 
                 # 4. Send immediate 'hello' heartbeat
-                from datetime import datetime, UTC
+                from datetime import UTC, datetime
+
                 from ..models.wal.record import HeartbeatDatagram
                 from .config import get_campaign
                 hello = HeartbeatDatagram(
@@ -632,7 +642,7 @@ class GossipBridge:
 
     def discover_peers(self) -> None:
         """Peers are the campaign cluster, plus unexpired Fargate leases."""
-        from .config import load_campaign_config, get_campaign
+        from .config import get_campaign, load_campaign_config
 
         campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
         config: dict[str, Any] = load_campaign_config(campaign_name) if campaign_name else {}
@@ -646,8 +656,13 @@ class GossipBridge:
                 self.maybe_add_peer(host_key, ip, source="cluster-config")
 
         try:
-            from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
             import json
+
+            from .reporting import (
+                get_boto3_session,
+                get_data_bucket_name,
+                get_s3_client,
+            )
 
             if not campaign_name:
                 return
@@ -686,9 +701,14 @@ class GossipBridge:
     def register_self(self) -> None:
         """Registers a leased IP in the S3 cluster registry."""
         try:
-            from .config import load_campaign_config, get_campaign
-            from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
             import json
+
+            from .config import get_campaign, load_campaign_config
+            from .reporting import (
+                get_boto3_session,
+                get_data_bucket_name,
+                get_s3_client,
+            )
 
             campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
             if not campaign_name:

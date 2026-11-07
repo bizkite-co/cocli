@@ -1,14 +1,16 @@
 from __future__ import annotations
-import typer
-import boto3
+
 import os
-from rich.console import Console
-from rich.progress import track
 from pathlib import Path
 from typing import Optional
 
-from cocli.core.config import get_companies_dir, get_campaign
+import boto3
+import typer
+from rich.console import Console
+from rich.progress import track
+
 from cocli.compilers.website_compiler import WebsiteCompiler
+from cocli.core.config import get_campaign, get_companies_dir
 
 app = typer.Typer()
 console = Console()

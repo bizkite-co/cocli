@@ -1,10 +1,11 @@
 from __future__ import annotations
+
+from typing import Optional
+
 import typer
 from rich.console import Console
 
 from cocli.compilers.enrichment_compiler import EnrichmentCompiler
-
-from typing import Optional
 
 app = typer.Typer()
 console = Console()

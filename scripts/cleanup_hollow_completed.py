@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-import shutil
 import json
 import logging
+import shutil
 
 from cocli.core.config import get_campaign, get_campaign_dir
 

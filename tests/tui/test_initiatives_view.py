@@ -41,8 +41,7 @@ def _write_send_log(campaign: str, entries: list) -> None:
     index_dir = SendLogEntry.get_index_dir(campaign)
     index_dir.mkdir(parents=True, exist_ok=True)
     with open(index_dir / "log.usv", "a", encoding="utf-8") as f:
-        for entry in entries:
-            f.write(entry.to_usv())
+        f.writelines(entry.to_usv() for entry in entries)
 
 
 def _write_ses_events(campaign: str, entries: list) -> None:
@@ -51,8 +50,7 @@ def _write_ses_events(campaign: str, entries: list) -> None:
     index_dir = SesEventLogEntry.get_index_dir(campaign)
     index_dir.mkdir(parents=True, exist_ok=True)
     with open(index_dir / "log.usv", "a", encoding="utf-8") as f:
-        for entry in entries:
-            f.write(entry.to_usv())
+        f.writelines(entry.to_usv() for entry in entries)
 
 
 @pytest.mark.asyncio
@@ -367,7 +365,9 @@ async def test_t_sends_a_test_copy_of_the_selected_template(mock_cocli_env, mock
     becoming one (no Recent Sends/Tracking pollution, no SendRecord that
     a later real unsubscribe click could mis-resolve)."""
     from cocli.application.email_service import EmailService
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
     from cocli.core.paths import paths
 
     _make_initiative(

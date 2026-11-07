@@ -1,7 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from pydantic import BaseModel, Field, ConfigDict
+
 from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class WorkerDefinition(BaseModel):
     """Configuration for a specific worker instance on a node."""

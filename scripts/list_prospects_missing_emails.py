@@ -1,10 +1,12 @@
 from __future__ import annotations
-import typer
+
 import csv
+from pathlib import Path
+from typing import Optional
+
+import typer
 from rich.console import Console
 from rich.progress import track
-from typing import Optional
-from pathlib import Path
 
 from cocli.core.config import get_campaign, get_campaign_exports_dir
 from cocli.models.companies.company import Company

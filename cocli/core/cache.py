@@ -1,12 +1,13 @@
 from __future__ import annotations
+
+import logging
 import os
 import re
-import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from .config import get_cocli_base_dir, get_companies_dir, get_people_dir
 from ..models.companies.cache import CompanyCacheItem
+from .config import get_cocli_base_dir, get_companies_dir, get_people_dir
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,7 @@ def _get_most_recent_mtime(directory: Path) -> Optional[float]:
         with os.scandir(directory) as it:
             for entry in it:
                 mtime = entry.stat().st_mtime
-                if mtime > max_mtime:
-                    max_mtime = mtime
+                max_mtime = max(max_mtime, mtime)
     except Exception:
         pass
     return max_mtime
@@ -270,8 +270,7 @@ def build_cache(campaign: Optional[str] = None) -> None:
 
     try:
         with open(tmp_cache_file, "w", encoding="utf-8") as f:
-            for item in items:
-                f.write(item.to_usv())
+            f.writelines(item.to_usv() for item in items)
 
         # Atomic rename to ensure search never sees a partial file
         tmp_cache_file.replace(cache_file)

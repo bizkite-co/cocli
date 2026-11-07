@@ -3,6 +3,7 @@ from pathlib import Path
 
 from cocli.core.config import get_temp_dir
 
+
 def manage_entries(file_path: Path, timeout_count: int = 2) -> None:
     if not file_path.exists():
         print(f"{file_path} not found.")

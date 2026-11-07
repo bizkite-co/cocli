@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import re
 from pathlib import Path
-from typing import Optional, Any, Callable
+from typing import Any, Callable, Optional
 
 from cocli.core.tasks import TaskIndexManager, TaskStatus
 from cocli.models.tasks import MissionTask
+
 
 class TaskService:
     def __init__(self, issues_root: Path = Path("docs/issues")):

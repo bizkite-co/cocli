@@ -1,9 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement
 import pytest
 from textual.widgets import DataTable
-from cocli.tui.app import CocliApp
-from cocli.models.companies.company import Company
+
 from cocli.core.paths import paths
+from cocli.models.companies.company import Company
+from cocli.tui.app import CocliApp
+
 
 @pytest.mark.asyncio
 async def test_company_detail_rating_display(mock_cocli_env, mocker):

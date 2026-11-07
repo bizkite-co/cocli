@@ -12,7 +12,6 @@ from typing import Optional
 import dateparser
 from tzlocal import get_localzone
 
-
 _EXPLICIT_FORMATS = (
     "%Y-%m-%d",
     "%Y-%m-%d %H:%M",

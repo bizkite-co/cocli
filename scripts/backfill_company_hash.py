@@ -1,10 +1,12 @@
+import io
+
 import typer
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaigns_dir
-from cocli.models.companies.company import Company
+
+from cocli.core.config import get_campaigns_dir, get_companies_dir
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.companies.company import Company
 from cocli.utils.usv_utils import USVDictReader, USVDictWriter
-import io
 
 app = typer.Typer()
 

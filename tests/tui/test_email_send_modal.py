@@ -4,13 +4,13 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from textual.widgets import TextArea
 
 from cocli.application.call_history_service import ConnectedCallInfo
 from cocli.models.companies.company import Company
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.email_send_modal import EmailSendModal
 from cocli.tui.widgets.inputs import CocliInput
-from textual.widgets import TextArea
 
 
 @pytest.mark.asyncio
@@ -70,8 +70,8 @@ async def test_email_send_modal_prepopulates_and_displays_call_context(
 async def test_email_send_modal_send_now_calls_service_with_edited_content(
     _mock_campaign: Any, tmp_path: Any, monkeypatch: Any
 ) -> None:
-    from cocli.core.paths import paths
     from cocli.application.personalized_outreach_service import SendBatchResult
+    from cocli.core.paths import paths
 
     monkeypatch.setattr(paths, "root", tmp_path)
     co = Company(

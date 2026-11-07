@@ -1,12 +1,15 @@
-import pytest
 from unittest.mock import MagicMock
-from cocli.tui.app import CocliApp
+
+import pytest
+from conftest import wait_for_widget
+from pytest_mock import MockerFixture
+from textual.widgets import Input, ListView
+
 from cocli.application.services import ServiceContainer
 from cocli.models.search import SearchResult
-from pytest_mock import MockerFixture
+from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
-from textual.widgets import Input, ListView
-from conftest import wait_for_widget
+
 
 def create_mock_services(results=None):
     mock_search = MagicMock()

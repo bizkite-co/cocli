@@ -1,7 +1,7 @@
 import argparse
 import json
-import subprocess
 import os
+import subprocess
 import sys
 
 # Ensure cocli can be imported by adding the project root to sys.path

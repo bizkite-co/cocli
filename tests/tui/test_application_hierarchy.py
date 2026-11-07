@@ -1,10 +1,12 @@
 import pytest
+from conftest import wait_for_widget
+from textual.widgets import ListView
+
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.application_view import ApplicationView
 from cocli.tui.widgets.campaign_selection import CampaignSelection
 from cocli.tui.widgets.status_view import StatusView
-from conftest import wait_for_widget
-from textual.widgets import ListView
+
 
 @pytest.mark.asyncio
 async def test_application_sidebar_stacking():

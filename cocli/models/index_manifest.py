@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
-from datetime import datetime, UTC
+
 
 class IndexShard(BaseModel):
     path: str  # S3 key or relative path

@@ -1,10 +1,10 @@
-import json
-import shutil
-import logging
 import argparse
+import json
+import logging
+import shutil
 
-from cocli.core.paths import paths
 from cocli.core.config import get_all_campaign_dirs
+from cocli.core.paths import paths
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)

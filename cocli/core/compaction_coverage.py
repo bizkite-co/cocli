@@ -9,10 +9,10 @@ tracing code (compaction-sourcestation-coverage-manifest).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping
 
 logger = logging.getLogger(__name__)
 

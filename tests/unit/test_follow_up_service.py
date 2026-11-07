@@ -4,7 +4,7 @@ pending-batch review queue (never auto-sent)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cocli.application.follow_up_service import FollowUpService
@@ -93,8 +93,10 @@ def test_process_due_call_creates_to_call_task(tmp_path: Any, monkeypatch: Any) 
 def test_process_due_email_renders_into_pending_batch_not_sent(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
     from cocli.core.paths import paths
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
 
     monkeypatch.setattr(paths, "root", tmp_path)
     _make_company_with_contact(paths, "acme-corp")

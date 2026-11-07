@@ -6,14 +6,15 @@ Supports drill-down navigation:
 """
 from __future__ import annotations
 
-import typer
-from typing import Optional, Any, Annotated
-from rich.console import Console
-from rich.table import Table
-from rich.prompt import Prompt
+from typing import Annotated, Any, Optional
 
-from cocli.core.paths import paths
+import typer
+from rich.console import Console
+from rich.prompt import Prompt
+from rich.table import Table
+
 from cocli.core.config import get_campaign
+from cocli.core.paths import paths
 from cocli.models.campaigns.tiles import TileRecord
 
 logger = __import__("logging").getLogger(__name__)

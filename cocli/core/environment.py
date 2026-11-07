@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+import functools
 import os
 import subprocess
-import functools
 from enum import Enum
 from typing import Optional
+
 
 class Environment(str, Enum):
     DEV = "dev"

@@ -2,11 +2,13 @@
 import argparse
 import json
 import subprocess
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import requests
 
 from cocli.core.reporting import get_boto3_session
+
 
 def _generate_get_tokens_script() -> str:
     return """#!/bin/bash

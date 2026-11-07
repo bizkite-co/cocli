@@ -2,6 +2,7 @@
 import sys
 from pathlib import Path
 
+
 def increment_version() -> str:
     version_file = Path("VERSION")
     if not version_file.exists():

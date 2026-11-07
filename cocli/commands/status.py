@@ -1,12 +1,14 @@
 from __future__ import annotations
-import typer
+
 import logging
+from typing import Any, Optional
+
+import typer
 from rich.console import Console
-from typing import Optional, Any
 
 from ..application.services import ServiceContainer
-from ..renderers import status_renderer
 from ..core.config import get_campaign
+from ..renderers import status_renderer
 
 app = typer.Typer()
 console = Console()

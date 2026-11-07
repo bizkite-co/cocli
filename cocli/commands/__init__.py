@@ -2,46 +2,48 @@ import typer
 
 
 def register_commands(app: typer.Typer) -> None:
-    from . import add
-    from . import add_email
-    from . import add_meeting
-    from . import calling
-    from . import campaign
-    from . import compile_enrichment
-    from . import context
-    from . import deduplicate
-    from . import dev
-    from . import domains
-    from . import enrich_customers
-    from . import enrich_shopify_data
-    from . import exclude
-    from . import do_not_call
-    from . import email
-    from . import flag_email_providers
-    from . import fz
-    from . import help_search
-    from . import import_companies
-    from . import import_customers
-    from . import import_data
-    from . import ingest_google_maps_csv
-    from . import init
-    from . import meetings
-    from . import process_shopify_scrapes
-    from . import render
-    from . import render_prospects_kml
-    from . import scrape_shopify
-    from . import status
-    from . import sync
-    from . import smart_sync
-    from . import view
-    from . import wal
-    from . import worker
-    from . import web
-    from . import infrastructure
-    from . import index
-    from . import cluster
-    from . import stations_cmd
-    from . import telemetry
+    from . import (
+        add,
+        add_email,
+        add_meeting,
+        calling,
+        campaign,
+        cluster,
+        compile_enrichment,
+        context,
+        deduplicate,
+        dev,
+        do_not_call,
+        domains,
+        email,
+        enrich_customers,
+        enrich_shopify_data,
+        exclude,
+        flag_email_providers,
+        fz,
+        help_search,
+        import_companies,
+        import_customers,
+        import_data,
+        index,
+        infrastructure,
+        ingest_google_maps_csv,
+        init,
+        meetings,
+        process_shopify_scrapes,
+        render,
+        render_prospects_kml,
+        scrape_shopify,
+        smart_sync,
+        stations_cmd,
+        status,
+        sync,
+        telemetry,
+        view,
+        wal,
+        web,
+        worker,
+    )
 
     app.command(name="add", no_args_is_help=True)(add.add)
     app.command(name="add-email", no_args_is_help=True)(add_email.add_email)

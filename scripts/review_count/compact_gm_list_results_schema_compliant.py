@@ -1,7 +1,9 @@
-from pathlib import Path
-from cocli.utils.usv_utils import USVReader, USVWriter
-from rich.console import Console
 import json
+from pathlib import Path
+
+from rich.console import Console
+
+from cocli.utils.usv_utils import USVReader, USVWriter
 
 console = Console()
 

@@ -1,11 +1,14 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from datetime import datetime, UTC
-from typing import Optional
-from pydantic import Field
+
 import uuid
+from datetime import UTC, datetime
+from typing import Optional
+
+from pydantic import Field
 
 from ...base import BaseUsvModel
+
 
 class QueueMessage(BaseUsvModel):
     """

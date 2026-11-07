@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 import logging
 from typing import Optional
 
 from playwright.async_api import Browser, BrowserContext
 
-from ..models.companies.company import Company
-from ..models.campaigns.campaign import Campaign
 from ..enrichment.website_scraper import WebsiteScraper
+from ..models.campaigns.campaign import Campaign
+from ..models.companies.company import Company
 from ..models.companies.website import Website
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,9 @@
 from __future__ import annotations
+
 import json
-from typing import Optional
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import Optional
 
 from ..models.campaigns.indexes.exclusion import Exclusion
 from .paths import paths
@@ -29,7 +30,7 @@ class ExclusionManager:
             try:
                 with open(file, "r") as f:
                     data = json.load(f)
-                    if "created_at" in data and data["created_at"]:
+                    if data.get("created_at"):
                         data["created_at"] = datetime.fromisoformat(data["created_at"])
                     exc = Exclusion(**data)
                     if exc.company_slug:

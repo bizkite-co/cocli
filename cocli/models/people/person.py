@@ -1,20 +1,23 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Any, Optional, Iterator
-from datetime import datetime, UTC
+
 import logging
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-from ..email_address import EmailAddress
-from ..phone import OptionalPhone
-from ..company_name import OptionalCompanyName
-from ..company_address import OptionalCompanyAddress
-from ..campaigns.indexes.email import EmailEntry
-from ...core.paths import paths
-from ...core.ordinant import CollectionName
+
 from ...core.config import get_campaign
 from ...core.email_index_manager import EmailIndexManager
+from ...core.ordinant import CollectionName
+from ...core.paths import paths
+from ..campaigns.indexes.email import EmailEntry
+from ..company_address import OptionalCompanyAddress
+from ..company_name import OptionalCompanyName
+from ..email_address import EmailAddress
+from ..phone import OptionalPhone
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +106,7 @@ class Person(BaseModel):
     # ----------------------------------------
 
     @classmethod
-    def get_all(cls) -> Iterator["Person"]:
+    def get_all(cls) -> Iterator[Person]:
         """Iterates through all person directories and yields Person objects."""
         people_dir = paths.people.path
         if not people_dir.exists():
@@ -115,7 +118,7 @@ class Person(BaseModel):
                     yield person
 
     @classmethod
-    def get(cls, slug: str) -> Optional["Person"]:
+    def get(cls, slug: str) -> Optional[Person]:
         """Retrieves a single person by their slug."""
         entry = paths.people.entry(slug)
         if entry.is_dir():
@@ -123,7 +126,7 @@ class Person(BaseModel):
         return None
 
     @classmethod
-    def from_directory(cls, person_dir: Path) -> Optional["Person"]:
+    def from_directory(cls, person_dir: Path) -> Optional[Person]:
         """Loads a person from a directory by looking for the first .md file."""
         entry = paths.people.entry(person_dir)
         for person_file in entry.path.glob("*.md"):
@@ -132,7 +135,7 @@ class Person(BaseModel):
         return None
 
     @classmethod
-    def from_file(cls, person_file: Path, slug: str) -> Optional["Person"]:
+    def from_file(cls, person_file: Path, slug: str) -> Optional[Person]:
         if not person_file.exists():
             return None
 

@@ -1,22 +1,25 @@
 from __future__ import annotations
+
 import json
 import logging
 import math
 import re
 import time
-import typer
-from typing import Optional, Any
 from pathlib import Path
+from typing import Any, Optional
 
-from rich.console import Console
 import duckdb
-from ..core.paths import paths
-from ..core.config import get_campaign
-from ..application.services import ServiceContainer
-from rich.table import Table
-from rich.prompt import Prompt
+import typer
+from rich.console import Console
 from rich.markup import escape
+from rich.prompt import Prompt
+from rich.table import Table
+
+from ..application.services import ServiceContainer
+from ..core.config import get_campaign
+from ..core.paths import paths
 from ..core.queue.task_file_filter import is_valid_task_data_file
+
 app = typer.Typer(
     help="Auditing tools for the cocli system structure and integrity.",
     no_args_is_help=True,
@@ -104,8 +107,8 @@ def audit_queue_gm_list(
     """
     Run full end-to-end audit for the gm-list queue (compile, compact, report).
     """
-    from ..core.config import get_campaign
     from ..application.services import ServiceContainer
+    from ..core.config import get_campaign
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -133,6 +136,7 @@ def audit_cli(
     Dumps the CLI command hierarchy.
     """
     from typer.main import get_command
+
     from ..main import app as main_app
 
     click_command = get_command(main_app)
@@ -170,8 +174,9 @@ def audit_fs(
     """
     Audits the filesystem for OMAP compliance and Screaming Architecture.
     """
-    from ..core.audit.fs_auditor import dump_audit_tree
     from io import StringIO
+
+    from ..core.audit.fs_auditor import dump_audit_tree
 
     effective_campaign = campaign or get_campaign() or "default"
     services = ServiceContainer(campaign_name=effective_campaign)
@@ -283,16 +288,18 @@ def audit_rollout(
     """
     Automated diagnostic for active rollout batches across the cluster.
     """
+    import asyncio
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    from rich.table import Table
+
     from ..core.config import get_campaign
     from ..core.paths import paths
     from ..core.sharding import get_geo_shard, get_grid_tile_id
     from ..core.text_utils import slugify
     from ..models.campaigns.mission import MissionTask
     from ..services.cluster_service import ClusterService
-    from rich.table import Table
-    from datetime import datetime, UTC, timedelta
-    import json
-    import asyncio
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -428,13 +435,16 @@ def audit_scrape(
     config-derived parameters, discovery/gm-list/gm-details/enrichment
     queue state, and how many discovery tiles have produced gm-list results.
     """
+    import asyncio
+    import json
+    import logging
+
+    from rich.table import Table
+
+    from cocli.application.pi_sync_service import PiSyncService, describe_sync_results
+
     from ..core.config import get_campaign
     from ..services.cluster_service import ClusterService
-    from cocli.application.pi_sync_service import PiSyncService, describe_sync_results
-    from rich.table import Table
-    import json
-    import asyncio
-    import logging
 
     logger = logging.getLogger(__name__)
 
@@ -594,8 +604,8 @@ def audit_scrape(
     result_count_stats = _gm_list_result_count_stats(gm_list_queue.completed / "results")
 
     # Count enrichment pipeline queue states via Queue abstractions
-    from cocli.core.queue.factory import get_queue_manager
     from cocli.core.ordinant import QueueIdentity
+    from cocli.core.queue.factory import get_queue_manager
 
     gm_details_q = get_queue_manager(QueueIdentity.GM_DETAILS, queue_type="gm_list_item", campaign_name=campaign_name)
     enrichment_q = get_queue_manager(QueueIdentity.ENRICHMENT, queue_type="enrichment", campaign_name=campaign_name)
@@ -731,8 +741,9 @@ def audit_campaign(
     `cocli index requeue-stuck-details` or similar targeted tools once
     you've identified what needs fixing.
     """
-    from cocli.application.services import ServiceContainer
     from collections import Counter
+
+    from cocli.application.services import ServiceContainer
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -818,7 +829,9 @@ def _discover_tui_classes() -> list[type]:
     import importlib
     import inspect
     import pkgutil
-    from ..tui import app as tui_app_module, widgets
+
+    from ..tui import app as tui_app_module
+    from ..tui import widgets
 
     classes: list[type] = []
     for mod in [tui_app_module] + [
@@ -848,8 +861,8 @@ def audit_tui_actions(
     `cocli audit cli`, for comparing what the TUI can do against the full
     CLI command surface.
     """
-    from ..core.config import get_campaign
     from ..application.services import ServiceContainer
+    from ..core.config import get_campaign
 
     classes = _discover_tui_classes()
     campaign = get_campaign() or "default"
@@ -1465,9 +1478,10 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
     endpoint (e.g. Fargate) - see `_audit_cluster_from_heartbeats` for the
     S3-heartbeat-only alternative (`--s3`).
     """
-    from ..services.cluster_service import ClusterService
     import asyncio
     import json
+
+    from ..services.cluster_service import ClusterService
 
     service = ClusterService(campaign_name)
     remote_script = _CLUSTER_AUDIT_REMOTE_SCRIPT.replace("__CAMPAIGN__", campaign_name)
@@ -1576,9 +1590,10 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             "queue_depths": queue_depths,
         }
 
+    from datetime import datetime, timezone
+
     from ..core.config import load_campaign_config
     from ..core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
-    from datetime import datetime, timezone
 
     status_prefix = paths.s3.status_root
     s3_nodes: dict[str, dict[str, Any]] = {}
@@ -1769,9 +1784,10 @@ def audit_enrichment(
     and how many successfully resolved contact names (people), phone numbers, emails,
     and social media links, along with lead quality tiering.
     """
-    from ..core.config import get_campaign
-    from ..application.services import ServiceContainer
     from rich.table import Table
+
+    from ..application.services import ServiceContainer
+    from ..core.config import get_campaign
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -1835,8 +1851,8 @@ def audit_enrichment_interactive(
     Interactively step through companies that have no contact name (Tiers 2 & 3)
     and open their websites in the browser to inspect and find contacts.
     """
-    from ..core.config import get_campaign
     from ..application.services import ServiceContainer
+    from ..core.config import get_campaign
     from ..utils.open_url import open_url
 
     campaign_name = campaign or get_campaign()
@@ -2062,7 +2078,8 @@ class _ReferenceBrowser:
             return self._page
 
         from playwright.sync_api import sync_playwright
-        from ..utils.headers import USER_AGENT, ANTI_BOT_HEADERS
+
+        from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
         from ..utils.playwright_utils import _STEALTH_INIT_SCRIPT
 
         self._playwright = sync_playwright().start()
@@ -2204,6 +2221,7 @@ def audit_validate(
       cocli audit queue validate --usv-path data/.../results/3/34.1/-118.4/foo.usv
     """
     import sys
+
     from ..application.services import ServiceContainer
 
     try:
@@ -2592,8 +2610,9 @@ def purge_stale_leases(
       # Custom age threshold:
       cocli audit queue purge-leases turboship --max-age-minutes 10
     """
-    from ..application.services import ServiceContainer
     from cocli.core.config import get_campaign
+
+    from ..application.services import ServiceContainer
 
     campaign_name = campaign or get_campaign() or "default"
     audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service

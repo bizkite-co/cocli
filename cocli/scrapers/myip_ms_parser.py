@@ -1,7 +1,8 @@
-from ..core.utils import generate_company_hash
-from typing import Any
-import re
 import logging
+import re
+from typing import Any
+
+from ..core.utils import generate_company_hash
 
 logger = logging.getLogger(__name__)
 

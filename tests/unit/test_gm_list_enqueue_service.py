@@ -9,9 +9,11 @@ gm-list-queue-regressed-from-pendingcompleted-pattern-diverged-from-its-own-stat
 from pathlib import Path
 from unittest.mock import patch
 
+from cocli.application.gm_list_enqueue_service import (
+    enqueue_unscraped_to_gm_list_pending,
+)
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
-from cocli.application.gm_list_enqueue_service import enqueue_unscraped_to_gm_list_pending
 
 
 def _write(root: Path, rel_path: str) -> None:

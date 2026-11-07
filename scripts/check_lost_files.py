@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
+
 from rich.console import Console
+
 from cocli.core.config import get_campaign_exports_dir, get_temp_dir
 
 console = Console()

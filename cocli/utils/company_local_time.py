@@ -12,7 +12,6 @@ import phonenumbers
 from phonenumbers import timezone as phonenumbers_timezone
 from tzlocal import get_localzone
 
-
 _ABBREV_TO_ZONE = {
     "PT": "America/Los_Angeles",
     "PST": "America/Los_Angeles",

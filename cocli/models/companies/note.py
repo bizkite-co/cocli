@@ -1,12 +1,15 @@
 from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
-from typing import Optional, Any, Union, Literal
+from typing import Any, Literal, Optional, Union
+
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-import logging
-from .email_note import EmailNote
+
 from .call_note import CallNote
+from .email_note import EmailNote
 from .sms_note import SmsNote
 
 logger = logging.getLogger(__name__)
@@ -25,7 +28,7 @@ class Note(BaseModel):
     @classmethod
     def from_file(
         cls, note_path: Path
-    ) -> Optional[Union["Note", EmailNote, CallNote, SmsNote]]:
+    ) -> Optional[Union[Note, EmailNote, CallNote, SmsNote]]:
         """
         Loads a Note, EmailNote, CallNote, or SmsNote from a Markdown file with YAML frontmatter.
         Supports both modern frontmatter notes and legacy notes.

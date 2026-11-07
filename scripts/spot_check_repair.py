@@ -1,6 +1,8 @@
 from pathlib import Path
-from cocli.models.companies.company import Company
+
 from rich.console import Console
+
+from cocli.models.companies.company import Company
 
 console = Console()
 

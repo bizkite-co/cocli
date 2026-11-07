@@ -1,14 +1,14 @@
-import sys
 import json
-import shutil
 import logging
+import shutil
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.campaigns.queues.gm_details import GmItemTask
 from cocli.core.config import get_campaign_dir
+from cocli.models.campaigns.queues.gm_details import GmItemTask
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ def audit_queue(campaign_name: str, execute: bool = False) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     from cocli.core.config import get_campaign
     parser = argparse.ArgumentParser(description="Audit completion markers against models and index.")
     parser.add_argument("campaign", nargs="?", default=get_campaign(), help="Campaign name (defaults to active campaign)")

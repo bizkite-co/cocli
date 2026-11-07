@@ -16,9 +16,7 @@ def test_compute_self_hash():
 
 def test_find_worker_json_priority(tmp_path):
     """Test that find_worker_json checks paths in priority order."""
-    from scripts.compact_gm_list_wal import (
-        find_worker_json
-    )
+    from scripts.compact_gm_list_wal import find_worker_json
     
     # Create test structure
     data_dir = tmp_path / "data"
@@ -88,10 +86,8 @@ def test_find_worker_json_priority(tmp_path):
 
 def test_validate_worker_success(tmp_path):
     """Test that validation passes with matching hash."""
-    from scripts.compact_gm_list_wal import (
-        validate_worker
-    )
     import scripts.compact_gm_list_wal as module
+    from scripts.compact_gm_list_wal import validate_worker
     
     # Create test registry with correct hash
     data_dir = tmp_path / "data"
@@ -125,8 +121,8 @@ def test_validate_worker_success(tmp_path):
 
 def test_validate_worker_hash_mismatch(tmp_path):
     """Test that validation fails with mismatched hash."""
-    from scripts.compact_gm_list_wal import validate_worker
     import scripts.compact_gm_list_wal as module
+    from scripts.compact_gm_list_wal import validate_worker
     
     # Create test registry with wrong hash
     data_dir = tmp_path / "data"
@@ -156,8 +152,8 @@ def test_validate_worker_hash_mismatch(tmp_path):
 
 def test_validate_worker_missing(tmp_path):
     """Test that validation fails when no worker.json exists."""
-    from scripts.compact_gm_list_wal import validate_worker
     import scripts.compact_gm_list_wal as module
+    from scripts.compact_gm_list_wal import validate_worker
     
     # Monkey-patch with non-existent paths
     original_registry = module.REGISTRY_JSON

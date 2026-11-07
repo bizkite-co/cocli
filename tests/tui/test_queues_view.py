@@ -1,10 +1,12 @@
-import pytest
 from typing import Any
+
+import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Static
 from textual.containers import Vertical
-from cocli.tui.widgets.queues_view import QueueDetail
+from textual.widgets import Static
+
 from cocli.tui.navigation_manager import NavigationStateManager
+from cocli.tui.widgets.queues_view import QueueDetail
 
 
 class SimpleQueueApp(App):
@@ -403,8 +405,9 @@ async def test_review_dialog_accepts_backspace_and_delete(mocker):
     Verify backspace and delete keys work in the review dialog.
     This tests that the dialog doesn't block these keys.
     """
-    from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
     from textual.app import App, ComposeResult
+
+    from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
 
     class TestApp(App):
         def compose(self) -> ComposeResult:
@@ -442,8 +445,9 @@ async def test_review_dialog_validates_numeric_input(mocker):
     Rating: 0-5 with one decimal
     Reviews: non-negative integers only
     """
-    from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
     from textual.app import App, ComposeResult
+
+    from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
 
     class TestApp(App):
         def compose(self) -> ComposeResult:

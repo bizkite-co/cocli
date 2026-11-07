@@ -1,8 +1,11 @@
-from transitions import Machine
 from typing import Any
+
 from rich.console import Console
+from transitions import Machine
+
 from cocli.core.paths import paths
-from .gm_list_auditor import run_compilation, run_compaction, run_reporting
+
+from .gm_list_auditor import run_compaction, run_compilation, run_reporting
 
 console = Console()
 

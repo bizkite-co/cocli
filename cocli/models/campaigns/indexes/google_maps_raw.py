@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Optional, Any
-from pydantic import BaseModel, Field, BeforeValidator
-from typing_extensions import Annotated
+
+from typing import Annotated, Any, Optional
+
+from pydantic import BaseModel, BeforeValidator, Field
+
 
 def empty_to_none(v: Any) -> Any:
     if isinstance(v, str) and not v.strip():

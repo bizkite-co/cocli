@@ -1,17 +1,20 @@
 from __future__ import annotations
+
+import logging
+from collections.abc import Iterable
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
 import typer
 import yaml
-from pathlib import Path
-from typing import Optional, Iterable
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign
+
+from cocli.core.config import get_campaign, get_companies_dir
 from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaigns.campaign import Campaign as CampaignModel
 from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
-from datetime import datetime, timezone
-
-import logging
 
 app = typer.Typer()
 console = Console()

@@ -1,12 +1,21 @@
-import boto3
 import csv
 import io
 import logging
-import typer
-from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
+
+import boto3
+import typer
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
+
 from cocli.utils.usv_utils import USVWriter
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 # Set logging to WARNING to silence individual file logs
 logging.basicConfig(level=logging.WARNING)

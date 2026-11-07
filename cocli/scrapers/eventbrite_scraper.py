@@ -1,15 +1,16 @@
 from __future__ import annotations
-import logging
+
 import asyncio
+import logging
 import re
 from datetime import datetime
-from typing import Optional, cast, Union
-from playwright.async_api import async_playwright
+from typing import Optional, Union, cast
 
 from bs4 import BeautifulSoup, Tag
+from playwright.async_api import async_playwright
 
-from ..models.campaigns.events import Event
 from ..core.text_utils import slugify
+from ..models.campaigns.events import Event
 
 logger = logging.getLogger(__name__)
 

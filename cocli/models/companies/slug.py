@@ -1,6 +1,8 @@
 import re
 from typing import Annotated, Any
-from pydantic import StringConstraints, BeforeValidator
+
+from pydantic import BeforeValidator, StringConstraints
+
 
 def normalize_company_slug(v: Any) -> str:
     """

@@ -216,8 +216,9 @@ async def test_open_preview_materializes_draft_and_opens_html(
 async def test_v_toggles_between_rendered_html_and_raw_markdown(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
-    from cocli.application.services import ServiceContainer
     from textual.widgets import Static
+
+    from cocli.application.services import ServiceContainer
 
     _freeze_one_batch(tmp_path, monkeypatch, template_id="email_02_product_overview.md")
     _write_layout_template()

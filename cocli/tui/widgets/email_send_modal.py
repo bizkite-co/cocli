@@ -24,6 +24,7 @@ from cocli.application.personalized_outreach_service import (
 )
 from cocli.core.config import get_campaign, load_campaign_config
 from cocli.models.mail import EmailSettings
+
 from .inputs import CocliInput
 
 logger = logging.getLogger(__name__)

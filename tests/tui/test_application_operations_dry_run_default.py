@@ -1,9 +1,9 @@
 import pytest
+from conftest import wait_for_widget
 from textual.widgets import Checkbox, ListView
 
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.application_view import ApplicationView
-from conftest import wait_for_widget
 
 
 async def _navigate_to_operations(driver) -> ApplicationView:

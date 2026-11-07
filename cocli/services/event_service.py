@@ -1,8 +1,10 @@
 import logging
+
 import yaml
-from ..models.campaigns.events import Event
-from ..core.paths import paths
+
 from ..core.ordinant import QueueIdentity
+from ..core.paths import paths
+from ..models.campaigns.events import Event
 
 logger = logging.getLogger(__name__)
 

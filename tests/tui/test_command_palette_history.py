@@ -1,8 +1,9 @@
 import pytest
-from cocli.tui.app import CocliApp, CocliCommandProvider
-from cocli.tui.widgets.application_view import ApplicationView
 from textual.command import CommandPalette
 from textual.widgets import ListView
+
+from cocli.tui.app import CocliApp, CocliCommandProvider
+from cocli.tui.widgets.application_view import ApplicationView
 
 
 @pytest.mark.asyncio

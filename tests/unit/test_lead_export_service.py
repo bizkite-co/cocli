@@ -34,8 +34,7 @@ def _write_checkpoint(tmp_path: Path, rows: list[str]) -> None:
         tmp_path / "campaigns" / CAMPAIGN / "indexes" / "google_maps_prospects" / "prospects.usv"
     )
     with open(checkpoint, "w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(row + "\n")
+        f.writelines(row + "\n" for row in rows)
 
 
 def _write_email_shard(tmp_path: Path, email: str, domain: str, slug: str) -> None:

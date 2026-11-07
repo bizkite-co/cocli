@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional
+
 import typer
 
-from cocli.scrapers.myip_ms import scrape_myip_ms
 from cocli.core.config import get_scraped_data_dir
+from cocli.scrapers.myip_ms import scrape_myip_ms
 
 app = typer.Typer()
 

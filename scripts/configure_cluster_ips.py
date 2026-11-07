@@ -1,7 +1,9 @@
 import subprocess
-import tomli
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import tomli
+
 
 def run_ssh(host: str, command: str) -> str:
     print(f"[{host}] Running: {command}")

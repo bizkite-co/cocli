@@ -1,8 +1,9 @@
+import logging
 import shutil
 from pathlib import Path
+
 from cocli.core.paths import paths
 from cocli.core.wal import append_update, read_updates
-import logging
 
 logger = logging.getLogger(__name__)
 

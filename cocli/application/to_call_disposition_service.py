@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-
 REASON_NONCONFORMING = "to-call-nonconforming"
 REASON_HIGH_VALUE = "high-value"
 TAG_HIGH_VALUE = "high-value"

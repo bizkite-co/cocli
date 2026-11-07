@@ -6,7 +6,7 @@ ToCallTask's one-pending-file-per-company path can't represent.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -67,9 +67,9 @@ class FollowUpService:
         scheduled_at: Optional[datetime] = None,
     ) -> list[FollowUpTask]:
         """Enqueue follow-up tasks for all companies in this campaign that have `tag`."""
-        from .personalized_outreach_service import PersonalizedOutreachService
-        from ..models.companies.company import Company
         from ..core.paths import paths
+        from ..models.companies.company import Company
+        from .personalized_outreach_service import PersonalizedOutreachService
 
         outreach = PersonalizedOutreachService(self.campaign_name)
         scheduled_at = scheduled_at or datetime.now(UTC)
@@ -109,10 +109,10 @@ class FollowUpService:
         scheduled_at: Optional[datetime] = None,
     ) -> EnqueueInitiativeResult:
         """Enqueue follow-up tasks for all companies matching the initiative's declarative manifest."""
-        from .personalized_outreach_service import PersonalizedOutreachService
+        from ..core.paths import paths
         from ..models.campaigns.initiative import InitiativeManifest
         from ..models.companies.company import Company
-        from ..core.paths import paths
+        from .personalized_outreach_service import PersonalizedOutreachService
 
         manifest = InitiativeManifest.find(self.campaign_name, initiative_name)
         if not manifest:
@@ -280,8 +280,8 @@ class FollowUpService:
         ).save()
 
     def _queue_email(self, task: FollowUpTask) -> None:
-        from .personalized_outreach_service import PersonalizedOutreachService
         from ..models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+        from .personalized_outreach_service import PersonalizedOutreachService
 
         if not task.template_id:
             raise ValueError("email follow-up has no template_id")

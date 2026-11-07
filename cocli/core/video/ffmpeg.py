@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import json
-import subprocess
-import re
 import logging
+import re
+import subprocess
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping, Optional, Callable
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +344,7 @@ def normalize_video(
     callback: Optional[Callable[[float, float], None]] = None,
     loudness_config: Optional[dict[str, float]] = None,
     denoise_config: Optional[dict[str, int]] = None,
-    job_run: Optional["VideoJobRun"] = None,
+    job_run: Optional[VideoJobRun] = None,
     encode_profile: Optional[str] = None,
     video_config: Optional[Mapping[str, Any]] = None,
 ) -> tuple[Optional[Path], Optional[dict[str, float]]]:

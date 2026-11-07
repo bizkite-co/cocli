@@ -1,5 +1,6 @@
-import boto3
 import logging
+
+import boto3
 import typer
 from botocore.config import Config
 
@@ -66,7 +67,14 @@ def main(
             print(f"  ... and {len(delete_keys)-10} more.")
         print("\nDRY RUN: No files deleted. Use --no-dry-run to execute.")
     else:
-        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+        from rich.progress import (
+            BarColumn,
+            Progress,
+            SpinnerColumn,
+            TaskProgressColumn,
+            TextColumn,
+            TimeRemainingColumn,
+        )
         
         with Progress(
             SpinnerColumn(),

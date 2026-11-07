@@ -1,6 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import pytest
 import logging
+
+import pytest
+
 from cocli.application.services import ServiceContainer
 from cocli.core.config import set_campaign
 

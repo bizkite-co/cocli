@@ -1,11 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 from __future__ import annotations
+
 import fnmatch
 import json
 import logging
 import re
 from pathlib import Path
 from typing import Optional
+
 import duckdb
 
 logger = logging.getLogger(__name__)

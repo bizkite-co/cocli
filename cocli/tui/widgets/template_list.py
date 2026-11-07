@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, cast, Any
+from typing import TYPE_CHECKING, Any, cast
+
+from textual import events, on, work
 from textual.app import ComposeResult
-from textual.widgets import Label, ListView, ListItem
 from textual.message import Message
-from textual import on, events, work
+from textual.widgets import Label, ListItem, ListView
 
 from ..base import CocliPanel
 

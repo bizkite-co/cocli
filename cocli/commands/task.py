@@ -1,11 +1,13 @@
 from __future__ import annotations
-import typer
+
 from pathlib import Path
 from typing import Optional
+
+import typer
 from rich.console import Console
-from rich.table import Table
 from rich.markdown import Markdown
 from rich.rule import Rule
+from rich.table import Table
 from rich.tree import Tree
 
 from ..application.services import ServiceContainer

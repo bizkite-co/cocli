@@ -1,6 +1,8 @@
 import os
 import sys
+
 from cocli.core.queue.factory import get_queue_manager
+
 
 def test_queue_config() -> None:
     print("Checking Queue Manager configuration...")

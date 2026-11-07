@@ -6,16 +6,16 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from cocli.core.paths import paths
 from cocli.core.config import set_campaign
+from cocli.core.paths import paths
 from cocli.core.text_utils import slugify
+from cocli.models.campaigns.queues.to_call import ToCallTask
 from cocli.models.companies.company import Company
 from cocli.models.people.person import Person
-from cocli.models.campaigns.queues.to_call import ToCallTask
 
 logger = logging.getLogger("ingest_testimonials_to_call")
 

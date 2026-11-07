@@ -1,12 +1,15 @@
 from __future__ import annotations
+
 import csv
 import logging
 from typing import Optional
+
 import typer
+
 from cocli.core.config import get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.campaigns.queues.base import QueueMessage
 from cocli.core.text_utils import slugify
+from cocli.models.campaigns.queues.base import QueueMessage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

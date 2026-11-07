@@ -8,8 +8,8 @@ from rich.console import Console
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.logging_config import setup_file_logging
-from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.queue.factory import get_queue_manager
+from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 
 app = typer.Typer()
 console = Console()
@@ -56,7 +56,7 @@ def migrate(
             queue.push(task)
             console.print("  [green]✅ Migrated to S3[/green]")
         else:
-            console.print(f"  [yellow](Dry Run) Would push to s3://{bucket}/{str(task.get_s3_task_key())}[/yellow]")
+            console.print(f"  [yellow](Dry Run) Would push to s3://{bucket}/{task.get_s3_task_key()!s}[/yellow]")
 
 if __name__ == "__main__":
     app()

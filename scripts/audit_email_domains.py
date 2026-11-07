@@ -1,10 +1,13 @@
 from __future__ import annotations
-import typer
+
 import json
 from pathlib import Path
 from typing import Optional
+
+import typer
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_campaign_dir, get_campaign_exports_dir
 
 app = typer.Typer()

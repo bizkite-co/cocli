@@ -1,6 +1,8 @@
 import csv
+
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_cocli_base_dir
 from cocli.core.text_utils import slugify
 

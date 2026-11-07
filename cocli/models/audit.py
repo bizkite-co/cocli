@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class TileStatusResult(BaseModel):
     """map-tile has no processing phase (removed 2026-08-09) - it's a pure
     tile registry, no staging/throttling job of its own."""

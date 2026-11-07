@@ -1,14 +1,16 @@
 from __future__ import annotations
-import typer
+
 import csv
+import logging
 from pathlib import Path
 from typing import Optional
-import logging
 
-from ..core.google_maps_cache import GoogleMapsCache
-from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+import typer
+
 from ..core.config import get_campaign
+from ..core.google_maps_cache import GoogleMapsCache
 from ..core.prospects_csv_manager import ProspectsIndexManager
+from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()

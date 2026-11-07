@@ -1,13 +1,16 @@
 from __future__ import annotations
-import typer
+
 import json
 from datetime import datetime, timezone
 from typing import Optional
+
+import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
+
 from cocli.core.config import get_campaign, load_campaign_config
-from cocli.core.reporting import get_campaign_stats, get_boto3_session
+from cocli.core.reporting import get_boto3_session, get_campaign_stats
 
 app = typer.Typer()
 console = Console()

@@ -1,36 +1,36 @@
 from __future__ import annotations
+
 import logging
 import os
-import subprocess
-import time
 import re
+import subprocess
 import textwrap
-from typing import Optional, Any, Union, cast, Literal, TYPE_CHECKING
+import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union, cast
 
-from textual.widgets import DataTable, Label, Input, Static
-from textual.containers import Container, Horizontal, Vertical
-from textual.app import ComposeResult
-from textual import events, on
-from textual.widget import Widget
-from textual.binding import Binding
-
-from rich.text import Text
 from rich.markup import escape
+from rich.text import Text
+from textual import events, on
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical
+from textual.widget import Widget
+from textual.widgets import DataTable, Input, Label, Static
 
-from ...models.companies.company import Company
-from ...models.companies.note import Note
-from ...models.companies.meeting import Meeting
-from ...models.companies.activity import CompanyActivity
-from ...models.phone import as_phone_number, render_phone
-from ...core.paths import paths
 from ...core.config import get_editor_command
-from .mark_prefix import MarkPrefixMixin
-from ..base import CocliPanel
+from ...core.paths import paths
+from ...models.companies.activity import CompanyActivity
+from ...models.companies.company import Company
+from ...models.companies.meeting import Meeting
+from ...models.companies.note import Note
+from ...models.phone import as_phone_number, render_phone
 from ...utils.open_url import open_local_path, open_url
-from .confirm_screen import ConfirmScreen
+from ..base import CocliPanel
 from .company_local_time import CompanyLocalTime
+from .confirm_screen import ConfirmScreen
+from .mark_prefix import MarkPrefixMixin
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -807,20 +807,7 @@ class CompanyDetail(MarkPrefixMixin, Container):
                     event.stop()
                     event.prevent_default()
                 return
-            elif event.key == "j":
-                if focused == self.panel_contacts:
-                    self.panel_activity.focus()
-                elif focused in (
-                    self.panel_activity,
-                    self.panel_meetings,
-                    self.panel_notes,
-                ):
-                    self.panel_contacts.focus()
-
-                event.stop()
-                event.prevent_default()
-                return
-            elif event.key == "k":
+            elif event.key == "j" or event.key == "k":
                 if focused == self.panel_contacts:
                     self.panel_activity.focus()
                 elif focused in (
@@ -902,11 +889,11 @@ class CompanyDetail(MarkPrefixMixin, Container):
             self.app.notify("No slug found", severity="error")
             return
 
-        from ...core.config import get_campaign
         from ...application.to_call_disposition_service import (
             REASON_NONCONFORMING,
             mark_to_call_invalid,
         )
+        from ...core.config import get_campaign
 
         campaign = get_campaign() or "default"
         name = company.get("name") or slug
@@ -925,8 +912,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
             self.app.notify("No slug found", severity="error")
             return
 
-        from ...core.config import get_campaign
         from ...application.to_call_disposition_service import mark_to_call_valid
+        from ...core.config import get_campaign
 
         campaign = get_campaign() or "default"
         name = company.get("name") or slug
@@ -944,8 +931,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
             self.app.notify("No slug found", severity="error")
             return
 
-        from ...core.config import get_campaign
         from ...application.to_call_disposition_service import toggle_to_call_high_value
+        from ...core.config import get_campaign
 
         campaign = get_campaign() or "default"
         name = company.get("name") or slug
@@ -1146,8 +1133,8 @@ class CompanyDetail(MarkPrefixMixin, Container):
             return
 
         async def run_toggle() -> None:
-            from cocli.models.campaigns.queues.to_call import ToCallTask
             from cocli.core.config import get_campaign
+            from cocli.models.campaigns.queues.to_call import ToCallTask
 
             campaign = get_campaign() or "default"
             task = ToCallTask(
@@ -1344,9 +1331,10 @@ class CompanyDetail(MarkPrefixMixin, Container):
             if confirm:
                 try:
                     import shutil
-                    from cocli.core.paths import paths
-                    from cocli.core.cache import build_cache
                     import threading
+
+                    from cocli.core.cache import build_cache
+                    from cocli.core.paths import paths
 
                     path = paths.companies.entry(slug).path
                     if path.exists():
@@ -1393,9 +1381,9 @@ class CompanyDetail(MarkPrefixMixin, Container):
                     break
 
         async def run_unsubscribe() -> None:
-            from .confirm_screen import ConfirmScreen
             from ...core.config import get_campaign, load_campaign_config
             from ...core.exclusions import ExclusionManager
+            from .confirm_screen import ConfirmScreen
 
             target_desc = f"'{name}' ({email})" if email else f"'{name}'"
             confirm = await self.app.push_screen_wait(

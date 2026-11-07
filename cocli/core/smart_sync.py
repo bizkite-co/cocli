@@ -1,16 +1,24 @@
 from __future__ import annotations
+
 import json
 import logging
 import sys
-from pathlib import Path
-from datetime import datetime, timezone
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
-from .logging_config import setup_file_logging
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
+
 from .config import get_cocli_base_dir
+from .logging_config import setup_file_logging
 
 console = Console()
 
@@ -69,8 +77,9 @@ def run_smart_sync(
     logger.info(f"Starting smart sync for {target_name} in campaign {campaign_name}")
 
     try:
-        from .reporting import get_boto3_session, get_s3_client
         from botocore.config import Config
+
+        from .reporting import get_boto3_session, get_s3_client
         # Prepare a config object for get_boto3_session
         config_obj = {"aws": aws_config, "campaign": {"name": campaign_name}}
         session = get_boto3_session(config_obj, max_pool_connections=workers)
@@ -128,7 +137,7 @@ def run_smart_sync(
                     s3_size = obj['Size']
 
                     # Determine local path
-                    rel_path = key[len(prefix):] if key.startswith(prefix) else key
+                    rel_path = key.removeprefix(prefix)
                     local_path = local_base / rel_path
 
                     should_download = False

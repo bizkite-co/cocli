@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 import logging
-import requests
 import os
 import time
 from typing import Optional
+
+import requests
 from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)

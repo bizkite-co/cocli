@@ -5,8 +5,9 @@ This catches config drift (e.g., stale fields, mismatched types) before deployme
 """
 
 from pathlib import Path
-import tomli
+
 import pytest
+import tomli
 
 from cocli.core.config import ScraperSettings
 

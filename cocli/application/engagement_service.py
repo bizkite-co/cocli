@@ -744,7 +744,11 @@ class EngagementService:
         bucket_name = None
         try:
             from cocli.core.config import load_campaign_config
-            from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+            from cocli.core.reporting import (
+                get_boto3_session,
+                get_data_bucket_name,
+                get_s3_client,
+            )
 
             config = load_campaign_config(self.campaign_name)
             bucket_name = get_data_bucket_name(config, self.campaign_name)
@@ -875,7 +879,11 @@ class EngagementService:
         bucket_name = None
         try:
             from cocli.core.config import load_campaign_config
-            from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+            from cocli.core.reporting import (
+                get_boto3_session,
+                get_data_bucket_name,
+                get_s3_client,
+            )
 
             config = load_campaign_config(self.campaign_name)
             bucket_name = get_data_bucket_name(config, self.campaign_name)
@@ -998,7 +1006,11 @@ class EngagementService:
         bucket_name = None
         try:
             from cocli.core.config import load_campaign_config
-            from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+            from cocli.core.reporting import (
+                get_boto3_session,
+                get_data_bucket_name,
+                get_s3_client,
+            )
 
             config = load_campaign_config(self.campaign_name)
             bucket_name = get_data_bucket_name(config, self.campaign_name)

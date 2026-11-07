@@ -1,8 +1,12 @@
 from __future__ import annotations
+
 from typing import Any, Union
-from textual.widgets import Label
+
 from rich.text import Text
+from textual.widgets import Label
+
 from cocli.models.phone import as_phone_number, render_phone
+
 
 class Phone(Label):
     """A widget to display and interact with a phone number."""

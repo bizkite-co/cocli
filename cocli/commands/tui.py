@@ -4,8 +4,9 @@ import logging
 import os
 import signal
 import time
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Optional
 
 import typer
 
@@ -33,9 +34,10 @@ def run_tui_app(
 
     if dump_tree:
         import asyncio
-        from ..tui.utils import dump_tree as dump_tree_util
+
         from ..application.services import ServiceContainer
         from ..core.paths import paths
+        from ..tui.utils import dump_tree as dump_tree_util
 
         async def _dump() -> None:
             from ..tui.app import CocliApp

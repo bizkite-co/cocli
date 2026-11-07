@@ -1,18 +1,25 @@
 from __future__ import annotations
-from ...core.utils import generate_company_hash
 
 import re
 from typing import Any, Optional
+
 from bs4 import BeautifulSoup
 
-from .google_maps_parsers.extract_name import extract_name
-from .google_maps_parsers.extract_rating_reviews_gm_list import extract_rating_reviews_gm_list
+from ...core.utils import generate_company_hash
 from .google_maps_parsers.extract_address import extract_address
-from .google_maps_parsers.extract_phone_number import extract_phone_number
-from .google_maps_parsers.extract_website import extract_website
+from .google_maps_parsers.extract_business_status_hours import (
+    extract_business_status_hours,
+)
 from .google_maps_parsers.extract_categories import extract_categories
-from .google_maps_parsers.extract_business_status_hours import extract_business_status_hours
-from .google_maps_parsers.extract_gmb_url_coordinates_place_id import extract_gmb_url_coordinates_place_id
+from .google_maps_parsers.extract_gmb_url_coordinates_place_id import (
+    extract_gmb_url_coordinates_place_id,
+)
+from .google_maps_parsers.extract_name import extract_name
+from .google_maps_parsers.extract_phone_number import extract_phone_number
+from .google_maps_parsers.extract_rating_reviews_gm_list import (
+    extract_rating_reviews_gm_list,
+)
+from .google_maps_parsers.extract_website import extract_website
 
 GOOGLE_MAPS_HEADERS = [
     "id",

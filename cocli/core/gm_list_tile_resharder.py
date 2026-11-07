@@ -2,9 +2,10 @@
 import logging
 import shutil
 from pathlib import Path
+
 from cocli.core.config import get_campaigns_dir
-from cocli.core.sharding import get_grid_tile_id, get_geo_shard
 from cocli.core.constants import UNIT_SEP
+from cocli.core.sharding import get_geo_shard, get_grid_tile_id
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +74,7 @@ def _merge_usv(src: Path, dest: Path) -> None:
 
     if new_rows:
         with open(dest, "a", encoding="utf-8") as df:
-            for row in new_rows:
-                df.write(row + "\n")
+            df.writelines(row + "\n" for row in new_rows)
 
 
 def _cleanup_empty_dirs(root: Path) -> None:

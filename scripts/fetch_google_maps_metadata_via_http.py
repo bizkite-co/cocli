@@ -1,15 +1,18 @@
 from __future__ import annotations
-import sys
-import os
-import requests
-import re
-from typing import Optional
-from bs4 import BeautifulSoup
+
 import argparse
+import os
+import re
+import sys
+from typing import Optional
+
+import requests
+from bs4 import BeautifulSoup
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__name__), "..")))
 from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+
 
 def fetch_google_maps_metadata_via_http(place_id: str) -> Optional[GoogleMapsRawResult]:
     """

@@ -1,7 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
-import duckdb
-import logging
 import json
+import logging
+
+import duckdb
+
 from cocli.core.paths import paths
 from cocli.utils.duckdb_utils import load_usv_to_duckdb
 

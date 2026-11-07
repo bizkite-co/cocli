@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import logging
 import asyncio
+import logging
 import shutil
+
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.campaigns.queues.gm_list import ScrapeTask

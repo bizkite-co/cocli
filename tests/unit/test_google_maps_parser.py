@@ -1,11 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
-import pytest
 from pathlib import Path
+
+import pytest
 from bs4 import BeautifulSoup
+
+from cocli.core.constants import UNIT_SEP
+from cocli.core.text_utils import slugify
 from cocli.scrapers.google.google_maps_gmb_parser import parse_gmb_page
 from cocli.scrapers.google.google_maps_parser import parse_business_listing_html
-from cocli.core.text_utils import slugify
-from cocli.core.constants import UNIT_SEP
 
 # Standardize snapshot and golden set locations
 GOLDEN_SET_PATH = Path("tests/data/maps.google.com/golden_set.usv")

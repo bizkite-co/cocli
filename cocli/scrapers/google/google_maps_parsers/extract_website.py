@@ -1,8 +1,10 @@
 from __future__ import annotations
-import re
-from bs4 import BeautifulSoup
-from typing import Optional
+
 import logging
+import re
+from typing import Optional
+
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 

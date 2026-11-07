@@ -3,10 +3,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import toml
-from cocli.core.paths import paths
+
 from cocli.application.lead_export_service import LeadExportResult
 from cocli.application.pi_sync_service import SyncResult
 from cocli.application.web_service import WebService
+from cocli.core.paths import paths
+
 
 def test_web_service_resolve_deployment_config(tmp_path):
     # Set up isolated paths

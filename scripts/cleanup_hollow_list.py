@@ -29,8 +29,7 @@ def cleanup(hollow_file: str, healed_index: str) -> None:
     
     # Overwrite hollow list with remaining items
     with open(HOLLOW_LIST, "w") as f:
-        for pid in remaining:
-            f.write(pid + "\n")
+        f.writelines(pid + "\n" for pid in remaining)
     
     print("Hollow list updated.")
 

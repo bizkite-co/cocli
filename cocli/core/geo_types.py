@@ -1,4 +1,5 @@
-from typing import ClassVar, TypeVar, Any
+from typing import Any, ClassVar, TypeVar
+
 from pydantic import RootModel, field_validator
 
 T = TypeVar("T", bound="GeoDegrees")

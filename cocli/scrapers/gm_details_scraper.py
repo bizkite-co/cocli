@@ -1,9 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import logging
+
 import asyncio
+import logging
+from datetime import UTC, datetime
 from typing import Optional
-from datetime import datetime, UTC
+
 from playwright.async_api import Page
 from transitions.extensions.asyncio import AsyncMachine
 

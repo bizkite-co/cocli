@@ -10,8 +10,8 @@ ExclusionManager) is shared.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from ..core.exclusions import ExclusionManager
 from ..models.campaigns.indexes.lead_filter import LeadFilterEntry

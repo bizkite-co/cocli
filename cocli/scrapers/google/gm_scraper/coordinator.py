@@ -1,16 +1,19 @@
 from __future__ import annotations
+
 import logging
-from typing import AsyncIterator, Optional, Any, Union
+from collections.abc import AsyncIterator
+from typing import Any, Optional, Union
+
+from geopy.distance import geodesic  # type: ignore
 from playwright.async_api import Browser
-from geopy.distance import geodesic # type: ignore
 
 from ....models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-from .navigator import Navigator
-from .strategy import SpiralStrategy, GridStrategy
-from .wilderness import WildernessManager
-from .scanner import SidebarScraper
-from .utils import get_viewport_bounds
 from ....utils.playwright_utils import setup_optimized_context
+from .navigator import Navigator
+from .scanner import SidebarScraper
+from .strategy import GridStrategy, SpiralStrategy
+from .utils import get_viewport_bounds
+from .wilderness import WildernessManager
 
 logger = logging.getLogger(__name__)
 

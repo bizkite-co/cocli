@@ -1,5 +1,6 @@
 import argparse
 import logging
+
 from cocli.scrapers.google.google_maps import scrape_google_maps
 
 logger = logging.getLogger(__name__)

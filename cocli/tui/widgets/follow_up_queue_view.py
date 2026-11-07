@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from ..app import CocliApp
     from cocli.models.campaigns.queues.follow_up import FollowUpTask
+
+    from ..app import CocliApp
 
 from textual import events, on
 from textual.binding import Binding
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class FollowUpQueueListItem(ListItem):
-    def __init__(self, task: "FollowUpTask") -> None:
+    def __init__(self, task: FollowUpTask) -> None:
         super().__init__()
         self.follow_up = task
 
@@ -61,7 +62,7 @@ class FollowUpQueuePreview(VerticalScroll):
         )
         yield Static("", id="fu-preview-body")
 
-    def update_preview(self, task: "FollowUpTask | None") -> None:
+    def update_preview(self, task: FollowUpTask | None) -> None:
         empty = self.query_one("#fu-preview-empty", Label)
         body = self.query_one("#fu-preview-body", Static)
         if task is None:
@@ -142,7 +143,7 @@ class FollowUpQueueView(MasterDetailView):
         if isinstance(message.item, FollowUpQueueListItem):
             self.task_preview.update_preview(message.item.follow_up)
 
-    def _highlighted_task(self) -> "FollowUpTask | None":
+    def _highlighted_task(self) -> FollowUpTask | None:
         item = self.task_list.highlighted_child
         if isinstance(item, FollowUpQueueListItem):
             return item.follow_up
@@ -153,13 +154,7 @@ class FollowUpQueueView(MasterDetailView):
     # ------------------------------------------------------------------
 
     def on_key(self, event: events.Key) -> None:
-        if event.key in ("G", "shift+g") or event.character == "G":
-            if self.task_list.children:
-                self.task_list.index = len(self.task_list.children) - 1
-                self.task_list.scroll_end(animate=False)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "end":
+        if event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
             if self.task_list.children:
                 self.task_list.index = len(self.task_list.children) - 1
                 self.task_list.scroll_end(animate=False)
@@ -231,7 +226,7 @@ class FollowUpQueueView(MasterDetailView):
     # Workers
     # ------------------------------------------------------------------
 
-    async def _prepare_single_flow(self, task: "FollowUpTask") -> None:
+    async def _prepare_single_flow(self, task: FollowUpTask) -> None:
         """Render selected follow-up → PendingBatchEntry (Batch Email Drafts)."""
         from cocli.application.follow_up_service import FollowUpService
 
@@ -274,11 +269,14 @@ class FollowUpQueueView(MasterDetailView):
             )
         self.refresh_tasks()
 
-    async def _edit_and_prepare_flow(self, task: "FollowUpTask") -> None:
+    async def _edit_and_prepare_flow(self, task: FollowUpTask) -> None:
         """Render template on-the-fly, open editor, then freeze the edited copy."""
-        from .edit_pending_entry_modal import EditPendingEntryModal
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
         from cocli.models.campaigns.indexes.email_pending_batch import PendingBatchEntry
+
+        from .edit_pending_entry_modal import EditPendingEntryModal
 
         if task.format != "email":
             self.app.notify(
@@ -330,7 +328,7 @@ class FollowUpQueueView(MasterDetailView):
         edited_subject, edited_body = result
 
         # Freeze the edited copy into pending.usv.
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         batch_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         entry = PendingBatchEntry(
@@ -365,7 +363,7 @@ class FollowUpQueueView(MasterDetailView):
         )
         self.refresh_tasks()
 
-    async def _delete_flow(self, task: "FollowUpTask") -> None:
+    async def _delete_flow(self, task: FollowUpTask) -> None:
         from .confirm_screen import ConfirmScreen
 
         confirmed = await self.app.push_screen_wait(

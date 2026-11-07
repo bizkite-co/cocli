@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.quarantine.legacy_prospect import LegacyProspectUSV
+
 
 def repair_record(line: str) -> Optional[GoogleMapsProspect]:
     if not line.strip():

@@ -1,5 +1,6 @@
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_cocli_base_dir, get_companies_dir
 from cocli.models.companies.slug import normalize_company_slug
 

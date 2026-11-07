@@ -15,8 +15,8 @@ DOMAIN_HASH_SHARD: ShardByHash = shard_by_hash(2)
 
 # Imported below the shard: the sibling modules import DOMAIN_HASH_SHARD from
 # this package, so the name must exist before they are loaded.
-from cocli.station_defs.campaigns.indexes.emails import EMAIL_INDEX  # noqa: E402
-from cocli.station_defs.campaigns.indexes.google_maps_prospects import (  # noqa: E402
+from cocli.station_defs.campaigns.indexes.emails import EMAIL_INDEX
+from cocli.station_defs.campaigns.indexes.google_maps_prospects import (
     PROSPECTS_INDEX,
 )
 

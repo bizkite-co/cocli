@@ -1,8 +1,9 @@
-import pytest
-from pytest_bdd import scenario, given, when, then, parsers
-import toml
-
 import shlex
+
+import pytest
+import toml
+from pytest_bdd import given, parsers, scenario, then, when
+
 
 @pytest.fixture
 def temp_data_dir(tmp_path):

@@ -11,7 +11,8 @@ absolute ceiling.
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, TypeVar
+from collections.abc import AsyncIterator
+from typing import TypeVar
 
 T = TypeVar("T")
 

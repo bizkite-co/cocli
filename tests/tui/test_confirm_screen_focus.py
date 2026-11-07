@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import MagicMock
-from cocli.tui.widgets.confirm_screen import ConfirmScreen
+
+import pytest
 from textual.app import App
+
+from cocli.tui.widgets.confirm_screen import ConfirmScreen
 
 
 @pytest.mark.asyncio

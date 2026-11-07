@@ -1,7 +1,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import wait_for_widget
 from PIL import Image
+from textual.widgets import ListView
 
 from cocli.application.services import ServiceContainer
 from cocli.models.companies.company import Company
@@ -9,8 +11,6 @@ from cocli.models.search import SearchResult
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.company_preview import CompanyPreview
-from conftest import wait_for_widget
-from textual.widgets import ListView
 
 
 @pytest.fixture

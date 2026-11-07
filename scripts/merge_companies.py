@@ -1,10 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import shutil
-import typer
 from pathlib import Path
-from cocli.models.companies.company import Company
+
+import typer
+
 from cocli.core.paths import paths
+from cocli.models.companies.company import Company
 
 app = typer.Typer()
 logger = logging.getLogger("merge")

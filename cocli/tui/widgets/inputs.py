@@ -1,8 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
 import asyncio
-from textual.widgets import Input
-from textual.message import Message
+
 from textual import events, work
+from textual.message import Message
+from textual.widgets import Input
 
 
 class CocliInput(Input):

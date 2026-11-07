@@ -3,13 +3,15 @@ ahead of regular prospects in DuckDB search.
 """
 
 from __future__ import annotations
-from datetime import datetime, UTC
+
+from datetime import UTC, datetime
+
 import pytest
 
+from cocli.application import search_service
 from cocli.application.search_service import get_fuzzy_search_results
-import cocli.application.search_service as search_service
-from cocli.core.paths import paths
 from cocli.core.cache import build_cache
+from cocli.core.paths import paths
 from cocli.models.campaigns.queues.to_call import ToCallTask
 
 

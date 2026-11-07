@@ -1,11 +1,13 @@
 import csv
-import yaml
 from pathlib import Path
 from typing import Any, cast
+
+import yaml
 from rich.console import Console
-from .base import BaseCompiler
-from ..models.companies.company import Company
+
 from ..core.config import get_cocli_base_dir
+from ..models.companies.company import Company
+from .base import BaseCompiler
 
 console = Console()
 

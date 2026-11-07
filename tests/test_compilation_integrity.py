@@ -1,8 +1,11 @@
-import pytest
 from pathlib import Path
-from cocli.models.companies.company import Company
+
+import pytest
+
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import create_company_files
+from cocli.models.companies.company import Company
+
 
 @pytest.fixture
 def test_data_dir(tmp_path):

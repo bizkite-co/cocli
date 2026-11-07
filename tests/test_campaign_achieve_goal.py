@@ -1,7 +1,9 @@
-from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-from typer.testing import CliRunner
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from typer.testing import CliRunner
+
+from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 
 runner = CliRunner()
 

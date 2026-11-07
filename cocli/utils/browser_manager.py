@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import asyncio
-from typing import Optional, Any
-from playwright.async_api import async_playwright, Browser, Page
+from typing import Any, Optional
+
+from playwright.async_api import Browser, Page, async_playwright
 
 
 class BrowserManager:

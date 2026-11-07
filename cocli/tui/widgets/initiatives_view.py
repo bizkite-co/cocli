@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Optional, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +24,11 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-
 from textual.widgets import Label, ListItem, ListView, Static
 
 from ...core.paths import paths
 from .message_templates_view import TemplateListItem, TemplatePreview
 from .remote_pull import RemotePullMixin
-
-if TYPE_CHECKING:
-    pass
 
 _CATEGORY_LABELS = {
     "email-sequences": "Email Sequences",
@@ -72,8 +68,8 @@ class FileBrowserListItem(ListItem):
 
 class FileBrowserPreview(Container):
     def compose(self) -> Any:
-        from textual.widgets import Static
         from textual.containers import VerticalScroll
+        from textual.widgets import Static
 
         with VerticalScroll():
             yield Label("Select a file to preview it", id="file-browser-empty")
@@ -144,7 +140,9 @@ class _EmailSequencesPane(Horizontal):
         yield self.preview
 
     async def on_mount(self) -> None:
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -160,7 +158,9 @@ class _EmailSequencesPane(Horizontal):
     def on_template_selected(self, message: ListView.Selected) -> None:
         if not isinstance(message.item, TemplateListItem):
             return
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -195,7 +195,9 @@ class _EmailSequencesPane(Horizontal):
         PersonalizedOutreachService.list_send_log() (same source as the
         Tracking pane), filtered to this one template - no new storage or
         query path needed, just a narrower read of what already exists."""
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -346,7 +348,9 @@ class _FileBrowserPane(Horizontal):
         yield self.preview
 
     async def on_mount(self) -> None:
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -560,7 +564,9 @@ class _TrackingPane(RemotePullMixin, Horizontal):
 
     async def refresh_tracking(self) -> None:
         from cocli.application.engagement_service import EngagementService
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -942,7 +948,9 @@ class InitiativesView(Container):
             yield self.content_container
 
     async def on_mount(self) -> None:
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         app = cast("CocliApp", self.app)
         campaign = app.services.campaign_name
@@ -968,7 +976,9 @@ class InitiativesView(Container):
     async def on_initiative_selected(self, event: ListView.Selected) -> None:
         if not isinstance(event.item, InitiativeListItem):
             return
-        from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+        from cocli.application.personalized_outreach_service import (
+            PersonalizedOutreachService,
+        )
 
         self._current_initiative = event.item.initiative
         app = cast("CocliApp", self.app)

@@ -1,7 +1,7 @@
+import logging
 import os
 import shutil
 from pathlib import Path
-import logging
 from typing import Any
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -43,10 +43,7 @@ def consolidate() -> None:
         existing = winners[place_id]
         
         # Rule: USV beats CSV
-        if ext == ".usv" and existing['ext'] == ".csv":
-            winners[place_id] = {'path': file_path, 'ext': ext, 'mtime': mtime}
-        # Rule: Same extension, Newest wins
-        elif ext == existing['ext'] and mtime > existing['mtime']:
+        if ext == ".usv" and existing['ext'] == ".csv" or ext == existing['ext'] and mtime > existing['mtime']:
             winners[place_id] = {'path': file_path, 'ext': ext, 'mtime': mtime}
         # Otherwise, existing wins
 

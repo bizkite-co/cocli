@@ -7,9 +7,7 @@ import json
 import stat
 from pathlib import Path
 
-
 from stations.schema import SCHEMA_FILENAME, is_schema_protected, write_schema_sidecar
-
 
 # Production modules allowed to *call* write_schema_sidecar / stations schema API.
 _ALLOWED_WRITE_MODULES = frozenset(

@@ -7,7 +7,7 @@ in well under a second - no Playwright/browser dependency at all.
 """
 
 import asyncio
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 

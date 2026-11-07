@@ -13,16 +13,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
 from email.utils import formatdate, getaddresses, make_msgid, parsedate_to_datetime
 from pathlib import Path
-from typing import Callable, Optional, Protocol, Literal, Any
+from typing import Any, Callable, Literal, Optional, Protocol
 
 from cocli.application.mail_oauth import FileOAuthTokenStore, resolve_token_cache_path
 from cocli.core.paths import paths
-from cocli.models.companies.email_note import EmailNote, CompanyEmail
+from cocli.models.companies.email_note import CompanyEmail, EmailNote
 from cocli.models.mail import (
     EmailSettings,
     MailMessage,
@@ -386,8 +386,8 @@ class EmailService:
         self._mail_sender = val
 
     def send(self, request: SendMailRequest) -> SendMailResult:
-        from cocli.core.exclusions import ExclusionManager
         from cocli.application.ses_suppression_service import SesSuppressionService
+        from cocli.core.exclusions import ExclusionManager
 
         source = request.from_address or self.settings.from_address
         if not source:

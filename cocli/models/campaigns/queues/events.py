@@ -1,11 +1,15 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from typing import Optional, Literal
+
 from pathlib import Path
+from typing import Literal, Optional
+
 from pydantic import Field
+
+from ....core.ordinant import QueueIdentity, QueueName
 from ....core.paths import paths
-from ....core.ordinant import QueueName, QueueIdentity
 from ...base import BaseUsvModel
+
 
 class EventScrapeTask(BaseUsvModel):
     """

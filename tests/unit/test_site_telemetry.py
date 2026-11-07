@@ -53,6 +53,7 @@ def test_robots_txt_and_sitemap_exist() -> None:
 
 def test_telemetry_provider_status_check(mocker) -> None:
     import pytest
+
     from cocli.application.telemetry_service import GoogleTelemetryProvider
 
     mock_res = mocker.MagicMock(
@@ -79,6 +80,7 @@ def test_telemetry_provider_status_check(mocker) -> None:
 
 def test_telemetry_wizard_cli_runner() -> None:
     from typer.testing import CliRunner
+
     from cocli.commands.telemetry import app
 
     runner = CliRunner()
@@ -123,7 +125,9 @@ def test_script_js_contains_feedback_submit_handler() -> None:
 
 def test_telemetry_check_runner() -> None:
     from unittest.mock import MagicMock, patch
+
     from typer.testing import CliRunner
+
     from cocli.commands.telemetry import app
 
     runner = CliRunner()

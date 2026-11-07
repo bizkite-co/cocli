@@ -1,5 +1,6 @@
 import yaml
 from rich.console import Console
+
 from cocli.core.config import get_companies_dir
 
 console = Console()

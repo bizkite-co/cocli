@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import csv
 import logging
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Any, Iterable
-from datetime import datetime, UTC
+from typing import Any, Optional
 
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from .config import get_cocli_base_dir
 from ..utils.usv_utils import USVDictReader, USVDictWriter
+from .config import get_cocli_base_dir
 
 logger = logging.getLogger(__name__)
 

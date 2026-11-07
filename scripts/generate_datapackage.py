@@ -1,5 +1,7 @@
 import sys
+
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+
 
 def generate_datapackage(campaign_name: str):
     print(f"Generating datapackage.json for {campaign_name} using GoogleMapsProspect model...")

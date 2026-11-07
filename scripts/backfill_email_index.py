@@ -1,10 +1,13 @@
 from __future__ import annotations
+
+from typing import Optional
+
 import typer
 import yaml
-from typing import Optional
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign
+
+from cocli.core.config import get_campaign, get_companies_dir
 from cocli.core.email_index_manager import EmailIndexManager
 from cocli.core.text_utils import is_valid_email
 from cocli.models.campaigns.indexes.email import EmailEntry

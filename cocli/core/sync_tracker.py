@@ -3,7 +3,7 @@ SyncTracker: Manages PI sync timestamps for campaigns.
 """
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Optional
 
 from cocli.core.config import get_campaigns_dir

@@ -19,7 +19,7 @@ from cocli.models.campaigns.worker_config import PiNodeConfig
 US = "\x1f"
 
 
-def _all_ok_response(cmd: list, **kwargs) -> "subprocess.CompletedProcess":  # type: ignore[no-untyped-def,type-arg]
+def _all_ok_response(cmd: list, **kwargs) -> subprocess.CompletedProcess:  # type: ignore[no-untyped-def,type-arg]
     import re
 
     script = kwargs.get("input", "")

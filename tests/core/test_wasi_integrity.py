@@ -1,8 +1,11 @@
-import pytest
 import hashlib
 from pathlib import Path
+
+import pytest
+
 from cocli.core.infrastructure.wasi import WasiRunner
 from cocli.core.store.prospects import ProspectsStore
+
 
 def test_wasi_runner_hashing(tmp_path: Path):
     """Verifies that WasiRunner correctly hashes a WASM binary."""
@@ -48,8 +51,9 @@ def test_prospects_store_integrity_enforcement(tmp_path: Path):
 
 def test_datapackage_generation_includes_wasi_hash(tmp_path: Path):
     """Verifies that cocli:wasi_hash is saved in datapackage.json."""
-    from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
     import json
+
+    from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
     
     wasi_hash = "sha256:immutable-code-v1"
     WebsiteDomainCsv.save_datapackage(

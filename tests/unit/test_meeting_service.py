@@ -1,8 +1,9 @@
 import datetime
+
 from pytz import timezone
 
-from cocli.core.paths import paths
 from cocli.application.meeting_service import MeetingService
+from cocli.core.paths import paths
 from cocli.models.companies.meeting import CompanyMeeting
 
 
@@ -80,6 +81,7 @@ def test_meeting_service_upcoming_and_recent_meetings(tmp_path):
 
 def test_meeting_service_recent_calls_caching_and_write_through(tmp_path):
     import tzlocal
+
     from cocli.models.companies.meeting import CompanyCall
 
     paths.root = tmp_path

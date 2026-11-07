@@ -1,17 +1,18 @@
-import logging
 import asyncio
+import logging
 import random
 from datetime import datetime
 from typing import Literal
-from playwright.async_api import async_playwright, Page
-from bs4 import BeautifulSoup
 
-from ..models.campaigns.events import Event
-from ..core.text_utils import slugify
-from ..utils.playwright_utils import setup_stealth_context
-from ..utils.headers import USER_AGENT
+from bs4 import BeautifulSoup
+from playwright.async_api import Page, async_playwright
+
 from ..application.services import ServiceContainer
+from ..core.text_utils import slugify
 from ..models.campaigns.campaign import Campaign
+from ..models.campaigns.events import Event
+from ..utils.headers import USER_AGENT
+from ..utils.playwright_utils import setup_stealth_context
 
 logger = logging.getLogger(__name__)
 

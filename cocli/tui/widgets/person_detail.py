@@ -1,12 +1,13 @@
+from textual import events
+from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.widgets import Label, Markdown
-from textual.app import ComposeResult
-from textual import events
 
 from cocli.models.people.person import Person
 from cocli.models.phone import render_phone
 from cocli.models.social import SOCIAL_URL_FIELDS
+
 from ..base import CocliPanel
 
 

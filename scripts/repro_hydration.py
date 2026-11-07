@@ -1,7 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
 import asyncio
 import logging
+
 from playwright.async_api import async_playwright
+
 from cocli.utils.playwright_utils import setup_optimized_context
 
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +45,10 @@ async def run_alignment_test() -> None:
 
         # Capture and Parse with our PRODUCTION logic
         from bs4 import BeautifulSoup
-        from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
+
+        from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import (
+            extract_rating_reviews_gm_details,
+        )
         
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")

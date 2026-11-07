@@ -8,10 +8,11 @@ delete these segments.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Optional
 
 from stations.backends import LocalPathBackend
 from stations.compactor import last_write_wins_fold

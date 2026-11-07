@@ -7,15 +7,16 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
+
 import typer
 import yaml
 from rich.console import Console
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
-    TextColumn,
-    BarColumn,
     TaskProgressColumn,
+    TextColumn,
 )
 
 from cocli.core.config import (
@@ -23,19 +24,19 @@ from cocli.core.config import (
     get_campaign_dir,
     load_campaign_config,
 )
+from cocli.core.text_utils import slugdotify
 from cocli.core.video import (
     get_duration,
     normalize_video,
 )
+from cocli.core.video.display_paths import print_accessible_path
 from cocli.core.video.job_runs import (
     save_video_job_run,
     write_last_normalize_pointer,
     write_last_package_pointer,
     write_last_upload_pointer,
 )
-from cocli.core.video.display_paths import print_accessible_path
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
-from cocli.core.text_utils import slugdotify
 from cocli.models.campaigns.video_job_run import (
     KIND_TRANSCRIBE,
     VideoJobRun,
@@ -213,7 +214,7 @@ def transcribe_normalized_dir(
         .get("transcription", {})
         .get("provider", "gemini")
     )
-    from cocli.core.video import transcriber, chapters
+    from cocli.core.video import chapters, transcriber
     transcriber_engine = transcriber.TranscriptionFactory.get_transcriber(provider)
     try:
         transcripts = transcriber_engine.transcribe(video_file, campaign_name)

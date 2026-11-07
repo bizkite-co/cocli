@@ -1,13 +1,16 @@
+from unittest.mock import MagicMock
+
+import pytest
+from conftest import wait_for_widget
 from textual.binding import Binding
 from textual.widgets import Label
-import pytest
-from unittest.mock import MagicMock
-from cocli.tui.app import CocliApp, MenuBar
+
 from cocli.application.services import ServiceContainer
+from cocli.tui.app import CocliApp, MenuBar
 from cocli.tui.widgets.application_view import ApplicationView
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.person_list import PersonList
-from conftest import wait_for_widget
+
 
 def create_mock_services():
     mock_search = MagicMock()

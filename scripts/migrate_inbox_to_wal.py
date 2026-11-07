@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import shutil
+
 from cocli.core.paths import paths
 from cocli.core.sharding import get_place_id_shard
 

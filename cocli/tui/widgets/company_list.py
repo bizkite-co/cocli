@@ -1,16 +1,17 @@
 from __future__ import annotations
-import logging
+
 import asyncio
-from datetime import datetime, timedelta, UTC
-from typing import TYPE_CHECKING, cast, Any, Optional
+import logging
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from rich.text import Text
+from textual import events, on, work
+from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
-from textual.widgets import Label, ListView, ListItem, LoadingIndicator, Input, Static
-from textual.app import ComposeResult
 from textual.message import Message
-from textual import events, on, work
+from textual.widgets import Input, Label, ListItem, ListView, LoadingIndicator, Static
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -18,6 +19,7 @@ from cocli.models.companies.company import Company
 from cocli.models.email_address import EmailAddress
 from cocli.models.search import SearchResult
 
+from ..base import CocliPanel
 from .inputs import CocliSearchInput
 from .list_filter import (
     ListFilterState,
@@ -27,7 +29,6 @@ from .list_filter import (
     commit_filter,
 )
 from .mark_prefix import MarkPrefixMixin
-from ..base import CocliPanel
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             self._ignoring_input_change = True
             try:
                 if hasattr(search_input, "value"):
-                    setattr(search_input, "value", "")
+                    search_input.value = ""
             finally:
                 self._ignoring_input_change = False
             clear_filter(self._filter)
@@ -357,14 +358,7 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
                 self.action_open_website()
                 event.stop()
                 return
-            elif event.key in ("G", "shift+g") or event.character == "G":
-                if list_view.children:
-                    list_view.index = len(list_view.children) - 1
-                    list_view.scroll_end(animate=False)
-                event.prevent_default()
-                event.stop()
-                return
-            elif event.key == "end":
+            elif event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
                 if list_view.children:
                     list_view.index = len(list_view.children) - 1
                     list_view.scroll_end(animate=False)
@@ -456,7 +450,6 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
             return
         # Standard changed events are still useful for non-search CocliInputs
         # but for search we rely on on_search_debounced
-        pass
 
     def run_search(self, query: str) -> None:
         app = cast("CocliApp", self.app)
@@ -767,8 +760,9 @@ class CompanyList(MarkPrefixMixin, CocliPanel):
 
     def action_open_website(self) -> None:
         """Open the previewed (highlighted) company's website."""
-        from .company_preview import CompanyPreview
         from cocli.utils.open_url import open_url
+
+        from .company_preview import CompanyPreview
 
         previews = list(self.app.query(CompanyPreview))
         if previews and previews[0].company is not None:

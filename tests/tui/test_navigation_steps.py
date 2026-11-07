@@ -1,12 +1,14 @@
-import pytest
 import asyncio
 from unittest.mock import patch
 
-from cocli.tui.app import CocliApp
-from cocli.tui.widgets.campaign_selection import CampaignSelection
-from cocli.tui.widgets.campaign_detail import CampaignDetail
-from cocli.tui.widgets.application_view import ApplicationView
+import pytest
 from conftest import wait_for_widget
+
+from cocli.tui.app import CocliApp
+from cocli.tui.widgets.application_view import ApplicationView
+from cocli.tui.widgets.campaign_detail import CampaignDetail
+from cocli.tui.widgets.campaign_selection import CampaignSelection
+
 
 @pytest.mark.asyncio
 async def test_valid_campaign_selection(mock_cocli_env):

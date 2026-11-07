@@ -1,5 +1,6 @@
 from cocli.scrapers.resource_analyzer import analyze_resource_value
 
+
 def test_resource_analyzer() -> None:
     # Test public facility
     res1 = analyze_resource_value("Fullerton Public Library", "Public library", "Free books and study space.", "Great free resource!")

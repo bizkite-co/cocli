@@ -1,15 +1,16 @@
-import sys
-import subprocess
 import argparse
 import logging
+import subprocess
+import sys
 from pathlib import Path
+
 from rich.console import Console
 from rich.table import Table
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.config import load_campaign_config, get_campaign
+from cocli.core.config import get_campaign, load_campaign_config
 
 console = Console()
 logging.basicConfig(level=logging.WARNING)
@@ -38,8 +39,9 @@ def check_s3(bucket: str, profile: str, path: str) -> bool:
         return False
 
 def audit_paths(campaigns: list[str], target_paths: list[str]) -> None:
-    from cocli.core.paths import paths
     import tomli
+
+    from cocli.core.paths import paths
     
     # Use the definitive path from our authority
     config_path = paths.root / "config" / "cocli_config.toml"

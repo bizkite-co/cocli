@@ -1,22 +1,21 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 from pathlib import Path
-
 from typing import Any, Optional
-from playwright.async_api import Browser
 
 import typer
-from playwright.async_api import async_playwright
+from playwright.async_api import Browser, async_playwright
 from rich.console import Console
 from rich.progress import track
 
+from cocli.application.company_service import update_company_from_website_data
+from cocli.core.config import get_campaign_exports_dir, load_campaign_config
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.campaigns.campaign import Campaign
 from cocli.models.companies.company import Company
-from cocli.core.config import load_campaign_config, get_campaign_exports_dir
-from cocli.application.company_service import update_company_from_website_data
 
 app = typer.Typer()
 console = Console()

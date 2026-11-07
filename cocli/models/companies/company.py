@@ -1,29 +1,30 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Any, Iterator
+
 import logging
-from datetime import datetime, UTC
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, Any, Optional
 
 import yaml
 from pydantic import (
     BaseModel,
-    Field,
     BeforeValidator,
+    Field,
     ValidationError,
-    model_validator,
     computed_field,
+    model_validator,
 )
-from typing_extensions import Annotated
 
+from ...core.config import get_campaign
+from ...core.ordinant import CollectionName
+from ..campaigns.indexes.email import EmailEntry
+from ..company_address import OptionalCompanyAddress
+from ..company_name import OptionalCompanyName
 from ..email_address import EmailAddress
 from ..phone import OptionalPhone
-from ..company_name import OptionalCompanyName
-from ..company_address import OptionalCompanyAddress
-from ..campaigns.indexes.email import EmailEntry
 from ..place_id import PlaceID
 from .slug import CompanySlug
-from ...core.ordinant import CollectionName
-from ...core.config import get_campaign
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,7 @@ class Company(BaseModel):
         )
 
     @model_validator(mode="after")
-    def populate_identifiers(self) -> "Company":
+    def populate_identifiers(self) -> Company:
         if not self.company_hash and self.name:
             from cocli.core.text_utils import calculate_company_hash
 
@@ -196,7 +197,7 @@ class Company(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def parse_full_address(self) -> "Company":
+    def parse_full_address(self) -> Company:
         if self.full_address and (
             not self.city or not self.state or not self.zip_code or not self.country
         ):
@@ -224,7 +225,7 @@ class Company(BaseModel):
         return self.zip_code
 
     @classmethod
-    def get_all(cls) -> Iterator[Optional["Company"]]:
+    def get_all(cls) -> Iterator[Optional[Company]]:
         """Iterates through all company directories, yielding a Company per
         entry or None for a directory that failed to load (so callers that
         want a skip count can distinguish "no more entries" from "this one
@@ -242,7 +243,7 @@ class Company(BaseModel):
                 yield company if company else None
 
     @classmethod
-    def get(cls, slug: str) -> Optional["Company"]:
+    def get(cls, slug: str) -> Optional[Company]:
         """Retrieves a single company by its slug."""
         from ...core.paths import paths
 
@@ -252,7 +253,7 @@ class Company(BaseModel):
         return None
 
     @classmethod
-    def from_directory(cls, company_dir: Path) -> Optional["Company"]:
+    def from_directory(cls, company_dir: Path) -> Optional[Company]:
         from ...core.paths import paths
 
         logger = logging.getLogger(__name__)
@@ -313,7 +314,7 @@ class Company(BaseModel):
             # --- RESILIENCE: Filter anomalous emails from frontmatter before loading ---
             from cocli.core.text_utils import is_valid_email
 
-            if "email" in frontmatter_data and frontmatter_data["email"]:
+            if frontmatter_data.get("email"):
                 email_val = str(frontmatter_data["email"]).strip()
                 if (
                     not is_valid_email(email_val)
@@ -344,7 +345,7 @@ class Company(BaseModel):
                 frontmatter_data["all_emails"] = cleaned_emails
 
             # --- RESILIENCE: Filter legacy PlaceIDs ---
-            if "place_id" in frontmatter_data and frontmatter_data["place_id"]:
+            if frontmatter_data.get("place_id"):
                 pid = str(frontmatter_data["place_id"]).strip()
                 if pid.startswith("0x") or ":" in pid:
                     # Clear it so it doesn't fail the strict PlaceID type check
@@ -385,7 +386,7 @@ class Company(BaseModel):
             logger.debug(f"Error in from_directory for {company_dir}: {e}")
             return None
 
-    def merge_with(self, other: "Company") -> None:
+    def merge_with(self, other: Company) -> None:
         """Merges data from another company instance into this one."""
         # Special handling for name: only overwrite if current name looks like a slug/domain
         # and new name looks more like a real name.
@@ -533,8 +534,9 @@ class Company(BaseModel):
         # before it was killed (Mark, 2026-08-31).
         if rebuild_cache:
             try:
-                from ...core.cache import build_cache
                 import threading
+
+                from ...core.cache import build_cache
 
                 threading.Thread(
                     target=build_cache, kwargs={"campaign": get_campaign()}, daemon=True

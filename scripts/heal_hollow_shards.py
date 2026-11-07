@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader, USVDictWriter
+
 
 def heal_shards(data_path: Path) -> None:
     print(f"Healing hollow shards at {data_path}...")
@@ -59,7 +61,7 @@ def heal_shards(data_path: Path) -> None:
             street = metadata.get("street_address") or metadata.get("full_address")
             zip_code = metadata.get("zip_code")
             
-            from cocli.core.text_utils import slugify, calculate_company_hash
+            from cocli.core.text_utils import calculate_company_hash, slugify
             
             prospect = GoogleMapsProspect(
                 place_id=shard_pid,

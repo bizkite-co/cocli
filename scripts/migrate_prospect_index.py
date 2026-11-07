@@ -1,17 +1,18 @@
-import sys
-from pathlib import Path
-import logging
 import argparse
-from datetime import datetime, UTC
+import logging
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pydantic
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.core.config import get_campaign_dir
 from cocli.core.constants import UNIT_SEP
 from cocli.core.sharding import get_place_id_shard
-from cocli.core.config import get_campaign_dir
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ def migrate_from_plan(campaign_name: str, plan_path: Path) -> None:
                         if count % 100 == 0:
                             logger.info(f"Progress: {count} migrated...")
                     else:
-                        raise IOError("Verification failed")
+                        raise OSError("Verification failed")
                         
                 except Exception as e:
                     logger.error(f"FAIL: {file_path.name}: {e}")

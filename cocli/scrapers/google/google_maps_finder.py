@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional, Any
-from playwright.sync_api import sync_playwright
-from .google_maps_parser import parse_business_listing_html
 import logging
+from typing import Any, Optional
+
+from playwright.sync_api import sync_playwright
+
+from .google_maps_parser import parse_business_listing_html
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ def find_business_on_google_maps(
                     )
 
                     # Use fuzzy matching to find the best match
-                    from fuzzywuzzy import fuzz # type: ignore
+                    from fuzzywuzzy import fuzz  # type: ignore
                     score = fuzz.ratio(company_name.lower(), business_data.get("Name", "").lower())
 
                     if score > best_match_score:

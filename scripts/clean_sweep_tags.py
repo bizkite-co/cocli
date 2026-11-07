@@ -1,5 +1,6 @@
-import logging
 import asyncio
+import logging
+
 from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaigns.campaign import Campaign
 

@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+from stations.segments import collect_phases
+
 from cocli.core.ordinant import IndexIdentity
 from cocli.core.paths import paths
 from cocli.station_defs.campaigns.indexes import INDEX_RUNS_LAYOUT
 from cocli.station_defs.campaigns.indexes.google_maps_prospects import (
     PROSPECTS_INDEX,
 )
-from stations.segments import collect_phases
 
 
 def test_prospects_decl_is_wal_and_processing_not_runs_archive_inbox() -> None:

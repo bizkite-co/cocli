@@ -23,12 +23,12 @@ from stations.engine import DefaultTransformEngine
 from stations.protocols import QueueEdge
 from stations.station import StationDecl
 
-from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
 from cocli.station_defs.campaigns.indexes.emails import (
     EMAIL_INBOX,
     EMAIL_INDEX,
     EMAIL_SHARDS,
 )
+from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -587,8 +587,8 @@ def materialize_prospects_usv_from_checkpoint(
     import os
     import shutil
 
-
-    from stations.schema import protect_schema_sidecar as protect_path, is_schema_protected
+    from stations.schema import is_schema_protected
+    from stations.schema import protect_schema_sidecar as protect_path
 
     if not generation_file.exists():
         return

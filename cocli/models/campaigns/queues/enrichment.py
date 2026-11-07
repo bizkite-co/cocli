@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Optional
 
-from .base import QueueMessage
-from ....core.paths import paths
 from ....core.ordinant import QueueName
+from ....core.paths import paths
 from ....core.sharding import get_domain_shard
+from .base import QueueMessage
 
 logger = logging.getLogger(__name__)
 

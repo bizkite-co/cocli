@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 import csv
 import logging
-import toml
 from pathlib import Path
 from typing import Any, Optional
 
+import toml
 from pydantic import BaseModel, Field
 
 from ..core.config import get_campaign_dir, load_campaign_config
@@ -137,8 +138,9 @@ class CampaignService:
         Sets this campaign as the active context and performs side effects 
         like updating .aws_profile.env with the campaign's AWS profile.
         """
-        from ..core.config import set_campaign
         from pathlib import Path
+
+        from ..core.config import set_campaign
         
         set_campaign(self.campaign_name)
         
@@ -410,10 +412,10 @@ class CampaignService:
         Also writes a file-per-object USV to enrichments/ for provenance.
         Yields status updates for progress bars.
         """
-        from ..core.prospects_csv_manager import ProspectsIndexManager
-        from ..models.companies.company import Company
         from ..core.config import get_companies_dir
+        from ..core.prospects_csv_manager import ProspectsIndexManager
         from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from ..models.companies.company import Company
 
         manager = ProspectsIndexManager(self.campaign_name)
         companies_dir = get_companies_dir()
@@ -533,8 +535,8 @@ class CampaignService:
         templates (same as Campaign.create).
         """
         from ..core.config import get_cocli_base_dir
-        from ..models.campaigns.campaign import Campaign
         from ..core.text_utils import slugify
+        from ..models.campaigns.campaign import Campaign
 
         data_home = get_cocli_base_dir()
         create_kwargs: dict[str, Any] = {}

@@ -7,8 +7,8 @@ from typing import Any
 from cocli.application.follow_up_service import FollowUpService
 from cocli.models.campaigns.initiative import (
     InitiativeManifest,
-    InitiativeTargetCriteria,
     InitiativeOutreachSpec,
+    InitiativeTargetCriteria,
 )
 from cocli.models.companies.company import Company
 from cocli.models.people.person import Person
@@ -99,7 +99,9 @@ def test_enqueue_initiative_dry_run_and_execution(tmp_path: Any, monkeypatch: An
     assert not exec_res.errors
 
     # Verify pending batch was created
-    from cocli.application.personalized_outreach_service import PersonalizedOutreachService
+    from cocli.application.personalized_outreach_service import (
+        PersonalizedOutreachService,
+    )
 
     outreach = PersonalizedOutreachService("roadmap")
     batches = outreach.list_pending_batches()

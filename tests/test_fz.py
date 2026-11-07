@@ -1,10 +1,10 @@
 import pytest
+import typer
 from click.testing import CliRunner
 from slugify import slugify
-import typer
 
-from cocli.core.paths import paths
 from cocli.core.cache import build_cache
+from cocli.core.paths import paths
 
 runner = CliRunner()
 

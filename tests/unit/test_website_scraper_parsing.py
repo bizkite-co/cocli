@@ -1,6 +1,9 @@
 from pathlib import Path
+
 from bs4 import BeautifulSoup
+
 from cocli.enrichment.website_scraper import WebsiteScraper
+
 
 def test_extract_email_from_ace_installations_html():
     # Load the saved HTML

@@ -1,10 +1,12 @@
 from pydantic import BaseModel
-from .gm_list import ScrapeTask
-from .gm_details import GmItemTask
-from .enrichment import EnrichmentTask
-from .to_call import ToCallTask
-from ..mission import MissionTask
+
 from ....core.ordinant import QueueName
+from ..mission import MissionTask
+from .enrichment import EnrichmentTask
+from .gm_details import GmItemTask
+from .gm_list import ScrapeTask
+from .to_call import ToCallTask
+
 
 class PropertyInfo(BaseModel):
     type: str

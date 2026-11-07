@@ -110,7 +110,7 @@ class VideoJobRun(BaseModel):
     notes: Optional[str] = None
 
     @classmethod
-    def _start(cls, kind: str, campaign: str, slug: str) -> "VideoJobRun":
+    def _start(cls, kind: str, campaign: str, slug: str) -> VideoJobRun:
         started = utc_now()
         return cls(
             run_id=make_video_run_id(slug, started),
@@ -122,15 +122,15 @@ class VideoJobRun(BaseModel):
         )
 
     @classmethod
-    def start_normalize(cls, campaign: str, slug: str) -> "VideoJobRun":
+    def start_normalize(cls, campaign: str, slug: str) -> VideoJobRun:
         return cls._start(KIND_NORMALIZE, campaign, slug)
 
     @classmethod
-    def start_package(cls, campaign: str, slug: str) -> "VideoJobRun":
+    def start_package(cls, campaign: str, slug: str) -> VideoJobRun:
         return cls._start(KIND_PACKAGE, campaign, slug)
 
     @classmethod
-    def start_upload(cls, campaign: str, slug: str) -> "VideoJobRun":
+    def start_upload(cls, campaign: str, slug: str) -> VideoJobRun:
         return cls._start(KIND_UPLOAD, campaign, slug)
 
     def start_phase(self, name: str) -> None:

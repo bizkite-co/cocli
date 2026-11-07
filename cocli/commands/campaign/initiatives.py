@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-
 from playwright.sync_api import Error as PlaywrightError
 
 from cocli.application.initiative_demo import record_initiative_demo

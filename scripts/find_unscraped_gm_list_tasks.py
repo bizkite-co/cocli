@@ -2,10 +2,11 @@
 import logging
 from pathlib import Path
 from typing import Any
-from cocli.core.paths import paths
-from cocli.core.text_utils import slugify
-from cocli.core.sharding import get_geo_shard, get_grid_tile_id
+
 from cocli.core.constants import UNIT_SEP
+from cocli.core.paths import paths
+from cocli.core.sharding import get_geo_shard, get_grid_tile_id
+from cocli.core.text_utils import slugify
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("find_gm_list_tasks")

@@ -1,19 +1,22 @@
 from __future__ import annotations
-import typer
-import subprocess
-import sys
+
+import logging
 import re
 import shutil
+import subprocess
+import sys
 from typing import Optional
-import logging
 
+import typer
 from rich.console import Console
 
+from ..application.search_service import get_fuzzy_search_results  # New import
+
 # from ..core.cache import get_cached_items # Removed
-from ..core.config import get_context, get_campaign
+from ..core.config import get_campaign, get_context
+
 # from ..core.exclusions import ExclusionManager # Removed
 from .view import view_company
-from ..application.search_service import get_fuzzy_search_results # New import
 
 logger = logging.getLogger(__name__)
 

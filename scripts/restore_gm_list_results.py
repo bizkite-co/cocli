@@ -20,8 +20,7 @@ def write_and_reset():
         current_target_file.parent.mkdir(parents=True, exist_ok=True)
         # Write the content
         with open(current_target_file, "wb") as f:
-            for rec in current_content:
-                f.write(rec + b"\n")
+            f.writelines(rec + b"\n" for rec in current_content)
         current_content = []
 
 

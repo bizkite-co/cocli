@@ -1,8 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
+
+from cocli.core.constants import UNIT_SEP
 from cocli.core.paths import paths
 from cocli.models.campaigns.queues.to_call import ToCallTask
-from cocli.core.constants import UNIT_SEP
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

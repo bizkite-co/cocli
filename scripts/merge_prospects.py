@@ -1,9 +1,11 @@
-import pandas as pd
-import shutil
-import typer
 import logging
+import shutil
+
+import pandas as pd
+import typer
 from rich.console import Console
-from cocli.core.config import get_scraped_data_dir, get_campaign_scraped_data_dir
+
+from cocli.core.config import get_campaign_scraped_data_dir, get_scraped_data_dir
 from cocli.utils.backup_utils import timestamped_backup_path
 
 app = typer.Typer()

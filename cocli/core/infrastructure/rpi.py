@@ -1,5 +1,6 @@
-import subprocess
 import logging
+import subprocess
+
 from rich.console import Console
 
 logger = logging.getLogger(__name__)

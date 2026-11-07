@@ -1,17 +1,24 @@
 from __future__ import annotations
-import yaml
-import simplekml # type: ignore
-import toml
-from typing import Optional
-import logging
-from pathlib import Path # Import Path
 
-from ..core.config import get_companies_dir, get_campaign_dir
-from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state, get_coordinates_from_address
-from ..models.companies.company import Company
-from ..models.people.person import Person
-from ..models.geocode import GeocodeData
+import logging
+from pathlib import Path  # Import Path
+from typing import Optional
+
+import simplekml  # type: ignore
+import toml
+import yaml
+
 from cocli.core.text_utils import slugify
+
+from ..core.config import get_campaign_dir, get_companies_dir
+from ..core.geocoding import (
+    get_coordinates_from_address,
+    get_coordinates_from_city_state,
+    get_coordinates_from_zip,
+)
+from ..models.companies.company import Company
+from ..models.geocode import GeocodeData
+from ..models.people.person import Person
 
 logger = logging.getLogger(__name__)
 

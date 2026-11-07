@@ -1,11 +1,12 @@
-import pytest
-from textual.app import App
-from textual.widgets import ListView, ListItem, Markdown
 from unittest.mock import MagicMock
 
-from cocli.tui.widgets.person_list import PersonList
-from cocli.models.search import SearchResult
+import pytest
+from textual.app import App
+from textual.widgets import ListItem, ListView, Markdown
+
 from cocli.application.services import ServiceContainer
+from cocli.models.search import SearchResult
+from cocli.tui.widgets.person_list import PersonList
 
 # Mock data that get_fuzzy_search_results would return for persons
 mock_fz_person_items = [

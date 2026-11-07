@@ -215,7 +215,6 @@ async def test_sixel_payload_clamped_away_from_bottom_edge(tmp_path, monkeypatch
     import re
 
     from PIL import Image as PILImage
-
     from textual_image.widget.sixel import _ImageSixelImpl
 
     monkeypatch.setenv("COCLI_IMAGE_BACKEND", "sixel")

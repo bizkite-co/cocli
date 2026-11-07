@@ -1,9 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
+
 import logging
 import re
-from typing import AsyncIterator, Optional
-from playwright.async_api import Page, Locator
+from collections.abc import AsyncIterator
+from typing import Optional
+
+from playwright.async_api import Locator, Page
 
 from ....core.config import load_scraper_settings
 from ....core.text_utils import slugify

@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import logging
 import asyncio
+import logging
 from typing import Any
+
 import duckdb
 
 from cocli.core.paths import paths

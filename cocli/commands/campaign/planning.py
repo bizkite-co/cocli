@@ -1,23 +1,28 @@
 from __future__ import annotations
-import typer
+
 import csv
-import toml
 import logging
-import yaml
-from pathlib import Path
-from typing import Optional, Any
-from rich.console import Console
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
 
-from ...core.config import get_campaign_dir, get_people_dir, get_campaign
-from ...core.paths import paths
+import toml
+import typer
+import yaml
+from rich.console import Console
 
-from ...models.people.person import Person
-from ...core.text_utils import slugify
+from ...core.config import get_campaign, get_campaign_dir, get_people_dir
 from ...core.importing import import_prospect
+from ...core.paths import paths
 from ...core.prospects_csv_manager import ProspectsIndexManager
 from ...core.scrape_index import ScrapeIndex
-from ...planning.generate_grid import export_to_kml, DEFAULT_GRID_STEP_DEG, get_campaign_grid_tiles
+from ...core.text_utils import slugify
+from ...models.people.person import Person
+from ...planning.generate_grid import (
+    DEFAULT_GRID_STEP_DEG,
+    export_to_kml,
+    get_campaign_grid_tiles,
+)
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -175,8 +180,8 @@ def generate_grid(
     # Fallback to geocoding the 'locations' list if needed
     config_locations = prospecting_config.get("locations", [])
     if config_locations:
-        from geopy.geocoders import Nominatim # type: ignore
-        from geopy.exc import GeocoderServiceError # type: ignore
+        from geopy.exc import GeocoderServiceError  # type: ignore
+        from geopy.geocoders import Nominatim  # type: ignore
         geolocator = Nominatim(user_agent="cocli")
         
         for loc_name in config_locations:

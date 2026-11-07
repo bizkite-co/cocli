@@ -1,14 +1,17 @@
 from __future__ import annotations
+
 import sys
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
+
 from pydantic import ValidationError
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.constants import UNIT_SEP
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+
 
 def repair_file(path: Path, execute: bool = False) -> bool:
     print(f"\n--- Debugging: {path.name} ---")

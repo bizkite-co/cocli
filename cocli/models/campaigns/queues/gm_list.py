@@ -1,11 +1,14 @@
 from __future__ import annotations
-from typing import Optional, ClassVar, Literal
+
 from pathlib import Path
+from typing import ClassVar, Literal, Optional
+
 from pydantic import Field
-from ....core.paths import paths
-from ....core.ordinant import QueueName
-from ...base import BaseUsvModel
+
 from ....core.geo_types import LatScale1, LonScale1
+from ....core.ordinant import QueueName
+from ....core.paths import paths
+from ...base import BaseUsvModel
 
 
 class ScrapeTask(BaseUsvModel):

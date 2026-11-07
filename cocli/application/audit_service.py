@@ -1,21 +1,22 @@
 from __future__ import annotations
-import logging
+
+import csv
 import json
+import logging
 import re
 import shutil
-import csv
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
 from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
+from ..core.paths import paths
+from ..core.prospects_csv_manager import ProspectsIndexManager
+from ..core.text_utils import slugify
+from ..models import MissionReconciliationResult, TileStatusResult
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.cli_help import CliCommandMatch
 from ..models.companies.company import Company
-from ..models import TileStatusResult, MissionReconciliationResult
-from ..core.prospects_csv_manager import ProspectsIndexManager
-from ..core.text_utils import slugify
-from ..core.paths import paths
 
 logger = logging.getLogger(__name__)
 
@@ -516,8 +517,9 @@ class AuditService:
         gen_cleanup: bool = False,
     ) -> dict[str, Any]:
         """Audits the filesystem for OMAP compliance and Screaming Architecture."""
-        from ..core.audit.fs_auditor import FsAuditor
         from datetime import datetime
+
+        from ..core.audit.fs_auditor import FsAuditor
 
         auditor = FsAuditor()
         root_node = auditor.audit_full(
@@ -547,8 +549,12 @@ class AuditService:
         dry_run: bool = False,
     ) -> dict[str, Any]:
         """Audit datapackage.json files for schema compliance."""
-        from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from cocli.models.campaigns.indexes.google_maps_list_item import (
+            GoogleMapsListItem,
+        )
+        from cocli.models.campaigns.indexes.google_maps_prospect import (
+            GoogleMapsProspect,
+        )
         from cocli.models.campaigns.queues.to_call import ToCallTask
 
         schema_models = [
@@ -646,6 +652,7 @@ class AuditService:
     def audit_enrichment(self, campaign_name: str) -> dict[str, Any]:
         """Audit website enrichment metrics for a campaign."""
         import yaml
+
         from ..core.text_utils import parse_frontmatter
 
         companies_dir = paths.companies.ensure()
@@ -756,6 +763,7 @@ class AuditService:
     ) -> list[tuple[Optional[str], str, str, bool, bool]]:
         """Retrieves targets that do not have a contact name for interactive audit."""
         import yaml
+
         from ..core.text_utils import parse_frontmatter
 
         companies_dir = paths.companies.ensure()
@@ -886,18 +894,19 @@ class AuditService:
     ) -> dict[str, Any]:
         """Prepares human-in-the-loop validation of scraped list items."""
         import csv
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
+
+        from ..application.processors.gm_list import GmListProcessor
         from ..core.text_utils import slugify
-        from ..models.campaigns.indexes.google_maps_list_item import (
-            GoogleMapsListItem,
-        )
         from ..models.campaigns.indexes.gm_list_audit_log_item import (
             GmListAuditLogItem,
         )
         from ..models.campaigns.indexes.gm_list_reviewed_item import (
             GmListReviewedItem,
         )
-        from ..application.processors.gm_list import GmListProcessor
+        from ..models.campaigns.indexes.google_maps_list_item import (
+            GoogleMapsListItem,
+        )
 
         if usv_path:
             mode = "offline"
@@ -918,19 +927,21 @@ class AuditService:
         # Online mode scrape execution
         items = []
         if mode == "online":
-            from ..models.campaigns.queues.gm_list import ScrapeTask
             from ..core.sharding import get_geo_shard, get_grid_tile_id
+            from ..models.campaigns.queues.gm_list import ScrapeTask
 
             lat_shard = get_geo_shard(lat)
             grid_id = get_grid_tile_id(lat, lon)
             lat_tile_v, lon_tile_v = grid_id.split("_")
 
             def _target_scrape() -> list[Any]:
+                import asyncio
+
                 from playwright.async_api import async_playwright
+
                 from ..scrapers.google.gm_scraper.coordinator import (
                     ScrapeCoordinator,
                 )
-                import asyncio
 
                 async def run_scrape() -> list[Any]:
                     async with async_playwright() as pw:
@@ -1122,11 +1133,12 @@ class AuditService:
         reviewed_path_opt: Optional[Path] = None,
     ) -> dict[str, Any]:
         """Replay audit corrections onto a USV results file."""
+        import csv
         from collections import defaultdict
+
         from ..models.campaigns.indexes.google_maps_list_item import (
             GoogleMapsListItem,
         )
-        import csv
 
         audit_dir = paths.queue(campaign, "gm-list").pending / "audit"
 
@@ -1326,6 +1338,7 @@ class AuditService:
         which of pending/ or discovery-gen/completed the live pipeline
         happens to be reading from."""
         from typing import cast
+
         from ..core.queue.factory import get_queue_manager
         from ..core.queue.filesystem import FilesystemGmListQueue
         from ..core.queue.reconcile import reconcile_identities
@@ -1381,8 +1394,8 @@ class AuditService:
     ) -> dict[str, Any]:
         """Purge stale or expired leases from a queue directory."""
         from cocli.services.lease_cleanup import (
-            purge_expired_leases,
             force_purge_all_leases,
+            purge_expired_leases,
         )
 
         campaign_val = campaign_name or "default"

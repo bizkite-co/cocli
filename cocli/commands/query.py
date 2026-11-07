@@ -1,14 +1,16 @@
 from __future__ import annotations
-import typer
-from typing import Optional
-from geopy.distance import geodesic # type: ignore
+
 import logging
+from typing import Optional
+
+import typer
+import yaml
+from geopy.distance import geodesic  # type: ignore
 from rich.console import Console
 
-from ..core.config import get_companies_dir, get_campaign
+from ..core.config import get_campaign, get_companies_dir
 from ..core.geocoding import get_coordinates_from_city_state
 from ..models.people.person import Person
-import yaml
 
 logger = logging.getLogger(__name__)
 console = Console()

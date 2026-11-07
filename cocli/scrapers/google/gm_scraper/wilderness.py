@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import logging
 from typing import Optional
+
 from ....core.scrape_index import ScrapeIndex
 
 logger = logging.getLogger(__name__)

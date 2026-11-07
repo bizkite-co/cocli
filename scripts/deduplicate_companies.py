@@ -1,14 +1,17 @@
 from __future__ import annotations
-import typer
+
 import logging
-from rich.console import Console
-from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
-from cocli.models.companies.company import Company
-from cocli.utils.usv_utils import USVDictWriter, USVDictReader
+import shutil
 from pathlib import Path
 from typing import Optional
-import shutil
+
+import typer
+from rich.console import Console
+from rich.progress import track
+
+from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir
+from cocli.models.companies.company import Company
+from cocli.utils.usv_utils import USVDictReader, USVDictWriter
 
 app = typer.Typer()
 console = Console()

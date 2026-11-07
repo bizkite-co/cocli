@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 from typer.testing import CliRunner
 
-from cocli.application.company_service import find_company_by_phone, get_company_activity
+from cocli.application.company_service import (
+    find_company_by_phone,
+    get_company_activity,
+)
 from cocli.application.protocols import NoteProtocol, SmsNoteProtocol
 from cocli.application.sms_service import (
     ingest_sms_message,
@@ -16,7 +20,6 @@ from cocli.core.paths import paths
 from cocli.models.companies.note import Note
 from cocli.models.companies.sms_note import SmsNote
 from cocli.utils.calling_provider import TwilioBridgeCallingProvider
-
 
 runner = CliRunner()
 

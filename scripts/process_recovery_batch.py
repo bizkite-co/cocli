@@ -1,18 +1,20 @@
 from __future__ import annotations
-import asyncio
+
 import argparse
-import sys
+import asyncio
 import os
 import random
+import sys
 import time
-from typing import Optional, Any
+from typing import Any, Optional
+
 from playwright.async_api import async_playwright
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
 # Unit Separator Standard
@@ -73,8 +75,8 @@ async def process_batch(place_ids: list[str], campaign_name: str, bucket: str, r
     batch_start = time.time()
     print(f"Processing batch of {len(place_ids)} Place IDs with rate-limiting...")
     
-    from cocli.core.reporting import get_boto3_session
     from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session
     
     config = load_campaign_config(campaign_name)
     session = get_boto3_session(config)

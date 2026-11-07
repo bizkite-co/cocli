@@ -1,7 +1,9 @@
-import pytest
-import time
 import asyncio
 import shutil
+import time
+
+import pytest
+
 from cocli.tui.app import CocliApp
 
 
@@ -53,11 +55,12 @@ async def test_data_load_performance(mock_cocli_env, mocker):
     """
     Ensures that at least one company is visible in the list within 10 seconds.
     """
-    from cocli.tui.widgets.company_list import CompanyList
-    from textual.widgets import ListView
-    from cocli.core.paths import paths
-    from cocli.core.cache import build_cache
     from slugify import slugify
+    from textual.widgets import ListView
+
+    from cocli.core.cache import build_cache
+    from cocli.core.paths import paths
+    from cocli.tui.widgets.company_list import CompanyList
 
     # Populate data
     for i in range(5):

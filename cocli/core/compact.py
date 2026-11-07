@@ -1,18 +1,20 @@
 from __future__ import annotations
-import os
+
 import json
 import logging
+import os
 import socket
-import time
 import subprocess
+import time
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 from botocore.exceptions import ClientError
 
-from .config import get_campaign_dir
 from ..models.campaigns.worker_config import PiNodeConfig
+from .config import get_campaign_dir
 
 logger = logging.getLogger(__name__)
 
@@ -373,7 +375,9 @@ class CompactManager:
         """Enforces Frictionless Data policy by writing datapackage.json sidecar BEFORE data writes."""
         try:
             if self.index_name == "google_maps_prospects":
-                from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+                from ..models.campaigns.indexes.google_maps_prospect import (
+                    GoogleMapsProspect,
+                )
                 GoogleMapsProspect.write_datapackage(self.campaign_name, output_dir=self.index_dir)
                 logger.info(f"Sidecar datapackage.json written first for {self.index_name}")
         except Exception as e:

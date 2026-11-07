@@ -1,9 +1,12 @@
 from __future__ import annotations
-import typer
+
 from typing import Optional
+
+import typer
 from rich.console import Console
-from ...core.config import get_campaign
+
 from ...core.campaign_workflow import CampaignWorkflow
+from ...core.config import get_campaign
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)

@@ -1,19 +1,22 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field, model_validator, computed_field
-from typing import Optional, Any
+
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Optional
+
 import yaml
-import logging
+from pydantic import BaseModel, Field, computed_field, model_validator
+
+from ...core.error_classification import ErrorCategory
 from ..domain import Domain
 from ..email_address import EmailAddress
 from ..phone import OptionalPhone
-from ...core.error_classification import ErrorCategory
 
 logger = logging.getLogger(__name__)
 
 
-def _append_enrichment_failure_note(notes_dir: Path, website: "Website") -> None:
+def _append_enrichment_failure_note(notes_dir: Path, website: Website) -> None:
     """Dated company note so a dead/parked site is visible on later calls."""
     from .note import Note
 
@@ -266,10 +269,11 @@ class Website(BaseModel):
         task-agent ticket
         website.save-blindly-overwrites-website.md-on-every-enrichment-write-no-merge-safety-against-sparse-force-refresh-scrapes.
         """
-        from ...core.config import get_companies_dir, get_campaign
+        from datetime import UTC
+
+        from ...core.config import get_campaign, get_companies_dir
         from ...core.email_index_manager import EmailIndexManager
         from ..campaigns.indexes.email import EmailEntry
-        from datetime import UTC
 
         company_dir = get_companies_dir() / company_slug
         enrichment_dir = company_dir / "enrichments"

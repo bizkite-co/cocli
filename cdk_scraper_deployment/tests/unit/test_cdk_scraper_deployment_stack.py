@@ -1,7 +1,9 @@
 import aws_cdk as core
-import aws_cdk.assertions as assertions
+from aws_cdk import assertions
+from cdk_scraper_deployment.cdk_scraper_deployment_stack import (
+    CdkScraperDeploymentStack,
+)
 
-from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploymentStack
 
 # example tests. To run these tests, uncomment this file along with the example
 # resource in cdk_scraper_deployment/cdk_scraper_deployment_stack.py

@@ -12,10 +12,10 @@ Pattern: frontier.usv (MissionTask, many tasks per tile)
 import logging
 from collections import defaultdict
 
+from ..core.paths import paths
+from ..core.queue.factory import get_queue_manager
 from ..models.campaigns.mission import MissionTask
 from ..models.campaigns.tile import TileRecord
-from ..core.queue.factory import get_queue_manager
-from ..core.paths import paths
 
 logger = logging.getLogger(__name__)
 

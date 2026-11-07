@@ -1,14 +1,15 @@
 from typing import Any
-from .ffmpeg import normalize_video, get_duration
+
+from .ffmpeg import get_duration, normalize_video
 
 __all__ = [
-    "normalize_video",
-    "get_duration",
     "YouTubeUploader",
-    "transcriber",
-    "thumbnailer",
-    "chapters",
     "auth",
+    "chapters",
+    "get_duration",
+    "normalize_video",
+    "thumbnailer",
+    "transcriber",
 ]
 
 

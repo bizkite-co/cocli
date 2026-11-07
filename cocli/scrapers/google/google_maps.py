@@ -1,11 +1,14 @@
 from __future__ import annotations
+
 import logging
-from typing import AsyncIterator, Optional, Any
+from collections.abc import AsyncIterator
+from typing import Any, Optional
+
 from playwright.async_api import Browser
 
-from .gm_scraper.coordinator import ScrapeCoordinator
-from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ...core.config import load_scraper_settings
+from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from .gm_scraper.coordinator import ScrapeCoordinator
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,10 @@ async def scrape_google_maps(
     # Resolve coordinates
     # We leave this resolution logic here or move it? 
     # Coordinator expects lat/lon. Let's resolve here to keep Coordinator clean.
-    from ...core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
+    from ...core.geocoding import (
+        get_coordinates_from_city_state,
+        get_coordinates_from_zip,
+    )
     
     latitude = 0.0
     longitude = 0.0

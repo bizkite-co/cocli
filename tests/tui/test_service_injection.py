@@ -1,8 +1,11 @@
-import pytest
 from unittest.mock import MagicMock
-from cocli.tui.app import CocliApp
+
+import pytest
+
 from cocli.application.services import ServiceContainer
 from cocli.models.search import SearchResult
+from cocli.tui.app import CocliApp
+
 
 @pytest.mark.asyncio
 async def test_search_with_injected_service():

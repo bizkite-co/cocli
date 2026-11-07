@@ -1,8 +1,12 @@
 from __future__ import annotations
-from pydantic import BaseModel
+
 from typing import Any, Optional
+
+from pydantic import BaseModel
+
 from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..phone import OptionalPhone
+
 
 class LegacyProspectUSV(BaseModel):
     """
@@ -25,7 +29,7 @@ class LegacyProspectUSV(BaseModel):
     full_address: Optional[str] = None
     
     @classmethod
-    def from_usv_line(cls, line: str) -> "LegacyProspectUSV":
+    def from_usv_line(cls, line: str) -> LegacyProspectUSV:
         from cocli.core.constants import UNIT_SEP
         parts = line.strip("\x1e\n").split(UNIT_SEP)
         
@@ -44,7 +48,10 @@ class LegacyProspectUSV(BaseModel):
 
     def to_ideal(self) -> GoogleMapsProspect:
         """Transforms the known legacy sequence into the Gold Standard model."""
-        from cocli.core.text_utils import parse_address_components, calculate_company_hash
+        from cocli.core.text_utils import (
+            calculate_company_hash,
+            parse_address_components,
+        )
         
         # 1. Start with reliable base fields
         data: dict[str, Any] = {

@@ -1,55 +1,54 @@
 from __future__ import annotations
-import logging
-import os
+
 import asyncio
 import inspect
+import logging
+import os
 import shutil
 import subprocess
 import time
-from datetime import datetime
+from collections.abc import AsyncGenerator, Generator
 from contextlib import contextmanager
+from datetime import datetime
 from typing import (
     Any,
+    Callable,
     Optional,
     cast,
-    Generator,
-    AsyncGenerator,
-    Callable,
 )
 
-
+from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, ListItem, Input, Label, Footer, TextArea
+from textual.command import CommandPalette, DiscoveryHit, Hit, Provider
 from textual.containers import Container, Horizontal
-from textual import events, on
-from textual.command import Provider, Hit, DiscoveryHit, CommandPalette
 from textual.screen import ModalScreen
+from textual.widgets import Footer, Input, Label, ListItem, ListView, Static, TextArea
 
-from .calling_palette import CallingPaletteEntry, calling_palette_entries
-from .widgets.company_list import CompanyList
-from .widgets.person_list import PersonList
-from .widgets.company_preview import CompanyPreview
-from .widgets.person_detail import PersonDetail
-from .widgets.company_detail import CompanyDetail
-from .widgets.application_view import ApplicationView
-from .widgets.status_view import StatusView
-from .widgets.campaign_selection import CampaignSelection
-from .widgets.company_search import CompanySearchView
-from .widgets.confirm_screen import ConfirmScreen
-from .widgets.content_viewer_modal import ContentViewerModal
-from .widgets.template_list import TemplateList
-from .widgets.messages_view import MessagesView
-from .widgets.event_curation import EventCurationView
-from .navigation import NavNode, ProcessRun
-from .navigation_manager import NavigationStateManager
-from ..utils.browser_manager import BrowserManager
 from ..application.services import ServiceContainer
 from ..core.config import (
     create_default_config_file,
     get_campaign_dir,
     is_campaign_overridden,
 )
+from ..utils.browser_manager import BrowserManager
+from .calling_palette import CallingPaletteEntry, calling_palette_entries
+from .navigation import NavNode, ProcessRun
+from .navigation_manager import NavigationStateManager
+from .widgets.application_view import ApplicationView
+from .widgets.campaign_selection import CampaignSelection
+from .widgets.company_detail import CompanyDetail
+from .widgets.company_list import CompanyList
+from .widgets.company_preview import CompanyPreview
+from .widgets.company_search import CompanySearchView
+from .widgets.confirm_screen import ConfirmScreen
+from .widgets.content_viewer_modal import ContentViewerModal
+from .widgets.event_curation import EventCurationView
+from .widgets.messages_view import MessagesView
+from .widgets.person_detail import PersonDetail
+from .widgets.person_list import PersonList
+from .widgets.status_view import StatusView
+from .widgets.template_list import TemplateList
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,7 @@ class MenuBar(Horizontal):
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
-        from ..core.environment import get_environment, Environment
+        from ..core.environment import Environment, get_environment
 
         env = get_environment()
 
@@ -274,7 +273,7 @@ class CocliCommandProvider(Provider):
         places and they'd already drifted (one had "Show Application",
         the other "Show Admin")."""
         app = cast("CocliApp", self.app)
-        from ..core.environment import get_environment, Environment
+        from ..core.environment import Environment, get_environment
 
         commands = [
             (
@@ -629,10 +628,12 @@ class CocliApp(App[None]):
             tui_debug_log("APP: Skipping PI sync (COCLI_SKIP_AUTO_SYNC=1)")
             return
 
-        from ..core.config import get_campaign
-        from cocli.core.sync_tracker import SyncTracker
-        import threading
         import logging
+        import threading
+
+        from cocli.core.sync_tracker import SyncTracker
+
+        from ..core.config import get_campaign
 
         logger = logging.getLogger(__name__)
         campaign = get_campaign()
@@ -672,6 +673,7 @@ class CocliApp(App[None]):
     def _start_balance_check_background(self) -> None:
         """Check Twilio balance in a background thread if Twilio provider is configured."""
         import threading
+
         from ..core.config import get_campaign
         from ..utils.calling_provider import (
             TwilioBridgeCallingProvider,
@@ -718,6 +720,7 @@ class CocliApp(App[None]):
             if os.environ.get("COCLI_ENV") != "test":
                 # Start the Gossip Bridge in background (non-blocking)
                 import threading
+
                 from ..core.gossip_bridge import bridge
 
                 def start_bridge() -> None:
@@ -767,9 +770,9 @@ class CocliApp(App[None]):
         Opens the visible PersonDetail's person directory, else the visible
         CompanyDetail's company folder, else the campaign root.
         """
+        from ..core.paths import paths
         from .widgets.company_detail import CompanyDetail
         from .widgets.person_detail import PersonDetail
-        from ..core.paths import paths
 
         person: Optional[PersonDetail] = None
         for person_widget in self.query(PersonDetail):
@@ -1245,9 +1248,7 @@ class CocliApp(App[None]):
                     if (
                         isinstance(child, MessagesView)
                         and (return_to_messages or return_to_messages_recent_calls)
-                    ):
-                        child.display = False
-                    elif isinstance(
+                    ) or isinstance(
                         child, (CompanySearchView, PersonList, ApplicationView)
                     ):
                         child.display = False
@@ -1509,7 +1510,7 @@ class CocliApp(App[None]):
 
     async def action_refresh_dev(self) -> None:
         """Triggers a local DEV data refresh from PROD."""
-        from ..core.environment import get_environment, Environment
+        from ..core.environment import Environment, get_environment
 
         if get_environment() == Environment.PROD:
             self.notify("Cannot refresh-dev while in PROD mode.", severity="error")

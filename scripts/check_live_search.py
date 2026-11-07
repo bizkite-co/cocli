@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import sys
+
 from cocli.application.search_service import get_fuzzy_search_results
 from cocli.core.config import set_campaign
 

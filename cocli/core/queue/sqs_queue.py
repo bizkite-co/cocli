@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import json
 import logging
 from typing import Optional
+
 from botocore.exceptions import ClientError
 
 from ...models.campaigns.queues.base import QueueMessage
-from . import QueueManager
+from ..config import get_campaign, load_campaign_config
 from ..reporting import get_boto3_session
-from ..config import load_campaign_config, get_campaign
+from . import QueueManager
 
 logger = logging.getLogger(__name__)
 

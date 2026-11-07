@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+import logging
 import os
 import sys
-import logging
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

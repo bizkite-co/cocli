@@ -1,15 +1,16 @@
 from __future__ import annotations
-import uuid
-from rich.console import Console
-from pathlib import Path
-from typing import Any, Optional
-import tty
-import termios
-import sys
-import logging
 
+import logging
 import shutil
 import subprocess
+import sys
+import termios
+import tty
+import uuid
+from pathlib import Path
+from typing import Any, Optional
+
+from rich.console import Console
 
 from ..models.companies.company import Company
 from ..models.people.person import Person  # Import Company and Person models
@@ -175,9 +176,7 @@ def run_fzf(fzf_input: str) -> Optional[str]:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-        elif result.returncode == 1: # No match
-            return None
-        elif result.returncode == 130: # Ctrl-C
+        elif result.returncode == 1 or result.returncode == 130: # No match
             return None
         else:
             console.print(f"[bold red]Error during fzf selection:[/bold red] {result.stderr.strip()}")

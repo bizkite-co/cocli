@@ -1,6 +1,8 @@
 import toml
-from cocli.core.paths import paths
+
 from cocli.application.worker_service import WorkerService
+from cocli.core.paths import paths
+
 
 def test_worker_service_resolve_worker_definitions(tmp_path):
     # Set up isolated paths

@@ -1,8 +1,10 @@
 import logging
-import yaml
 from pathlib import Path
-from ..models.campaigns.events import Event
+
+import yaml
+
 from ..core.paths import paths
+from ..models.campaigns.events import Event
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,7 @@
 import math
-from geopy.distance import geodesic # type: ignore
+
+from geopy.distance import geodesic  # type: ignore
+
 
 def calculate_new_coords(lat: float, lon: float, distance_miles: float, bearing: float) -> tuple[float, float]:
     """Calculate new lat/lon from a starting point, distance, and bearing."""

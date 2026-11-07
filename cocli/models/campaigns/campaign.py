@@ -1,11 +1,15 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field, model_validator
-from typing import Optional, Any
-import toml
-from pathlib import Path
+
 from functools import lru_cache
+from pathlib import Path
+from typing import Any, Optional
+
+import toml
+from pydantic import BaseModel, Field, model_validator
+
 from cocli.core.text_utils import slugify
 from cocli.models.mail import EmailSettings
+
 
 class CampaignImport(BaseModel):
     model_config = {"extra": "ignore"}
@@ -137,7 +141,7 @@ class Campaign(BaseModel):
 
     @classmethod
     @lru_cache(maxsize=32)
-    def load(cls, name: str, data_home: Optional[Path] = None) -> 'Campaign':
+    def load(cls, name: str, data_home: Optional[Path] = None) -> Campaign:
         from cocli.core.config import load_campaign_config
         config_data = load_campaign_config(name)
         if not config_data:
@@ -164,7 +168,7 @@ class Campaign(BaseModel):
         workflows: Optional[list[str]] = None,
         enable_video: bool = False,
         enable_prospecting: bool = True,
-    ) -> 'Campaign':
+    ) -> Campaign:
         campaign_slug = slugify(name)
         campaign_dir = data_home / "campaigns" / campaign_slug
         campaign_dir.mkdir(parents=True, exist_ok=True)

@@ -1,15 +1,17 @@
 """Tests for vim navigation (G, gg, home, end, auto-paging j/k) and search_limit in CompanyList."""
 
 from __future__ import annotations
+
 from unittest.mock import MagicMock
+
 import pytest
+from conftest import wait_for_widget
 from textual.widgets import ListView
 
 from cocli.application.services import ServiceContainer
 from cocli.models.search import SearchResult
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
-from conftest import wait_for_widget
 
 
 def _mock_results(n: int = 10, offset: int = 0) -> list[SearchResult]:

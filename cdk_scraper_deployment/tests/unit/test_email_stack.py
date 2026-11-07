@@ -1,6 +1,5 @@
 import aws_cdk as cdk
-import aws_cdk.assertions as assertions
-
+from aws_cdk import assertions
 from cdk_scraper_deployment.email_stack import CocliEmailStack
 
 

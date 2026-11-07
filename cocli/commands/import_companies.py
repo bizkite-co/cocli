@@ -1,17 +1,19 @@
 from __future__ import annotations
+
 import csv
+import logging
 from pathlib import Path
+from typing import Any, Optional
+
 import typer
 import yaml
-from typing import Optional, Any
-import logging
 
+from cocli.core.config import get_campaign, get_companies_dir
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files
-from cocli.models.companies.company import Company
-from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-from cocli.core.config import get_campaign, get_companies_dir
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
+from cocli.models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ def core_import_logic(
     match_threshold: int = 80,
 ) -> None:
     """Core logic for importing prospects from a list of dictionaries."""
-    from fuzzywuzzy import process # type: ignore
+    from fuzzywuzzy import process  # type: ignore
     website_csv_manager = WebsiteDomainCsvManager()
 
     company_dirs = {d.name: d for d in companies_dir.iterdir() if d.is_dir()}

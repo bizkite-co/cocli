@@ -1,11 +1,14 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-from pathlib import Path
+
+import logging
 import os
 import platform
-import logging
-from typing import TYPE_CHECKING, Optional, Iterator, Callable, Union
-from .ordinant import StateFolder, IndexIdentity, QueueIdentity
+from collections.abc import Iterator
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Optional, Union
+
+from .ordinant import IndexIdentity, QueueIdentity, StateFolder
 
 if TYPE_CHECKING:
     from stations.segments import Phases
@@ -85,7 +88,7 @@ class QueuePaths(PathObject):
         super().__init__(path_factory)
         self.queue_name = queue_name
 
-    def _declared_phases(self) -> Optional["Phases"]:
+    def _declared_phases(self) -> Optional[Phases]:
         """Phases declared by this queue's station, or None if unidentified."""
         if self.queue_name is None:
             return None
@@ -153,7 +156,7 @@ class IndexPaths(PathObject):
         super().__init__(path_factory)
         self.index_name = index_name
 
-    def _declared_phases(self) -> Optional["Phases"]:
+    def _declared_phases(self) -> Optional[Phases]:
         if self.index_name is None:
             return None
         from stations.segments import collect_phases
@@ -293,7 +296,7 @@ class WalPaths(PathObject):
 
     def journal(self, node_id: str, date_str: Optional[str] = None) -> Path:
         if not date_str:
-            from datetime import datetime, UTC
+            from datetime import UTC, datetime
 
             date_str = datetime.now(UTC).strftime("%Y%m%d")
         return self.path / f"{date_str}_{node_id}.usv"
@@ -312,7 +315,7 @@ def get_data_home() -> Path:
     - PROD environment: uses platform default directly
     - Non-PROD environments: append _env suffix to platform default
     """
-    from .environment import get_environment, Environment
+    from .environment import Environment, get_environment
 
     if "COCLI_DATA_HOME" in os.environ:
         # Use COCLI_DATA_HOME as-is, no symlink resolution or suffix manipulation
@@ -371,7 +374,7 @@ class S3CampaignPaths:
 class S3DataPaths:
     def bucket(self, base_name: str) -> str:
         """Returns the environment-aware bucket name."""
-        from .environment import get_environment, Environment
+        from .environment import Environment, get_environment
 
         env = get_environment()
         if env == Environment.PROD:
@@ -396,7 +399,7 @@ class S3DataPaths:
 
     @property
     def status_root(self) -> str:
-        from .environment import get_environment, Environment
+        from .environment import Environment, get_environment
 
         env = get_environment()
         if env == Environment.PROD:

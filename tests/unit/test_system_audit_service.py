@@ -3,17 +3,18 @@ from io import StringIO
 
 from textual.binding import Binding
 
-from cocli.core.paths import paths
 from cocli.application.audit_service import (
     AuditService,
     dump_tui_actions,
     parse_cli_tree,
     search_cli_tree,
 )
+from cocli.core.paths import paths
 
 
 def test_get_cli_tree():
     from typer.main import get_command
+
     from cocli.main import app as main_app
     click_command = get_command(main_app)
     service = AuditService(campaign_name="test-campaign")

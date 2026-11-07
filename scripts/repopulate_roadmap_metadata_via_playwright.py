@@ -1,18 +1,21 @@
 from __future__ import annotations
-import asyncio
+
 import argparse
-import sys
+import asyncio
 import os
+import sys
 from io import StringIO
-from playwright.async_api import async_playwright
 from typing import Optional
+
+from playwright.async_api import async_playwright
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.utils.usv_utils import USVDictReader
+
 
 async def fetch_metadata_via_playwright(page, place_id: str) -> Optional[GoogleMapsRawResult]:
     """
@@ -75,8 +78,8 @@ async def main():
     parser.add_argument("--campaign", default="roadmap", help="Campaign name.")
     args = parser.parse_args()
 
-    from cocli.core.reporting import get_boto3_session
     from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session
     
     config = load_campaign_config(args.campaign)
     aws_config = config.get("aws", {})

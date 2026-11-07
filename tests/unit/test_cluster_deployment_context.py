@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 from pathlib import Path
 
+
 def test_docker_build_context_integrity():
     """
     Verifies that the essential files for a cluster Docker build are present

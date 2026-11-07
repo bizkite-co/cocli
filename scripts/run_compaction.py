@@ -1,5 +1,6 @@
-from cocli.core.transformers.gm_list_to_checkpoint import compact_gm_list_results
 import logging
+
+from cocli.core.transformers.gm_list_to_checkpoint import compact_gm_list_results
 
 logging.basicConfig(level=logging.INFO)
 print("Starting compaction...")

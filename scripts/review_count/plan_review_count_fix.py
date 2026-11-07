@@ -1,6 +1,7 @@
-from pathlib import Path
-from cocli.models.companies.company import Company
 import re
+from pathlib import Path
+
+from cocli.models.companies.company import Company
 
 # Paths
 recovery_file = Path(

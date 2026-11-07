@@ -1,15 +1,18 @@
 from __future__ import annotations
+
 import importlib
+import logging
 import pkgutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import logging
-import yaml
-from cocli.core.text_utils import slugify
-from datetime import datetime
 
-from .base import EnrichmentScript
+import yaml
+
+from cocli.core.text_utils import slugify
+
 from ..models.companies.company import Company
+from .base import EnrichmentScript
 
 logger = logging.getLogger(__name__)
 

@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 import os
 import platform
-import jsii
-import aws_cdk as cdk
-import tomli
 from pathlib import Path
-from constructs import IConstruct
 
-from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploymentStack
+import aws_cdk as cdk
+import jsii
+import tomli
+from cdk_scraper_deployment.cdk_scraper_deployment_stack import (
+    CdkScraperDeploymentStack,
+)
 from cdk_scraper_deployment.email_stack import CocliEmailStack
 from cdk_scraper_deployment.testimonials_stack import (
-    FormIntakeStack,
     SIGNUP_FIELDS,
     TESTIMONIAL_FIELDS,
     UNSUBSCRIBE_FIELDS,
+    FormIntakeStack,
 )
+from constructs import IConstruct
 
 # Stack id prefixes that get the 14-day (not 3-day) log retention below -
 # both are FormIntakeStack instances that log raw captured submission data

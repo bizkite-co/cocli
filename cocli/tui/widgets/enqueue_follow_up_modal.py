@@ -1,10 +1,10 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
 
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
-from textual import on, events
+from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
@@ -16,6 +16,7 @@ from cocli.application.personalized_outreach_service import PersonalizedOutreach
 from cocli.core.config import get_campaign
 from cocli.models.companies.company import Company
 from cocli.utils.when import parse_follow_up_when
+
 from .inputs import CocliInput
 from .search_select import SearchSelect
 

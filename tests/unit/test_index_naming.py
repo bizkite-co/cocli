@@ -4,10 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from cocli.core.paths import paths
-
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.compact import CompactManager
+from cocli.core.paths import paths
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 
 def test_index_checkpoint_path_returns_prospects_usv(tmp_path: Path) -> None:
@@ -53,7 +52,6 @@ def test_acquire_staging_raises_on_sync_failure(tmp_path: Path) -> None:
     with patch(
         "subprocess.run",
         side_effect=subprocess.CalledProcessError(255, ["aws", "s3", "sync"]),
-    ):
-        with pytest.raises(subprocess.CalledProcessError):
-            manager.acquire_staging()
+    ), pytest.raises(subprocess.CalledProcessError):
+        manager.acquire_staging()
 

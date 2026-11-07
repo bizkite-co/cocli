@@ -1,20 +1,24 @@
 from __future__ import annotations
+
+import argparse  # Import argparse
 import csv
+import logging
+import math  # Import math for geographical calculations
 from datetime import datetime
 from pathlib import Path
-import logging
 from typing import Any, Optional
-import argparse # Import argparse
-import math # Import math for geographical calculations
 
-from dateutil import tz # Import for timezone handling
+from dateutil import tz  # Import for timezone handling
+
+from cocli.core.config import get_cocli_base_dir
 
 # Assuming cocli is installed or available in the Python path
 # Adjust imports if necessary based on how this script will be run
 from cocli.core.scrape_index import ScrapedArea, ScrapeIndex
-from cocli.core.config import get_cocli_base_dir
-from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager # Import manager
-from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv # Import model
+from cocli.core.website_domain_csv_manager import (
+    WebsiteDomainCsvManager,  # Import manager
+)
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv  # Import model
 
 # --- Configuration ---
 LOG_FILE = Path(__file__).parent / "recover_data.log"
@@ -86,9 +90,7 @@ def merge_scraped_areas(existing_areas: list[ScrapedArea], new_areas: list[Scrap
         
         if key in merged_map:
             current_area = merged_map[key]
-            if new_area.items_found > current_area.items_found:
-                merged_map[key] = new_area
-            elif new_area.items_found == current_area.items_found and new_area.scrape_date > current_area.scrape_date:
+            if new_area.items_found > current_area.items_found or new_area.items_found == current_area.items_found and new_area.scrape_date > current_area.scrape_date:
                 merged_map[key] = new_area
         else:
             merged_map[key] = new_area

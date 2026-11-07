@@ -312,8 +312,8 @@ def test_pull_cta_clicks_captures_button_label_in_event_details(
     become an EngagementEvent whose details carry that label - the
     session-level pull (pull_from_ga4) can only ever say a page was
     visited, never which button was pressed."""
-    from cocli.core.paths import paths
     from cocli.application.telemetry_service import GoogleTelemetryProvider
+    from cocli.core.paths import paths
 
     monkeypatch.setattr(paths, "root", tmp_path)
 
@@ -347,8 +347,8 @@ def test_pull_cta_clicks_deduplicates_against_already_recorded_events(
     already-recorded click with the same company/button/page/term
     fingerprint - matches the dedup behavior pull_from_ga4 already has
     for link_click."""
-    from cocli.core.paths import paths
     from cocli.application.telemetry_service import GoogleTelemetryProvider
+    from cocli.core.paths import paths
 
     monkeypatch.setattr(paths, "root", tmp_path)
 
@@ -549,10 +549,11 @@ def test_process_unsubscribe_requests_resolves_guid_to_the_real_recipient_and_ex
     guid - resolving it to the real recipient (via the SendRecord that
     guid's own send already created) and applying the suppression both
     happen here, locally."""
-    from cocli.core.paths import paths
+    from datetime import UTC, datetime
+
     from cocli.core.exclusions import ExclusionManager
+    from cocli.core.paths import paths
     from cocli.models.send_record import SendRecord
-    from datetime import datetime, UTC
 
     monkeypatch.setattr(paths, "root", tmp_path)
 

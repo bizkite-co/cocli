@@ -1,12 +1,14 @@
 from __future__ import annotations
-from textual.app import ComposeResult
-from textual.widgets import Static, Label
-from textual.containers import VerticalScroll, Container, Horizontal
-from textual import work
-from typing import Any, Optional, TYPE_CHECKING, cast
+
 import asyncio
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+from textual import work
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.widgets import Label, Static
 
 from cocli.renderers import status_renderer
 

@@ -1,16 +1,17 @@
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
 from typing import Any
+
 import yaml
 from rich.console import Console
 
-from .base import BaseCompiler
+from ..core.utils import create_company_files
 from ..models.companies.company import Company
 from ..models.companies.website import Website
 from ..models.company_name import CompanyName
-from ..core.utils import create_company_files
+from .base import BaseCompiler
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -83,7 +84,7 @@ class WebsiteCompiler(BaseCompiler):
                         website_data_dict["all_emails"] = [e for e in website_data_dict["all_emails"] if isinstance(e, str) and is_valid_email(e)]
                     
                     # 2. Filter primary email
-                    if "email" in website_data_dict and website_data_dict["email"]:
+                    if website_data_dict.get("email"):
                         if not isinstance(website_data_dict["email"], str) or not is_valid_email(website_data_dict["email"]):
                             website_data_dict["email"] = None
                             

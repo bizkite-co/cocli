@@ -1,6 +1,7 @@
 from pathlib import Path
-from cocli.models.companies.call_note import CallNote
+
 from cocli.application.protocols import CallNoteProtocol
+from cocli.models.companies.call_note import CallNote
 
 
 def test_call_note_to_file_and_protocol(tmp_path: Path) -> None:

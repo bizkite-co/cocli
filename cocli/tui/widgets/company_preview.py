@@ -1,14 +1,18 @@
 from __future__ import annotations
+
 from typing import Any, Optional
-from textual.widgets import Static, Label
-from textual.containers import VerticalScroll, Container, Horizontal
+
 from rich.markup import escape
-from cocli.models.companies.company import Company
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.widgets import Label, Static
+
+from cocli.models.companies.company import Company
 from cocli.utils.open_url import open_url
-from .phone import Phone
-from .email import Email
+
 from ..base import CocliPanel
+from .email import Email
+from .phone import Phone
 
 
 class CompanyPreview(CocliPanel):
@@ -109,9 +113,9 @@ class CompanyPreview(CocliPanel):
             enriched_str = (
                 f"[bold yellow]{company.enqueued_at.strftime('%Y-%m-%d')} (pending)[/]"
             )
-        elif hasattr(company, "_enqueued_at") and getattr(company, "_enqueued_at"):
+        elif hasattr(company, "_enqueued_at") and company._enqueued_at:
             # Fallback for transient SearchResult data
-            val = getattr(company, "_enqueued_at")
+            val = company._enqueued_at
             enriched_str = f"[bold yellow]{val} (pending)[/]"
         else:
             enriched_str = "No"

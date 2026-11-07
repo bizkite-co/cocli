@@ -1,11 +1,14 @@
 from __future__ import annotations
+
 import logging
-import yaml
 from typing import Optional
+
 import typer
+import yaml
+
+from cocli.core.config import get_companies_dir, get_people_dir
 from cocli.models.companies.company import Company
 from cocli.models.phone import PhoneNumber
-from cocli.core.config import get_companies_dir, get_people_dir
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

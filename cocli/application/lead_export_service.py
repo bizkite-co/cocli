@@ -25,10 +25,10 @@ from pydantic import BaseModel
 
 from cocli.core.config import get_campaign_exports_dir, get_companies_dir
 from cocli.core.exclusions import ExclusionManager
-from cocli.utils.google_maps_url import google_maps_url
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.companies.website import Website
 from cocli.models.wal.record import US
+from cocli.utils.google_maps_url import google_maps_url
 
 logger = logging.getLogger(__name__)
 
@@ -268,8 +268,7 @@ def export_enriched_emails(
     output_file_usv = output_file.with_suffix(".usv")
     with open(output_file_usv, "w", newline="", encoding="utf-8") as f:
         f.write(US.join(FIELDNAMES) + "\n")
-        for res in results:
-            f.write(US.join(str(res[name]) for name in FIELDNAMES) + "\n")
+        f.writelines(US.join(str(res[name]) for name in FIELDNAMES) + "\n" for res in results)
 
     output_file_csv = output_file.with_suffix(".csv")
     with open(output_file_csv, "w", newline="", encoding="utf-8") as f:

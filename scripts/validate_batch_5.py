@@ -1,5 +1,6 @@
-import boto3
 from pathlib import Path
+
+import boto3
 
 # The 5 Place IDs we are watching
 TARGET_IDS = [
@@ -54,7 +55,7 @@ def check_status(campaign_name: str = "roadmap") -> None:
         except Exception:
             pass
             
-        print(f"{pid:<30} | {str(is_local_pending):<6} | {str(is_s3_pending):<7} | {str(is_in_progress):<7} | {str(is_indexed):<6}")
+        print(f"{pid:<30} | {is_local_pending!s:<6} | {is_s3_pending!s:<7} | {is_in_progress!s:<7} | {is_indexed!s:<6}")
 
 if __name__ == "__main__":
     check_status()

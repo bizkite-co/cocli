@@ -1,10 +1,13 @@
 from __future__ import annotations
+
+from typing import Annotated, Any, ClassVar, Optional
+
 from pydantic import BeforeValidator, Field
-from typing import Annotated, Any, Optional, ClassVar
+
 from ...base import BaseUsvModel, ResourcePathPolicy
-from ...phone import OptionalPhone
-from ...company_name import OptionalCompanyName
 from ...company_address import OptionalCompanyAddress
+from ...company_name import OptionalCompanyName
+from ...phone import OptionalPhone
 from .google_maps_place import safe_float, safe_int
 
 

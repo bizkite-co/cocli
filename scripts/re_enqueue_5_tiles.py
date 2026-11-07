@@ -1,8 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
+
 from cocli.core.paths import paths
-from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.core.queue.factory import get_queue_manager
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("re_enqueue_tiles")
@@ -21,8 +22,7 @@ def re_enqueue_5_tiles(campaign_name: str) -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        for t in tiles:
-            f.write(f"{t['lat']}|{t['lon']}|{t['phrase']}\n")
+        f.writelines(f"{t['lat']}|{t['lon']}|{t['phrase']}\n" for t in tiles)
     
     logger.info(f"Target list created: {output_path}")
 

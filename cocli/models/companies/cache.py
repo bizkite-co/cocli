@@ -1,7 +1,9 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional
+
 from pydantic import Field
 
 from ..base import BaseUsvModel

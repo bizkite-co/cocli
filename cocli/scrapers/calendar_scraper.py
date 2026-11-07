@@ -1,13 +1,14 @@
-import logging
 import asyncio
+import logging
 import re
 from datetime import datetime
 from typing import cast
-from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
 
-from ..models.campaigns.events import Event
+from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
+
 from ..core.text_utils import slugify
+from ..models.campaigns.events import Event
 
 logger = logging.getLogger(__name__)
 

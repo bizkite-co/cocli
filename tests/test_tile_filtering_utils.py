@@ -1,5 +1,6 @@
 from cocli.scrapers.google.gm_scraper.utils import get_tile_bounds
 
+
 def test_get_tile_bounds_positive():
     bounds = get_tile_bounds("29.1_-98.4")
     assert bounds["lat_min"] == 29.1

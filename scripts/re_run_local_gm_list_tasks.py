@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import asyncio
 import logging
+
 from cocli.application.worker_service import WorkerService
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

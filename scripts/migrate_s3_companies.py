@@ -1,8 +1,10 @@
+import logging
+
 import boto3
 import typer
-import logging
 from rich.console import Console
 from rich.progress import Progress
+
 from cocli.core.config import load_campaign_config
 from cocli.core.paths import paths
 

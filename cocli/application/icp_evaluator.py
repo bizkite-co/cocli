@@ -9,9 +9,10 @@ Evaluates prospect records against campaign/initiative ICP settings:
 
 from __future__ import annotations
 
-import math
 import logging
+import math
 from typing import Any
+
 from cocli.models.campaigns.campaign import IcpSettings
 
 logger = logging.getLogger(__name__)

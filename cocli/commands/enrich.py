@@ -1,16 +1,19 @@
 from __future__ import annotations
-import typer
-from pathlib import Path
-from typing import Optional, Any
+
 import asyncio
 import logging
+from pathlib import Path
+from typing import Any, Optional
 
-from ..enrichment.manager import EnrichmentManager
-from ..core.config import get_companies_dir, get_people_dir
-from ..models.companies.company import Company
-from ..models.people.person import Person
+import typer
+
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_person_files
+
+from ..core.config import get_companies_dir, get_people_dir
+from ..enrichment.manager import EnrichmentManager
+from ..models.companies.company import Company
+from ..models.people.person import Person
 from ..scrapers.generic_contact_scraper import GenericContactScraper
 
 logger = logging.getLogger(__name__)
@@ -178,17 +181,7 @@ def scrape_contacts(
                 existing_person = Person.from_directory(resolved_person_dir)
                 if existing_person:
                     # Match by name and email (if both exist)
-                    if existing_person.name == name and existing_person.email == email:
-                        person_exists = True
-                        existing_person_dir = resolved_person_dir
-                        break
-                    # Match by name if email is missing in existing, and new email is present
-                    elif existing_person.name == name and not existing_person.email and email:
-                        person_exists = True
-                        existing_person_dir = resolved_person_dir
-                        break
-                    # Match by email if name is missing in existing, and new name is present
-                    elif existing_person.email == email and not existing_person.name and name:
+                    if existing_person.name == name and existing_person.email == email or existing_person.name == name and not existing_person.email and email or existing_person.email == email and not existing_person.name and name:
                         person_exists = True
                         existing_person_dir = resolved_person_dir
                         break

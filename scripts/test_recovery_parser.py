@@ -1,9 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
 import json
 import logging
+
 from bs4 import BeautifulSoup
-from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
+
 from cocli.core.paths import paths
+from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import (
+    extract_rating_reviews_gm_details,
+)
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("test_parser")

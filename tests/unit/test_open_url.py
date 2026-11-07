@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +11,6 @@ from cocli.utils.open_url import (
     open_url,
     spawn_detached,
 )
-
 
 URL = "http://acme.example"
 # Real shape from google_voice_url.py - the case that actually broke.
@@ -181,10 +181,9 @@ def test_copy_to_windows_clipboard_pipes_text_to_clip_exe(monkeypatch) -> None:
     )
     captured: dict[str, object] = {}
 
-    def fake_run(command, input, timeout, check):  # noqa: A002
+    def fake_run(command, input, timeout, check):
         captured["command"] = command
         captured["input"] = input
-        return None
 
     monkeypatch.setattr("cocli.utils.open_url.subprocess.run", fake_run)
 

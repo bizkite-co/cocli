@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, UTC
-from typing import Any, cast, TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from ..app import CocliApp
     from cocli.models.campaigns.indexes.email_send_log import SendLogEntry
+
+    from ..app import CocliApp
 
 from textual import events, on, work
 from textual.binding import Binding
@@ -17,13 +18,14 @@ from textual.containers import VerticalScroll
 from textual.widgets import Label, ListItem, ListView, Static
 
 from cocli.models.companies.email_note import CompanyEmail
+
 from .master_detail import MasterDetailView
 
 logger = logging.getLogger(__name__)
 
 
 class RecentEmailListItem(ListItem):
-    def __init__(self, email: "CompanyEmail | SendLogEntry") -> None:
+    def __init__(self, email: CompanyEmail | SendLogEntry) -> None:
         super().__init__()
         if not isinstance(email, CompanyEmail):
             local_tz: Any
@@ -87,7 +89,7 @@ class RecentEmailDetail(VerticalScroll):
         yield Label("Select an email to see details", id="send-log-detail-empty")
         yield Static("", id="send-log-detail-body")
 
-    def update_entry(self, entry: "CompanyEmail | SendLogEntry | None") -> None:
+    def update_entry(self, entry: CompanyEmail | SendLogEntry | None) -> None:
         empty = self.query_one("#send-log-detail-empty", Label)
         body = self.query_one("#send-log-detail-body", Static)
         if entry is None:
@@ -209,13 +211,7 @@ class RecentEmailsView(MasterDetailView):
 
     def on_key(self, event: events.Key) -> None:
         """vim-style navigation - ListView only binds arrow keys by default."""
-        if event.key in ("G", "shift+g") or event.character == "G":
-            if self.log_list.children:
-                self.log_list.index = len(self.log_list.children) - 1
-                self.log_list.scroll_end(animate=False)
-            event.prevent_default()
-            event.stop()
-        elif event.key == "end":
+        if event.key in ("G", "shift+g") or event.character == "G" or event.key == "end":
             if self.log_list.children:
                 self.log_list.index = len(self.log_list.children) - 1
                 self.log_list.scroll_end(animate=False)

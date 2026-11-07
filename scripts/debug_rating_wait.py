@@ -1,5 +1,7 @@
 import asyncio
+
 from playwright.async_api import async_playwright
+
 
 async def debug_granite_final() -> None:
     url = "https://www.google.com/maps/place/Granite+Financial+Partners/@42.8723844,-71.6120805,17z/data=!3m1!4b1!4m6!3m5!1s0x89e3cbdf2911af9d:0xeb9579937fc14183!8m2!3d42.8723844!4d-71.6120805!16s%2Fg%2F1pxwn0s47"

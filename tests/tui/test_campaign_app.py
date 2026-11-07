@@ -1,11 +1,13 @@
-import pytest
 import asyncio
+
+import pytest
 import toml
+from textual.app import App
+
+from cocli.core.config import get_campaign_dir, get_campaigns_dir
 from cocli.models.campaigns.campaign import Campaign
 from cocli.tui.campaign_app import CampaignScreen
-from cocli.core.config import get_campaign_dir, get_campaigns_dir
 
-from textual.app import App
 
 class _TestApp(App[None]):
     """A test app to host CampaignScreen."""

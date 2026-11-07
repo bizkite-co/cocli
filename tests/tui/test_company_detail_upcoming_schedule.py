@@ -4,7 +4,7 @@ scheduled callback anywhere on his page" gap (Mark, 2026-09-17)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch

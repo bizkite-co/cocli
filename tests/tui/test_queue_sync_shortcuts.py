@@ -1,10 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
-import pytest
 from typing import cast
+
+import pytest
 from textual.widgets import ListView
-from cocli.tui.app import CocliApp
+
 from cocli.application.services import ServiceContainer
-from cocli.tui.widgets.queues_view import QueueSelection, QueueDetail
+from cocli.tui.app import CocliApp
+from cocli.tui.widgets.queues_view import QueueDetail, QueueSelection
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,8 @@
 from __future__ import annotations
+
+import argparse
 import csv
 import logging
-import argparse
 from pathlib import Path
 from typing import Optional
 

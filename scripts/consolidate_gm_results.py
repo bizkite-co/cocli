@@ -1,8 +1,9 @@
-import typer
 import logging
-from rich.console import Console
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import typer
+from rich.console import Console
 
 app = typer.Typer()
 console = Console()

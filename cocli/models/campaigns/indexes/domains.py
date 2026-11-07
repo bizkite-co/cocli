@@ -1,12 +1,16 @@
 from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import ClassVar, Optional
+
 from pydantic import Field
-from typing import Optional, ClassVar
-from datetime import datetime, UTC
+
 from ...domain import Domain
 from ...email_address import EmailAddress
 from ...phone import OptionalPhone
 from ...types import AwareDatetime
 from .base import BaseIndexModel
+
 
 class WebsiteDomainCsv(BaseIndexModel):
     INDEX_NAME: ClassVar[str] = "domains"

@@ -1,5 +1,6 @@
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
+
 def print_fields() -> None:
     fields = list(GoogleMapsProspect.model_fields.keys())
     for i, f in enumerate(fields):

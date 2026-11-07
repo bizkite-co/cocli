@@ -1,6 +1,8 @@
 from pathlib import Path
+
 from rich.console import Console
 from rich.progress import track
+
 from cocli.core.config import get_companies_dir
 
 console = Console()

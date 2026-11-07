@@ -1,6 +1,8 @@
-import sys
 import json
+import sys
+
 from cocli.core.secrets import get_secret_provider
+
 
 def main() -> None:
     if len(sys.argv) < 2:

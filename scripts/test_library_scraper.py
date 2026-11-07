@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from cocli.scrapers.calendar_scraper import CalendarScraper
+
 from cocli.core.config import set_campaign
+from cocli.scrapers.calendar_scraper import CalendarScraper
 
 logging.basicConfig(level=logging.INFO)
 

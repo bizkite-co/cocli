@@ -1,14 +1,17 @@
 from __future__ import annotations
-import typer
-from typing import Optional
-import logging
 
-from ..core.config import get_companies_dir, get_people_dir
+import logging
+from typing import Optional
+
+import typer
+
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files, create_person_files
+
+from ..core.config import get_companies_dir, get_people_dir
 from ..models.companies.company import Company
-from ..models.people.person import Person
 from ..models.company_name import CompanyName
+from ..models.people.person import Person
 
 logger = logging.getLogger(__name__)
 

@@ -1,10 +1,10 @@
-import os
-import sys
 import json
-import re
-from pathlib import Path
-from datetime import datetime, timedelta, timezone
 import logging
+import os
+import re
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -71,8 +71,7 @@ def generate_cleanup_report(campaign: str, files: list[str]) -> Path:
     report_path = Path("temp") / report_name
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "w") as f:
-        for item in files:
-            f.write(str(item) + "\n")
+        f.writelines(str(item) + "\n" for item in files)
     logger.info(f"Cleanup report generated with {len(files)} items: {report_path}")
     return report_path
 

@@ -53,21 +53,22 @@ SCHEMA VERSIONING:
 """
 from __future__ import annotations
 
-import logging
 import csv
+import logging
 from pathlib import Path
 from typing import Any, Optional
+
 import toml
 
-from cocli.core.paths import paths
 from cocli.core.config import get_campaign_dir
 from cocli.core.geo_types import LatScale1, LonScale1
-from cocli.planning.generate_grid import get_campaign_grid_tiles
-from cocli.models.campaigns.tiles import TileRecord
-from cocli.models.campaigns.mission import MissionTask
-from cocli.models.campaigns.tile import TileRecord as TileQueueRecord
+from cocli.core.paths import paths
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.sharding import get_geo_shard
+from cocli.models.campaigns.mission import MissionTask
+from cocli.models.campaigns.tile import TileRecord as TileQueueRecord
+from cocli.models.campaigns.tiles import TileRecord
+from cocli.planning.generate_grid import get_campaign_grid_tiles
 
 logger = logging.getLogger(__name__)
 
@@ -562,7 +563,6 @@ def populate_tile_queue(
     except Exception as e:
         logger.error(f"Error creating datapackage.json in {pending_dir}: {e}")
         # Don't fail the entire stage if schema metadata fails
-        pass
 
     logger.info(f"Stage 4 complete: {tiles_created} tile files created in {pending_dir}")
     return tiles_created

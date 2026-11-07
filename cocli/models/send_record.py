@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -79,7 +79,7 @@ class SendRecord(BaseModel):
         )
 
     @classmethod
-    def get(cls, campaign_name: str, guid: str) -> Optional["SendRecord"]:
+    def get(cls, campaign_name: str, guid: str) -> Optional[SendRecord]:
         path = cls._path(campaign_name, guid)
         if not path.exists():
             return None

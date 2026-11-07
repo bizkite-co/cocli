@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, UTC
-from typing import Optional, Any
+from typing import Any, Optional
+
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class Meeting(BaseModel):
     content: str = ""
 
     @classmethod
-    def from_file(cls, meeting_path: Path) -> Optional["Meeting"]:
+    def from_file(cls, meeting_path: Path) -> Optional[Meeting]:
         if not meeting_path.exists():
             return None
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import asyncio
 import logging
-import aiohttp
 from typing import Optional
+
+import aiohttp
 from selectolax.lexbor import LexborHTMLParser
+
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
 logger = logging.getLogger(__name__)

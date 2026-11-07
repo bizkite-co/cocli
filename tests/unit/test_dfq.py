@@ -1,7 +1,8 @@
-import os
 import json
-from datetime import datetime, timedelta, UTC
+import os
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+
 from cocli.core.queue.filesystem import FilesystemGmListQueue
 
 

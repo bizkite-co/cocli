@@ -5,9 +5,8 @@ import logging
 import sys
 import time
 from datetime import datetime
-from typing import Optional
-
 from pathlib import Path
+from typing import Optional
 
 
 class RollingErrorCounter(logging.Handler):

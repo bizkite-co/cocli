@@ -5,13 +5,14 @@ Tests individual stage functions (generate_tiles, expand_phrases, filter_frontie
 with controlled inputs and mocked dependencies.
 """
 
-import pytest
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from cocli.commands.campaign.discovery_gen_stages import (
-    generate_tiles,
     _load_target_locations,
+    generate_tiles,
 )
 from cocli.models.campaigns.tiles import TileRecord
 

@@ -152,7 +152,9 @@ def retrofit_personnel_names(
 
     Example: cocli data retrofit-personnel-names --campaign roadmap --apply
     """
-    from cocli.application.email_personnel_retrofit import retrofit_personnel_names as _retrofit
+    from cocli.application.email_personnel_retrofit import (
+        retrofit_personnel_names as _retrofit,
+    )
 
     dry_run = not apply
     console.print(
@@ -482,7 +484,9 @@ def queue_enqueue_gm_list(
     anything with an existing gm-list completed receipt; --rescrape-all
     bypasses that. Use --limit to enqueue a bounded batch at a time.
     """
-    from cocli.application.gm_list_enqueue_service import enqueue_unscraped_to_gm_list_pending
+    from cocli.application.gm_list_enqueue_service import (
+        enqueue_unscraped_to_gm_list_pending,
+    )
 
     result = enqueue_unscraped_to_gm_list_pending(
         campaign_name=campaign, limit=limit, rescrape_all=rescrape_all, dry_run=dry_run

@@ -5,7 +5,11 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from cocli.application.pi_sync_service import PiSyncService, SyncResult, describe_sync_results
+from cocli.application.pi_sync_service import (
+    PiSyncService,
+    SyncResult,
+    describe_sync_results,
+)
 from cocli.core.paths import paths
 from cocli.core.queue.filesystem import ensure_lease_readable
 

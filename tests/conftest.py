@@ -1,16 +1,17 @@
-import os
-import tempfile
-import sys
 import asyncio
 import importlib
+import os
+import sys
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch as module_patch
+from unittest.mock import MagicMock
+from unittest.mock import patch as module_patch
 
 import pytest
+from playwright.async_api import async_playwright
 from textual.app import Screen
 from textual.widget import Widget
 from typer.testing import CliRunner
-from playwright.async_api import async_playwright
 
 # Captured BEFORE the isolation override below overwrites COCLI_DATA_HOME -
 # the real data home (e.g. direnv's .envrc: COCLI_DATA_HOME="${PWD}/data"),

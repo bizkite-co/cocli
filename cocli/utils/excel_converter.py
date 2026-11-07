@@ -1,6 +1,6 @@
-from pathlib import Path
-import os
 import logging
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def convert_xlsx_to_csv(xlsx_filepath: Path, output_dir: Path) -> Path:
     Returns:
         The path to the newly created CSV file.
     """
-    import pandas as pd # Lazy import
+    import pandas as pd  # Lazy import
     
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_filename = xlsx_filepath.stem + ".csv"

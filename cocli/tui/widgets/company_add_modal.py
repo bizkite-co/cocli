@@ -1,18 +1,19 @@
 # POLICY: frictionless-data-policy-enforcement
-from textual.app import ComposeResult
-from textual.screen import ModalScreen
-from textual.widgets import Label, Checkbox, Static
-from textual.containers import Container, Vertical, Horizontal
 from textual import on
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Checkbox, Label, Static
 
-from cocli.models.companies.company import Company
-from cocli.models.company_name import CompanyName
-from cocli.models.company_address import CompanyAddress
 from cocli.core.config import get_campaign
-from cocli.core.text_utils import slugify
-from cocli.models.campaigns.queues.gm_details import GmItemTask
-from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.paths import paths
+from cocli.core.text_utils import slugify
+from cocli.models.campaigns.queues.enrichment import EnrichmentTask
+from cocli.models.campaigns.queues.gm_details import GmItemTask
+from cocli.models.companies.company import Company
+from cocli.models.company_address import CompanyAddress
+from cocli.models.company_name import CompanyName
+
 from .inputs import CocliInput
 
 

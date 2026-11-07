@@ -1,10 +1,14 @@
 import os
 import sys
+
 from bs4 import BeautifulSoup
 
 sys.path.append(os.getcwd())
 
-from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
+from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import (
+    extract_rating_reviews_gm_details,
+)
+
 
 def test_on_saved_files() -> None:
     for name in ["granite", "griffith", "final"]:

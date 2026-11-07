@@ -1,8 +1,10 @@
 from __future__ import annotations
-import typer
+
 import logging
-from rich.console import Console
 from typing import Optional
+
+import typer
+from rich.console import Console
 
 from ..core.config import get_all_campaign_dirs, get_campaign, get_cocli_base_dir
 from ..core.reporting import get_data_bucket_name
@@ -16,6 +18,7 @@ STATE_FILE = DATA_DIR / ".smart_sync_state.json"
 logger = logging.getLogger(__name__)
 
 from ..core.smart_sync import run_smart_sync
+
 
 @app.command("companies")
 def sync_companies(

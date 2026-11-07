@@ -1,10 +1,13 @@
-import pytest
 from unittest.mock import MagicMock
-from cocli.tui.app import CocliApp
-from cocli.tui.widgets.company_list import CompanyList
-from cocli.tui.widgets.company_detail import CompanyDetail
-from cocli.application.services import ServiceContainer
+
+import pytest
 from textual.widgets import Input, ListView
+
+from cocli.application.services import ServiceContainer
+from cocli.tui.app import CocliApp
+from cocli.tui.widgets.company_detail import CompanyDetail
+from cocli.tui.widgets.company_list import CompanyList
+
 
 @pytest.fixture
 def mock_company_data():

@@ -1,12 +1,13 @@
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Container
+from textual.containers import Container, Horizontal
 from textual.widgets import Input
-from textual import on, events
 
-from .template_list import TemplateList
 from .company_list import CompanyList
 from .company_preview import CompanyPreview
+from .template_list import TemplateList
+
 
 class CompanySearchView(Container):
     """

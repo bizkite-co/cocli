@@ -1,10 +1,18 @@
-import typer
 import os
-from pathlib import Path
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
+
+import typer
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
+
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
 from cocli.core.reporting import get_boto3_session
 

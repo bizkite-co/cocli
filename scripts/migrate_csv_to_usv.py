@@ -1,6 +1,7 @@
+import logging
+
 from cocli.core.config import get_cocli_base_dir
 from cocli.utils.usv_utils import csv_to_usv
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

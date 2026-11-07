@@ -1,15 +1,16 @@
+import logging
 import sys
 from pathlib import Path
-import logging
 from typing import Any
+
 import pydantic
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from cocli.core.sharding import get_place_id_shard
 from cocli.core.config import get_campaign_dir
+from cocli.core.sharding import get_place_id_shard
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -113,6 +114,7 @@ def migrate_dirty_files(campaign_name: str) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     from cocli.core.config import get_campaign
     parser = argparse.ArgumentParser(description="Migrate dirty root-level prospects to sharded WAL.")
     parser.add_argument("campaign", nargs="?", default=get_campaign(), help="Campaign name")

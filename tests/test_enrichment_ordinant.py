@@ -1,5 +1,6 @@
 from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 
+
 def test_gold_standard_enrichment_ordinant():
     domain = "ameripriseadvisors.com"
     task = EnrichmentTask(

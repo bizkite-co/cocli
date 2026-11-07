@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
-from textual.widget import Widget
+
 from datetime import datetime
+from typing import Optional
+
+from textual.widget import Widget
 
 # Lazy imports for widgets to avoid circular dependencies
-if TYPE_CHECKING:
-    pass
 
 class NavNode:
     """

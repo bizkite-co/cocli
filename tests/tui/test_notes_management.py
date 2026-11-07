@@ -1,11 +1,13 @@
-import pytest
-from unittest.mock import patch
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from unittest.mock import patch
 
+import pytest
+
+from cocli.core.paths import paths
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_detail import CompanyDetail, NotesTable
-from cocli.core.paths import paths
+
 
 @pytest.fixture
 def mock_company_data():

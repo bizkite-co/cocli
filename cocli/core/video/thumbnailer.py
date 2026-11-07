@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Optional
 
-from PIL import Image, ImageDraw, ImageFont
 import yaml
+from PIL import Image, ImageDraw, ImageFont
 from rich.console import Console
 
 console = Console()
@@ -37,8 +38,7 @@ def parse_rgba_color(
     s = str(value).strip()
     if not s:
         return default
-    if s.startswith("#"):
-        s = s[1:]
+    s = s.removeprefix("#")
     if len(s) == 3:
         s = "".join(ch * 2 for ch in s) + "ff"
     elif len(s) == 6:

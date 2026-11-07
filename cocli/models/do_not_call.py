@@ -1,7 +1,9 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field
+
+from datetime import UTC, datetime
 from typing import Optional
-from datetime import datetime, UTC
+
+from pydantic import BaseModel, Field
 
 
 class DoNotCallEntry(BaseModel):

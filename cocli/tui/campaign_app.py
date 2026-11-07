@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from textual import events
-from textual.screen import Screen, ModalScreen
-from textual.widgets import DataTable, Input, Static # Removed Header, Footer
-from textual.containers import Vertical
-from textual.app import ComposeResult # Added ComposeResult import
+import logging
 from typing import Any
 
-from ..models.campaigns.campaign import Campaign, CampaignImport, GoogleMaps, Prospecting
+from textual import events
+from textual.app import ComposeResult  # Added ComposeResult import
+from textual.containers import Vertical
+from textual.screen import ModalScreen, Screen
+from textual.widgets import DataTable, Input, Static  # Removed Header, Footer
 
 from ..application.campaign_service import CampaignService
-
-import logging
+from ..models.campaigns.campaign import (
+    Campaign,
+    CampaignImport,
+    GoogleMaps,
+    Prospecting,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +187,7 @@ class CampaignScreen(Screen[None]): # Changed from App to Screen
             self.log(f"Editing of complex attribute '{attribute_name}' not yet supported. Use 'd' to drill down.")
         else:
             self.log(f"Cannot edit attribute '{attribute_name}' of type {type(current_value)}.")
-        return None
+        return
     async def action_drill_down(self) -> None:
         table = self.query_one(DataTable)
         cell_key = table.cursor_coordinate
@@ -217,4 +221,4 @@ class CampaignScreen(Screen[None]): # Changed from App to Screen
             self.refresh_table()
         else:
             self.log(f"Cannot drill down into attribute '{attribute_name}' of type {type(current_value)}.")
-        return None
+        return

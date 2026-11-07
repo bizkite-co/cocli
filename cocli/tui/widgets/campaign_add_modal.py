@@ -11,6 +11,7 @@ from textual.widgets import Checkbox, Label, Static
 
 from cocli.application.campaign_service import CampaignService
 from cocli.core.text_utils import slugify
+
 from .inputs import CocliInput
 
 logger = logging.getLogger(__name__)

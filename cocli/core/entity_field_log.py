@@ -10,10 +10,11 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Optional
 
 import yaml
 from stations.backends import LocalPathBackend

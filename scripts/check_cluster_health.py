@@ -1,8 +1,9 @@
 import subprocess
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
+
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
@@ -17,7 +18,7 @@ def run_ssh(host: str, command: str) -> str:
             return f"ERROR: {result.stderr.strip()}"
         return result.stdout.strip()
     except Exception as e:
-        return f"ERROR: {str(e)}"
+        return f"ERROR: {e!s}"
 
 def decode_throttled(status_str: str) -> list[str]:
     try:

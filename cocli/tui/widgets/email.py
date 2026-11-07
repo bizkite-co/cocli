@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from typing import Any, Optional
-from textual.widgets import Label
+
 from rich.text import Text
+from textual.widgets import Label
+
 
 class Email(Label):
     """A widget to display a cyan-colored email address."""

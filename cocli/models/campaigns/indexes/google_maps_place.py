@@ -1,14 +1,16 @@
 from __future__ import annotations
-from pydantic import Field, model_validator, BeforeValidator
-from typing import Optional, Any, Annotated, Protocol, runtime_checkable
-from datetime import datetime, UTC
-from pathlib import Path
-import logging
 
-from .google_maps_idx import GoogleMapsIdx, strip_quotes
-from ...phone import OptionalPhone
-from ...company_name import OptionalCompanyName
+import logging
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, Any, Optional, Protocol, runtime_checkable
+
+from pydantic import BeforeValidator, Field, model_validator
+
 from ...company_address import OptionalCompanyAddress
+from ...company_name import OptionalCompanyName
+from ...phone import OptionalPhone
+from .google_maps_idx import GoogleMapsIdx, strip_quotes
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,7 @@ class GoogleMapsPlaceProtocol(Protocol):
     def to_usv(self) -> str: ...
     def save_enrichment(self) -> Path: ...
     @classmethod
-    def model_validate(cls, obj: Any) -> "GoogleMapsPlaceProtocol": ...
+    def model_validate(cls, obj: Any) -> GoogleMapsPlaceProtocol: ...
 
 class GoogleMapsPlace(GoogleMapsIdx):
     """
@@ -171,15 +173,15 @@ class GoogleMapsPlace(GoogleMapsIdx):
         return self.zip
 
     @model_validator(mode='after')
-    def extract_domain(self) -> 'GoogleMapsPlace':
+    def extract_domain(self) -> GoogleMapsPlace:
         if self.website and not self.domain:
             from ....core.text_utils import extract_domain
             self.domain = extract_domain(self.website)
         return self
 
     @model_validator(mode='after')
-    def validate_identity_tripod(self) -> 'GoogleMapsPlace':
-        from cocli.core.text_utils import slugify, calculate_company_hash
+    def validate_identity_tripod(self) -> GoogleMapsPlace:
+        from cocli.core.text_utils import calculate_company_hash, slugify
 
         if not self.slug and self.name:
             self.slug = slugify(str(self.name))

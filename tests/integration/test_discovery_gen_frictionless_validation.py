@@ -9,14 +9,13 @@ import json
 import tempfile
 from pathlib import Path
 
-
-from cocli.models.campaigns.tiles import TileRecord
-from cocli.models.campaigns.mission import MissionTask
-from cocli.core.geo_types import LatScale1, LonScale1
 from cocli.core.frictionless_validation import (
-    validate_usv_file,
     validate_schema_hash,
+    validate_usv_file,
 )
+from cocli.core.geo_types import LatScale1, LonScale1
+from cocli.models.campaigns.mission import MissionTask
+from cocli.models.campaigns.tiles import TileRecord
 
 
 class TestTileRecordFrictionlessValidation:

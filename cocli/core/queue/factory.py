@@ -1,14 +1,16 @@
 from __future__ import annotations
-from typing import Any, Literal, Optional, TYPE_CHECKING, overload
-from .local_file_queue import LocalFileQueue
-from .sqs_queue import SQSQueue
-from .scrape_sqs_queue import ScrapeSQSQueue
-from .gm_item_sqs_queue import GmItemSQSQueue
+
+from typing import TYPE_CHECKING, Any, Literal, Optional, overload
+
 from .command_sqs_queue import CommandSQSQueue
+from .gm_item_sqs_queue import GmItemSQSQueue
+from .local_file_queue import LocalFileQueue
+from .scrape_sqs_queue import ScrapeSQSQueue
+from .sqs_queue import SQSQueue
 
 if TYPE_CHECKING:
-    from .protocol import CampaignQueueProtocol
     from .filesystem import FilesystemTileQueue
+    from .protocol import CampaignQueueProtocol
 
 import logging
 
@@ -32,7 +34,7 @@ def get_queue_manager(  # type: ignore[overload-overlap]
     queue_type: Literal["tile", "map-tile", "tile-queue"],
     campaign_name: Optional[str] = None,
     s3_client: Optional[Any] = None,
-) -> "FilesystemTileQueue": ...
+) -> FilesystemTileQueue: ...
 
 
 @overload
@@ -42,7 +44,7 @@ def get_queue_manager(
     queue_type: str = "enrichment",
     campaign_name: Optional[str] = None,
     s3_client: Optional[Any] = None,
-) -> "CampaignQueueProtocol[Any]": ...
+) -> CampaignQueueProtocol[Any]: ...
 
 
 def get_queue_manager(
@@ -56,6 +58,7 @@ def get_queue_manager(
     Factory to return the appropriate QueueManager.
     """
     import os
+
     from ..config import get_campaign, load_campaign_config
     
     # Resolve campaign name if not provided
@@ -81,8 +84,13 @@ def get_queue_manager(
     logger.info(f"Queue Factory: Resolved provider={provider} for queue={queue_name} (campaign={effective_campaign})")
     
     if provider == "filesystem" and effective_campaign:
-        from .filesystem import FilesystemGmListQueue, FilesystemGmDetailsQueue, FilesystemEnrichmentQueue, FilesystemTileQueue
         from ..reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+        from .filesystem import (
+            FilesystemEnrichmentQueue,
+            FilesystemGmDetailsQueue,
+            FilesystemGmListQueue,
+            FilesystemTileQueue,
+        )
 
         active_s3_client = s3_client
         bucket_name = None

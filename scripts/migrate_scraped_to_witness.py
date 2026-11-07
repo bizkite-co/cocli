@@ -1,5 +1,7 @@
 import json
+
 from cocli.core.config import get_scraped_areas_index_dir
+
 
 def migrate() -> None:
     source_dir = get_scraped_areas_index_dir()

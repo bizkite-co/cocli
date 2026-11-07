@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import Optional, ClassVar
-from datetime import datetime, UTC
-from pathlib import Path
+
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import ClassVar, Optional
 
 from .google_maps_place import GoogleMapsPlace
 from .google_maps_raw import GoogleMapsRawResult
@@ -22,8 +23,8 @@ class GoogleMapsProspect(GoogleMapsPlace):
     INDEX_NAME: ClassVar[str] = "google_maps_prospects"
 
     def merge_with_existing(
-        self, existing: "GoogleMapsProspect"
-    ) -> "GoogleMapsProspect":
+        self, existing: GoogleMapsProspect
+    ) -> GoogleMapsProspect:
         """
         Merges this (newly scraped) prospect with an existing one.
         Mandate: Only overwrite fields if the new value is NOT null/empty.
@@ -45,7 +46,7 @@ class GoogleMapsProspect(GoogleMapsPlace):
     @classmethod
     def get_by_place_id(
         cls, campaign_name: str, place_id: str
-    ) -> Optional["GoogleMapsProspect"]:
+    ) -> Optional[GoogleMapsProspect]:
         """
         Attempts to find an existing prospect in the campaign index by Place ID.
         """
@@ -93,7 +94,7 @@ class GoogleMapsProspect(GoogleMapsPlace):
         )
 
     @classmethod
-    def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
+    def from_raw(cls, raw: GoogleMapsRawResult) -> GoogleMapsProspect:
         from cocli.core.text_utils import slugify
 
         data = {
@@ -154,7 +155,7 @@ class GoogleMapsProspect(GoogleMapsPlace):
 
     @classmethod
     def append_to_checkpoint(
-        cls, campaign_name: str, prospect: "GoogleMapsProspect"
+        cls, campaign_name: str, prospect: GoogleMapsProspect
     ) -> None:
         """Appends a prospect to the campaign's main checkpoint USV."""
         from ....core.paths import paths

@@ -1,36 +1,37 @@
 # POLICY: frictionless-data-policy-enforcement
 from __future__ import annotations
-import socket
+
 import asyncio
 import json
 import logging
 import os
 import re
+import socket
 import subprocess
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from playwright.async_api import async_playwright, Browser, BrowserContext
+from playwright.async_api import Browser, BrowserContext, async_playwright
 
-from ..core.queue.factory import get_queue_manager
+from ..core.config import load_campaign_config
 from ..core.error_classification import ErrorCategory, classify_exception
-from ..scrapers.google.google_maps import scrape_google_maps
+from ..core.paths import paths
+from ..core.queue.factory import get_queue_manager
+from ..core.text_utils import slugify
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.campaigns.queues.base import QueueMessage
 from ..models.campaigns.queues.enrichment import EnrichmentTask
-from ..core.config import load_campaign_config
-from ..core.paths import paths
+from ..models.campaigns.queues.gm_details import GmItemTask
+from ..scrapers.google.google_maps import scrape_google_maps
+from ..utils.async_iteration import iterate_with_idle_timeout
+from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from ..utils.playwright_utils import (
     launch_browser,
     new_details_context,
     new_enrichment_context,
 )
-from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
-from ..utils.async_iteration import iterate_with_idle_timeout
-from ..core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +339,7 @@ class WorkerService:
         self.role = role
         self._load_config()
         self.worker_tasks: list[asyncio.Task[Any]] = []
-        self.child_workers: list["WorkerService"] = []
+        self.child_workers: list[WorkerService] = []
         self.content_type: Optional[str] = None
         self.worker_count: int = 1
         self.last_activity_ts: Optional[float] = None
@@ -785,9 +786,9 @@ class WorkerService:
         s3_client: Optional[Any] = None,
     ) -> None:
         from ..core.enrichment import enrich_company_website
+        from ..models.campaigns.campaign import Campaign
         from ..models.companies.company import Company
         from ..models.company_name import CompanyName
-        from ..models.campaigns.campaign import Campaign
 
         try:
             campaign_obj = Campaign.load(self.campaign_name)
@@ -902,8 +903,9 @@ class WorkerService:
             logger.exception("Failed to sync wilderness tile %s to S3", tile_id)
 
     async def _run_command_poller_loop(self, command_queue: Any, s3_client: Any) -> None:
-        from ..application.campaign_service import CampaignService
         import shlex
+
+        from ..application.campaign_service import CampaignService
         while True:
             try:
                 campaign_service = CampaignService(self.campaign_name)
@@ -1173,10 +1175,14 @@ class WorkerService:
 
     async def _push_supervisor_heartbeat(self, s3_client: Any) -> None:
         import psutil
+
+        from ..core.gossip_bridge import bridge
+        from ..core.logging_config import (
+            get_recent_error_count,
+            get_recent_error_messages,
+        )
         from ..core.paths import paths
         from ..models.wal.record import HeartbeatDatagram
-        from ..core.gossip_bridge import bridge
-        from ..core.logging_config import get_recent_error_count, get_recent_error_messages
 
         cpu_usage = psutil.cpu_percent()
         mem_usage = psutil.virtual_memory().percent

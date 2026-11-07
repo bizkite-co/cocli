@@ -1,7 +1,10 @@
 from typing import Any, Optional
+
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
+
 from cocli.core.text_utils import is_valid_email
+
 
 class EmailAddress(str):
     """

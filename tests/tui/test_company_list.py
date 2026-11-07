@@ -1,14 +1,14 @@
-import pytest
 from unittest.mock import MagicMock
-from cocli.tui.widgets.company_list import CompanyList
-from cocli.tui.widgets.company_detail import CompanyDetail
-from textual.widgets import ListView
+
+import pytest
 from conftest import wait_for_widget
+from textual.widgets import ListView
 
-
-from cocli.tui.app import CocliApp
 from cocli.application.services import ServiceContainer
 from cocli.models.search import SearchResult
+from cocli.tui.app import CocliApp
+from cocli.tui.widgets.company_detail import CompanyDetail
+from cocli.tui.widgets.company_list import CompanyList
 
 # Mock data for the detail screen
 mock_detail_data = {

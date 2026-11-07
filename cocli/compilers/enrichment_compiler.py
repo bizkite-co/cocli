@@ -1,11 +1,18 @@
 from __future__ import annotations
-from pathlib import Path
-import pkgutil
+
 import importlib
+import pkgutil
+from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 
 from ..core.config import get_companies_dir
 from .base import BaseCompiler

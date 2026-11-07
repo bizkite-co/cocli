@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime, timedelta
+
 from dateutil.relativedelta import relativedelta  # type: ignore
 
-from ..models.campaigns.events import EventSource, EventScrapeTask
-from ..core.paths import paths
 from ..core.ordinant import QueueIdentity
+from ..core.paths import paths
+from ..models.campaigns.events import EventScrapeTask, EventSource
 
 logger = logging.getLogger(__name__)
 

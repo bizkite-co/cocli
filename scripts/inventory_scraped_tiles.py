@@ -1,7 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
 import json
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+
 from rich.progress import track
 
 from cocli.core.paths import paths
@@ -91,6 +92,7 @@ def inventory_scraped_tiles(campaign_name: str) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     from cocli.core.config import get_campaign
     parser = argparse.ArgumentParser(description="Populate ScrapeIndex from existing results.")
     parser.add_argument("campaign", nargs="?", default=get_campaign(), help="Campaign name")
